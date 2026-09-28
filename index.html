@@ -1064,13 +1064,27 @@ function allMixMaterialTransactions(){
   return out;
 }
 function monthlyRMConsumption(m){
-  const map={};
+  // RM transaction rows contain cumulative MTD values in for_month.
+  // For a month, use the latest dated Consumption record for each material
+  // instead of summing daily/MTD snapshots (which would double-count).
+  const latest={};
   allMixMaterialTransactions().forEach(({material,t})=>{
-    if(monthKey(rowDate(t))!==m || !isConsumptionMovement(tType(t)))return;
-    const v=materialValueInMT(tVal(t),material); if(v<=0)return;
-    map[material]=(map[material]||0)+v;
+    const d=rowDate(t);
+    if(monthKey(d)!==m || !isConsumptionMovement(tType(t)))return;
+    const day=dateOnly(d)||"";
+    const key=normalize(material);
+    if(!latest[key] || day>=latest[key].day){
+      latest[key]={material,t,day};
+    }
   });
-  return Object.entries(map).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+
+  return Object.values(latest).map(({material,t})=>{
+    const monthly=num(t.for_month??t.For_Month??t.monthly_consumption??t.Monthly_Consumption);
+    const value=monthly!==null
+      ? materialValueInMT(Math.abs(monthly),material)
+      : materialValueInMT(tVal(t),material);
+    return {name:material,value};
+  }).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
 }
 function monthlyFeedMix(m,key){
   const rows=(DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m);
