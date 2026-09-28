@@ -327,15 +327,6 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
   .stock-row>span:last-child{font-size:8.3px !important}
 }
 </style>
-
-<style id="latest-data-date-v1">
-.latest-data-card{margin-top:10px}
-.latest-data-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
-.latest-data-tile{border:1px solid #e9edf4;background:#fbfcfe;border-radius:11px;padding:9px 8px;text-align:left;min-width:0}
-.latest-data-tile small{display:block;font-size:8px;color:#777d89;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.latest-data-tile strong{display:block;margin-top:4px;font-size:12px;font-weight:800;color:#202938;font-variant-numeric:tabular-nums;white-space:nowrap}
-@media(max-width:700px){.latest-data-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.latest-data-tile strong{font-size:12px}}
-</style>
 </head>
 <body>
 <div class="container">
@@ -382,18 +373,6 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
     <div class="management-status-row">
       <button class="status-tile" onclick="openStockForecast()"><small>📦 Reorder / Cover</small><strong id="mergedReorder">--</strong><span>View stock cover →</span></button>
       <button class="status-tile" onclick="openDataHealth()"><small>⚠ Data Issues</small><strong id="mergedIssues">--</strong><span>Check issues →</span></button>
-    </div>
-  </div>
-
-  <!-- LATEST DATA DATE -->
-  <div class="card latest-data-card">
-    <div class="card-title"><h2>🗓 Latest Data Date</h2><span>Module-wise</span></div>
-    <div class="latest-data-grid">
-      <div class="latest-data-tile"><small>Raw Materials</small><strong id="latestDateStock">--</strong></div>
-      <div class="latest-data-tile"><small>Production</small><strong id="latestDateProduction">--</strong></div>
-      <div class="latest-data-tile"><small>Feed Unit</small><strong id="latestDateFeed">--</strong></div>
-      <div class="latest-data-tile"><small>PP Bags</small><strong id="latestDateBags">--</strong></div>
-      <div class="latest-data-tile"><small>Dispatch</small><strong id="latestDateDispatch">--</strong></div>
     </div>
   </div>
 
@@ -1014,60 +993,7 @@ function renderGlobalSearch(q){
   el.innerHTML=items.join("")||"<div class='empty'>No matching material or product.</div>";
 }
 
-function latestDateValue(v){
-  const d=dateOnly(v);
-  return d||"--";
-}
-function latestDateFromRows(rows){
-  const dates=[];
-  (Array.isArray(rows)?rows:[]).forEach(r=>{
-    const d=dateOnly(r?.report_date||r?.Report_Date||r?.date||r?.Date);
-    if(d)dates.push(d);
-  });
-  dates.sort();
-  return dates.length?dates[dates.length-1]:"";
-}
-function latestRawMaterialDate(){
-  const dates=[];
-  (Array.isArray(DATA.stock)?DATA.stock:[]).forEach(r=>{
-    const rd=dateOnly(r?.report_date||r?.Report_Date||r?.date||r?.Date);
-    if(rd)dates.push(rd);
-    (Array.isArray(r?.transactions)?r.transactions:[]).forEach(t=>{
-      const d=dateOnly(t?.report_date||t?.Report_Date||t?.date||t?.Date);
-      if(d)dates.push(d);
-    });
-  });
-  (Array.isArray(DATA.stockHistory)?DATA.stockHistory:[]).forEach(r=>{
-    const d=dateOnly(r?.report_date||r?.Report_Date||r?.date||r?.Date);
-    if(d)dates.push(d);
-  });
-  dates.sort();
-  return dates.length?dates[dates.length-1]:"";
-}
-function latestFeedDataDate(){
-  return latestDateFromRows(DATA.feedUnitData);
-}
-function latestDispatchDataDate(){
-  const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
-  const dates=[];
-  rows.forEach(r=>{
-    const dispatch=num(r?.Dispatch_Day_MT??r?.dispatch_day_mt??r?.Dispatch_Day??r?.dispatch_day??r?.Dispatch??r?.dispatch);
-    const d=dateOnly(r?.Report_Date||r?.report_date||r?.date||r?.Date);
-    if(dispatch!==null && d)dates.push(d);
-  });
-  dates.sort();
-  return dates.length?dates[dates.length-1]:"";
-}
-function renderLatestDataDates(){
-  setText("latestDateStock",latestDateValue(latestRawMaterialDate()));
-  setText("latestDateProduction",latestDateValue(latestDateFromRows([...(Array.isArray(DATA.production)?DATA.production:[]),...(Array.isArray(DATA.productionHistory)?DATA.productionHistory:[])])));
-  setText("latestDateFeed",latestDateValue(latestFeedDataDate()));
-  setText("latestDateBags",latestDateValue(latestDateFromRows([...(Array.isArray(DATA.bags)?DATA.bags:[]),...(Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[])])));
-  setText("latestDateDispatch",latestDateValue(latestDispatchDataDate()));
-}
-
 function renderDashboard(){
-  renderLatestDataDates();
   renderSmartHeader();
   renderQuick();
   renderControlCenter();
