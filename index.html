@@ -634,6 +634,19 @@ function rawTotalMT(material,tab){
   if(tab==="STOCK")return materialValueInMT(getMaterial(material)?.closing,material);
   return transactions(material).filter(t=>tType(t)===tab).reduce((a,t)=>a+materialValueInMT(tVal(t),material),0);
 }
+function rawTotal(material,tab){
+  if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
+  return transactions(material).filter(t=>{
+    const ty=tType(t);
+    if(tab==="CONSUMPTION")return ty.includes("CONSUMPTION") || ty.includes("CONSUMPION");
+    if(tab==="PURCHASE")return ty==="PURCHASE" || ty==="RECEIVED";
+    if(tab==="TRANSFER")return ty==="TRANSFER" || ty.includes("TRANSFER FROM") || ty.includes("TRANSFER TO");
+    if(tab==="GAIN")return ty==="GAIN";
+    if(tab==="SHORTAGE")return ty.includes("SHORTAGE");
+    if(tab==="SALE")return ty.includes("SALE");
+    return ty===tab;
+  }).reduce((a,t)=>a+tVal(t),0);
+}
 function fmtBags(v){return v===null||v===undefined||v===""?"--":fmt(v)+" Bags"}
 function esc(v){return clean(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;")}
 function jsq(v){return clean(v).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
@@ -1754,16 +1767,7 @@ function renderStock(){
     return `<div class="stock-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"} ${esc(unit)}</small></div><span>${fmt(closing)} ${esc(unit)}</span><span class="cover-cell">${st.cover!==null?fmt(st.cover)+" d":"--"}</span><span class="${st.cls} status-text">${esc(st.status)}</span></div>`;
   }).join("")||"<div class='empty'>No stock data for this date</div>";
 }
-function renderRawCategory(tab){
-  const el=document.getElementById("rawCategoryList"),mats=getMaterials();
-  if(tab==="STOCK"){
-    const rows=mats.map(m=>({m,v:num(getMaterial(m)?.closing)||0})).sort((a,b)=>(b.v>0)-(a.v>0)||b.v-a.v);
-    el.innerHTML=rows.map(({m})=>{const x=getMaterial(m);return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for complete details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
-  }else{
-    const rows=mats.map(m=>({m,v:rawTotal(m,tab)})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
-    el.innerHTML=rows.map(({m,v})=>{const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • tap for details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
-  }
-}
+
 function renderControlCenter(){
   const m=dailyControlMetrics();
   setText("controlDate",VIEW_DATE||DATA.report_date||"Latest data");
