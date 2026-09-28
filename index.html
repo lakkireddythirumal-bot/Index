@@ -343,6 +343,17 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
   .stock-row>span:last-child{font-size:8.3px !important}
 }
 </style>
+
+<style id="manager-layout-v28">
+.manager-quick-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important}
+.manager-quick-grid .quick{min-height:60px}
+.manager-quick-grid .quick strong{font-size:15px}
+.manager-quick-grid .quick p{font-size:9.5px}
+#dataQualityPanelHost{margin-bottom:10px}
+#dataQualityPanel .health-strip{display:grid;grid-template-columns:1fr auto auto;gap:7px;align-items:center}
+#dataQualityPanel .health-strip span:last-child{color:#315efb;font-weight:700}
+@media(max-width:360px){.manager-quick-grid{gap:5px!important}.manager-quick-grid .quick{padding:7px 6px}.manager-quick-grid .quick strong{font-size:13px}.manager-quick-grid .quick p{font-size:8.5px}}
+</style>
 </head>
 <body>
 <div class="container">
@@ -373,22 +384,16 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
   <!-- MANAGEMENT QUICK VIEW -->
   <div class="card">
     <div class="card-title"><h2>⚡ Management Quick View</h2><span>Tap for details</span></div>
-    <div class="quick-grid">
+    <div class="quick-grid manager-quick-grid">
       <div class="quick quick-kpi" onclick="openFeedTotals('production_day')"><p>Day Production</p><strong id="qProdDay">-- MT</strong><div class="spark" id="sparkProd"></div></div>
       <div class="quick" onclick="openFeedTotals('production_month')"><p>Month Production</p><strong id="qProdMonth">-- MT</strong></div>
       <div class="quick quick-kpi" onclick="openFeedTotals('dispatch_day')"><p>Day Dispatch</p><strong id="qDispDay">-- MT</strong><div class="spark" id="sparkDisp"></div></div>
       <div class="quick" onclick="openFeedTotals('dispatch_month')"><p>Month Dispatch</p><strong id="qDispMonth">-- MT</strong></div>
-    </div>
-    <div style="height:8px"></div>
-    <div class="mini-grid">
-      <div class="mini" onclick="openRawCategory('PURCHASE')"><p>RM Received</p><strong id="qReceived">--</strong></div>
-      <div class="mini" onclick="openRawCategory('CONSUMPTION')"><p>RM Consumption</p><strong id="qConsumption">--</strong></div>
-      <div class="mini" onclick="openStockDetails()"><p>RM Closing</p><strong id="qClosing">--</strong></div>
-      <div class="mini" onclick="openFeedClosingDetails()"><p>Feed Closing Stock</p><strong id="qFeedClosing">-- MT</strong><small id="qFeedClosingBagsMini" style="display:block;margin-top:4px;color:#64748b;font-weight:600">-- Bags</small></div>
-    </div>
-    <div class="management-status-row">
-      <button class="status-tile" onclick="openStockForecast()"><small>📦 Reorder / Cover</small><strong id="mergedReorder">--</strong><span>View stock cover →</span></button>
-      <button class="status-tile" onclick="openDataHealth()"><small>⚠ Data Issues</small><strong id="mergedIssues">--</strong><span>Check issues →</span></button>
+      <div class="quick" onclick="openRawCategory('PURCHASE')"><p>RM Received</p><strong id="qReceived">--</strong></div>
+      <div class="quick" onclick="openRawCategory('CONSUMPTION')"><p>RM Consumption</p><strong id="qConsumption">--</strong></div>
+      <div class="quick" onclick="openStockDetails()"><p>RM Closing</p><strong id="qClosing">--</strong></div>
+      <div class="quick" onclick="openFeedClosingDetails()"><p>Feed Closing</p><strong id="qFeedClosing">-- MT</strong><small id="qFeedClosingBagsMini" style="display:block;margin-top:3px;color:#64748b;font-weight:600">-- Bags</small></div>
+      <div class="quick" onclick="openStockForecast()"><p>RM Reorder</p><strong id="mergedReorder">--</strong></div>
     </div>
   </div>
 
@@ -1224,8 +1229,9 @@ function renderStock(){
   const mats=getMaterials();
   list.innerHTML=mats.slice().sort((a,b)=>{const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;return (bv>0)-(av>0)||bv-av}).map(m=>{
     const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),s=stockStatus(closing,avg);
+    const symbol=s.status==="REORDER"?"🔴":s.status==="WATCH"?"🟡":"🟢";
     return `<div class="stock-row" onclick="openMaterialDetails('${jsq(m)}')">
-      <strong class="reorder-material">${esc(m)}</strong><span>${fmt(closing)} ${esc(x?.unit||"MT")}</span><span>${avg?fmt(avg):"--"}</span><span>${s.cover!==null?fmt(s.cover)+" d":"--"}</span><span class="${s.cls} status-text">${esc(s.status)}</span>
+      <div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"}</small></div><span>${fmt(closing)} ${esc(x?.unit||"MT")}</span><span class="cover-cell">${s.cover!==null?fmt(s.cover)+" d":"--"}</span><span class="status-symbol ${s.cls}" title="${esc(s.status)}">${symbol}</span>
     </div>`;
   }).join("")||"<div class='empty'>No stock data</div>";
 }
@@ -1324,25 +1330,25 @@ function openNotifications(){
    RAW MATERIAL CATEGORY
 ===================================================== */
 let currentRawTab="STOCK";
-function setRawTab(btn,tab){document.querySelectorAll(".section-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");currentRawTab=tab;renderRawCategory(tab)}
-function rawTotal(material,tab){
-  if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
-  return transactions(material).filter(t=>{
-    const ty=tType(t);
-    if(tab==="TRANSFER")return ty==="TRANSFER" || ty.includes("TRANSFER FROM") || ty.includes("TRANSFER TO");
-    return ty===tab;
-  }).reduce((a,t)=>a+tVal(t),0);
-}
+let rawMovementExpanded=false;
+function setRawTab(btn,tab){document.querySelectorAll(".section-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");currentRawTab=tab;rawMovementExpanded=false;renderRawCategory(tab)}
+function toggleRawMovementMore(){rawMovementExpanded=!rawMovementExpanded;renderRawCategory(currentRawTab)}
 function renderRawCategory(tab){
   const el=document.getElementById("rawCategoryList");
   const mats=getMaterials();
+  let rows;
   if(tab==="STOCK"){
-    const rows=mats.map(m=>({m,v:num(getMaterial(m)?.closing)||0})).sort((a,b)=>(b.v>0)-(a.v>0)||b.v-a.v);
-    el.innerHTML=rows.map(({m})=>{const x=getMaterial(m);return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for complete details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
+    rows=mats.map(m=>({m,v:num(getMaterial(m)?.closing)||0})).sort((a,b)=>(b.v>0)-(a.v>0)||b.v-a.v);
   }else{
-    const rows=mats.map(m=>({m,v:rawTotal(m,tab)})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
-    el.innerHTML=rows.map(({m,v})=>{const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • tap for details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
+    rows=mats.map(m=>({m,v:rawTotal(m,tab)})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
   }
+  const visible=rawMovementExpanded?rows:rows.slice(0,25);
+  if(tab==="STOCK"){
+    el.innerHTML=visible.map(({m})=>{const x=getMaterial(m);return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for complete details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
+  }else{
+    el.innerHTML=visible.map(({m,v})=>{const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • tap for details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
+  }
+  if(rows.length>25)el.innerHTML+=`<button class="more-toggle" onclick="toggleRawMovementMore()">${rawMovementExpanded?"Show less ↑":"More • "+(rows.length-25)+" more ↓"}</button>`;
 }
 
 /* =====================================================
@@ -2043,15 +2049,20 @@ async function shareDQSummary(){
   if(navigator.share){try{await navigator.share({title:"Feed Plant Data Quality Summary",text});return}catch(e){}}
   try{await navigator.clipboard.writeText(text);showToast("Data Quality summary copied")}catch(e){showModal("Data Quality Summary",`<div class="report-box">${esc(text)}</div>`)}
 }
+function badDataIssueCount(){
+  const rec=reconciliationItems(),bad=rec.filter(x=>x.r.status==="MISMATCH"),no=rec.filter(x=>x.r.status==="NO DATA");
+  return bad.length+no.length+abnormalConsumptionItems().length+duplicateTransactionCount();
+}
 function renderDataQualityPanel(){
   const host=document.getElementById("dataQualityPanelHost");if(!host)return;
   const dup=dqDuplicateGroups(),unk=dqUnknownGroups(),cont=dqContinuityIssues(),ab=dqAbnormalItems(),cov=dqCoverage();
-  host.innerHTML=`<div class="card control-card" id="dataQualityPanel"><div class="card-title"><h2>🛡 Data Quality / Accuracy</h2><span>Tap any issue</span></div><div class="control-grid"><button class="control-item" onclick="openDQDuplicates()"><small>🔁 Duplicate Transactions</small><strong>${dup.length}</strong></button><button class="control-item" onclick="openDQUnknown()"><small>❓ Unknown Transactions</small><strong>${unk.length}</strong></button><button class="control-item" onclick="openDQContinuity()"><small>🔗 Opening → Closing</small><strong>${cont.length}</strong></button><button class="control-item" onclick="openDQAbnormal()"><small>⚠ Abnormal Activity</small><strong>${ab.length}</strong></button><button class="control-item" onclick="openDQHistory()"><small>📈 Historical Trend</small><strong>${getMaterials().length}</strong></button><button class="control-item" onclick="openDQCoverage()"><small>🎯 Coverage</small><strong>${cov.filter(x=>x.percent===100).length}/${cov.length}</strong></button></div><div class="control-actions"><button onclick="downloadDQSummary()">⬇ Export Summary</button><button onclick="shareDQSummary()">📤 Share Summary</button></div><div class="small-note">Consumption spelling variations are automatically treated as Consumption; only genuinely unrecognized transaction names are shown as Unknown.</div></div>`;
+  host.innerHTML=`<div class="card control-card" id="dataQualityPanel"><div class="card-title"><h2>🛡 Data Health &amp; Issues</h2><span>Quality • Accuracy • Issues</span></div><div class="control-grid"><button class="control-item" onclick="openDQDuplicates()"><small>🔁 Duplicate Transactions</small><strong>${dup.length}</strong></button><button class="control-item" onclick="openDQUnknown()"><small>❓ Unknown Transactions</small><strong>${unk.length}</strong></button><button class="control-item" onclick="openDQContinuity()"><small>🔗 Opening → Closing</small><strong>${cont.length}</strong></button><button class="control-item" onclick="openDQAbnormal()"><small>⚠ Abnormal Activity</small><strong>${ab.length}</strong></button><button class="control-item" onclick="openDQHistory()"><small>📈 Historical Trend</small><strong>${getMaterials().length}</strong></button><button class="control-item" onclick="openDQCoverage()"><small>🎯 Coverage</small><strong>${cov.filter(x=>x.percent===100).length}/${cov.length}</strong></button></div><div class="health-strip" onclick="openDataHealth()"><span>⚠ Data Issues</span><b>${badDataIssueCount()}</b> <span>View details →</span></div><div class="small-note">Consumption spelling variations are automatically treated as Consumption; only genuinely unrecognized transaction names are shown as Unknown.</div></div>`;
 }
 function ensureDataQualityHost(){
-  const status=document.querySelector(".management-status-row");if(!status)return;
+  const bagGrid=document.getElementById("bagGrid");if(!bagGrid)return;
+  const bagCard=bagGrid.closest(".card");if(!bagCard)return;
   let host=document.getElementById("dataQualityPanelHost");
-  if(!host){host=document.createElement("div");host.id="dataQualityPanelHost";status.parentNode.insertBefore(host,status.nextSibling)}
+  if(!host){host=document.createElement("div");host.id="dataQualityPanelHost";bagCard.parentNode.insertBefore(host,bagCard.nextSibling)}
   renderDataQualityPanel();
 }
 const __dqBaseRenderControlCenter=renderControlCenter;
