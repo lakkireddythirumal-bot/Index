@@ -69,6 +69,22 @@ canvas{width:100%;height:150px;display:block}
 @media (min-width:520px){.quick-grid,.mini-grid{grid-template-columns:repeat(4,1fr)}}
 
 
+/* ===== Monthly Mix & Contribution ===== */
+.monthly-mix-card{overflow:hidden}
+.monthly-mix-card .card-title>div{min-width:0}.monthly-mix-card .card-title h2{font-size:16px}.monthly-mix-card .card-title span{display:block;margin-top:2px}
+.mix-month-select{max-width:145px;min-width:112px;font-weight:700;color:#202938;border-color:#e4e8ef}
+.monthly-mix-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mix-panel{border:1px solid #edf0f4;border-radius:14px;padding:9px;background:#fbfcfe;min-width:0}
+.mix-panel.rm{background:linear-gradient(180deg,#f4fbf6 0%,#fbfcfe 45%)}
+.mix-panel.prod{background:linear-gradient(180deg,#f5f7ff 0%,#fbfcfe 45%)}
+.mix-panel.disp{background:linear-gradient(180deg,#fff9ee 0%,#fbfcfe 45%)}
+.mix-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:6px}
+.mix-panel-head strong{display:block;font-size:11px;line-height:1.2}.mix-panel-head small{display:block;color:#7b818c;font-size:8.5px;margin-top:3px}
+.mix-panel-head button{border:0;background:transparent;color:#315efb;font-size:8.5px;font-weight:800;padding:2px 0;white-space:nowrap;cursor:pointer}
+.mix-row{padding:5px 0;border-bottom:1px solid #edf0f3}.mix-row:last-child{border-bottom:0}.mix-row-top{display:flex;justify-content:space-between;gap:6px;align-items:center}.mix-name{font-size:9.5px;font-weight:650;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mix-value{font-size:8.5px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}.mix-bar{height:5px;background:#e9edf2;border-radius:5px;overflow:hidden;margin-top:4px}.mix-fill{height:100%;border-radius:5px}.mix-panel.rm .mix-fill{background:#55b978}.mix-panel.prod .mix-fill{background:#7657d9}.mix-panel.disp .mix-fill{background:#e9a43a}.mix-pct{font-size:8px;color:#66707d;font-weight:800;margin-left:4px}.mix-others .mix-name{color:#69717d}.monthly-mix-note{font-size:8.5px;color:#7b818c;margin-top:7px;line-height:1.35}
+.mix-detail-list .mix-detail-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #e9edf2}.mix-detail-row:last-child{border-bottom:0}.mix-detail-main{min-width:0;flex:1}.mix-detail-name{font-size:12px;font-weight:600}.mix-detail-bar{height:6px;background:#e9edf2;border-radius:6px;overflow:hidden;margin-top:5px}.mix-detail-fill{height:100%;border-radius:6px}.mix-detail-right{text-align:right;white-space:nowrap}.mix-detail-right strong{display:block;font-size:12px}.mix-detail-right small{font-size:9px;color:#777}
+@media(max-width:700px){.monthly-mix-grid{grid-template-columns:1fr}.mix-panel{padding:10px}.mix-panel-head strong{font-size:12px}.mix-row{padding:6px 0}.mix-name{font-size:10.5px}.mix-value{font-size:9px}.mix-bar{height:6px}.mix-pct{font-size:8.5px}}
+
 /* ===== Manager Intelligence layer ===== */
 .intel-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .intel-item{background:#f7f8fa;border-radius:13px;padding:9px;cursor:pointer;border:1px solid rgba(32,41,56,.035);transition:transform .15s ease,box-shadow .15s ease}
@@ -374,6 +390,29 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
       <button class="status-tile" onclick="openStockForecast()"><small>📦 Reorder / Cover</small><strong id="mergedReorder">--</strong><span>View stock cover →</span></button>
       <button class="status-tile" onclick="openDataHealth()"><small>⚠ Data Issues</small><strong id="mergedIssues">--</strong><span>Check issues →</span></button>
     </div>
+  </div>
+
+  <!-- MONTHLY MIX & CONTRIBUTION -->
+  <div class="card monthly-mix-card" id="monthlyMixSection">
+    <div class="card-title">
+      <div><h2>📊 Monthly Mix &amp; Contribution</h2><span>Top 5 • Monthly % share</span></div>
+      <select id="mixMonthSelect" class="mix-month-select" onchange="setMixMonth(this.value)"></select>
+    </div>
+    <div class="monthly-mix-grid">
+      <div class="mix-panel rm">
+        <div class="mix-panel-head"><div><strong>🧪 RM Consumption Mix</strong><small id="mixRmTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('rm')">View All →</button></div>
+        <div id="mixRmList"><div class="empty">Loading...</div></div>
+      </div>
+      <div class="mix-panel prod">
+        <div class="mix-panel-head"><div><strong>🏭 Production Mix</strong><small id="mixProdTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('production')">View All →</button></div>
+        <div id="mixProdList"><div class="empty">Loading...</div></div>
+      </div>
+      <div class="mix-panel disp">
+        <div class="mix-panel-head"><div><strong>🚚 Dispatch Mix</strong><small id="mixDispTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('dispatch')">View All →</button></div>
+        <div id="mixDispList"><div class="empty">Loading...</div></div>
+      </div>
+    </div>
+    <div class="monthly-mix-note">Percentages are calculated against the selected month total. “Others” combines items outside Top 5.</div>
   </div>
 
   <!-- BOMMAKAL PREMIX TRANSFERS -->
@@ -993,9 +1032,109 @@ function renderGlobalSearch(q){
   el.innerHTML=items.join("")||"<div class='empty'>No matching material or product.</div>";
 }
 
+let MIX_MONTH=null;
+function monthKey(v){const d=dateOnly(v);return d?d.slice(0,7):""}
+function monthLabel(m){
+  if(!m)return "Latest";
+  const p=m.split("-");
+  const d=new Date(Number(p[0]),Number(p[1])-1,1);
+  return d.toLocaleDateString("en-IN",{month:"long",year:"numeric"});
+}
+function mixAvailableMonths(){
+  const s=new Set();
+  (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{const m=monthKey(rowDate(t));if(m)s.add(m)}));
+  (DATA.stockHistory||[]).forEach(t=>{const m=monthKey(rowDate(t));if(m)s.add(m)});
+  (DATA.feedUnitData||[]).forEach(r=>{const m=monthKey(r.report_date||r.Report_Date);if(m)s.add(m)});
+  if(DATA.report_date){const m=monthKey(DATA.report_date);if(m)s.add(m)}
+  return [...s].filter(Boolean).sort().reverse();
+}
+function mixDefaultMonth(){return monthKey(VIEW_DATE||DATA.report_date)||mixAvailableMonths()[0]||""}
+function isConsumptionMovement(ty){return ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI")}
+function allMixMaterialTransactions(){
+  const out=[];
+  (DATA.stock||[]).forEach(x=>{
+    const material=clean(x.material); if(!material)return;
+    (Array.isArray(x.transactions)?x.transactions:[]).forEach(t=>out.push({material,t}));
+  });
+  // Use history only when the current stock objects do not contain transaction history.
+  // Do not deduplicate rows: genuine duplicate transactions must remain countable.
+  if(!out.length){
+    (DATA.stockHistory||[]).forEach(t=>{const material=clean(t.material);if(material)out.push({material,t})});
+  }
+  return out;
+}
+function monthlyRMConsumption(m){
+  const map={};
+  allMixMaterialTransactions().forEach(({material,t})=>{
+    if(monthKey(rowDate(t))!==m || !isConsumptionMovement(tType(t)))return;
+    const v=materialValueInMT(tVal(t),material); if(v<=0)return;
+    map[material]=(map[material]||0)+v;
+  });
+  return Object.entries(map).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+}
+function monthlyFeedMix(m,key){
+  const rows=(DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m);
+  const latest={};
+  rows.forEach((r,i)=>{
+    const p=clean(r.Product||r.product); if(!p)return;
+    const d=dateOnly(r.report_date||r.Report_Date)||"";
+    const k=normalize(p);
+    if(!latest[k] || d>=latest[k].__mixDate)latest[k]={...r,__mixDate:d,__mixIndex:i};
+    else if(d===latest[k].__mixDate)latest[k].__mixIndex=i;
+  });
+  const result=[];
+  Object.values(latest).forEach(r=>{
+    const p=r.Product||r.product||"";
+    let value=feedField(r,key);
+    if(value===null){
+      value=rows.filter(x=>normalize(x.Product||x.product)===normalize(p)).reduce((a,x)=>a+(key.includes("Production")?(num(x.Production_Day_MT??x.production_day_mt??x.Production??x.production)||0):(num(x.Dispatch_Day_MT??x.dispatch_day_mt??x.Dispatch??x.dispatch)||0)),0);
+    }
+    value=feedValueInMT(value,p);
+    if(value>0)result.push({name:p,value});
+  });
+  return result.sort((a,b)=>b.value-a.value);
+}
+function mixTop5(rows){
+  const top=rows.slice(0,5),others=rows.slice(5).reduce((a,r)=>a+r.value,0);
+  if(others>0)top.push({name:"Others",value:others,others:true});
+  return top;
+}
+function renderMixList(id,rows,total){
+  const el=document.getElementById(id); if(!el)return;
+  if(!rows.length){el.innerHTML="<div class='empty'>No monthly data available.</div>";return}
+  el.innerHTML=mixTop5(rows).map(r=>{
+    const pct=total>0?(r.value/total*100):0;
+    return `<div class="mix-row ${r.others?"mix-others":""}"><div class="mix-row-top"><span class="mix-name" title="${esc(r.name)}">${esc(r.name)}</span><span class="mix-value">${fmt(r.value)} MT <span class="mix-pct">${fmt(pct)}%</span></span></div><div class="mix-bar"><div class="mix-fill" style="width:${Math.min(100,pct)}%"></div></div></div>`;
+  }).join("");
+}
+function renderMonthlyMix(){
+  const sel=document.getElementById("mixMonthSelect"); if(!sel)return;
+  const months=mixAvailableMonths();
+  const wanted=MIX_MONTH&&months.includes(MIX_MONTH)?MIX_MONTH:mixDefaultMonth();
+  MIX_MONTH=wanted;
+  sel.innerHTML=months.map(m=>`<option value="${m}">${esc(monthLabel(m))}</option>`).join("");
+  if(wanted)sel.value=wanted;
+  const rm=monthlyRMConsumption(wanted),prod=monthlyFeedMix(wanted,"Production_Month_MT"),disp=monthlyFeedMix(wanted,"Dispatch_Month_MT");
+  const rt=rm.reduce((a,r)=>a+r.value,0),pt=prod.reduce((a,r)=>a+r.value,0),dt=disp.reduce((a,r)=>a+r.value,0);
+  setText("mixRmTotal",`Total ${fmt(rt)} MT`);setText("mixProdTotal",`Total ${fmt(pt)} MT`);setText("mixDispTotal",`Total ${fmt(dt)} MT`);
+  renderMixList("mixRmList",rm,rt);renderMixList("mixProdList",prod,pt);renderMixList("mixDispList",disp,dt);
+}
+function setMixMonth(m){MIX_MONTH=m||null;renderMonthlyMix()}
+function openMonthlyMixDetails(type){
+  const m=MIX_MONTH||mixDefaultMonth(), label=monthLabel(m);
+  let title="",rows=[];
+  if(type==="rm"){title="🧪 RM Consumption Mix";rows=monthlyRMConsumption(m)}
+  else if(type==="production"){title="🏭 Production Mix";rows=monthlyFeedMix(m,"Production_Month_MT")}
+  else {title="🚚 Dispatch Mix";rows=monthlyFeedMix(m,"Dispatch_Month_MT")}
+  const total=rows.reduce((a,r)=>a+r.value,0);
+  const html=`<div class="detail-section"><h3>${title} • ${esc(label)}</h3>${detail("Monthly Total",fmtMT(total))}</div><div class="detail-section mix-detail-list">${rows.map(r=>{const pct=total?(r.value/total*100):0;return `<div class="mix-detail-row"><div class="mix-detail-main"><div class="mix-detail-name">${esc(r.name)}</div><div class="mix-detail-bar"><div class="mix-detail-fill" style="width:${Math.min(100,pct)}%;background:${type==="rm"?"#55b978":type==="production"?"#7657d9":"#e9a43a"}"></div></div></div><div class="mix-detail-right"><strong>${fmt(r.value)} MT</strong><small>${fmt(pct)}%</small></div></div>`}).join("")||"<div class='empty'>No monthly data available.</div>"}</div><div class="small-note">Percentage = item monthly value ÷ monthly total × 100.</div>`;
+  showModal(title+" • "+label,html);
+}
+
 function renderDashboard(){
   renderSmartHeader();
   renderQuick();
+  renderMonthlyMix();
   renderControlCenter();
   renderPremixTransfers();
   renderFeedUnit();
