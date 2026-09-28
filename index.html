@@ -674,20 +674,25 @@ function setConnection(ok,text){
 /* =====================================================
    JSONP LOAD — SAME WORKING MECHANISM
 ===================================================== */
-function loadDashboard(){
+function loadDashboard(attempt=0){
   return new Promise(function(resolve,reject){
-    const callbackName="managerDashboardCallback";
+    const callbackName="managerDashboardCallback_"+Date.now()+"_"+attempt;
     const script=document.createElement("script");
     let finished=false;
     const timeout=setTimeout(function(){
       if(finished)return;
       finished=true;
       cleanup();
-      reject(new Error("API timeout"));
-    },15000);
+      if(attempt<1){
+        setTimeout(function(){loadDashboard(attempt+1).then(resolve).catch(reject)},800);
+      }else{
+        const err=new Error("API timeout");err.code="API_TIMEOUT";reject(err);
+      }
+    },20000);
 
     function cleanup(){
       clearTimeout(timeout);
+      try{delete window[callbackName]}catch(e){window[callbackName]=undefined}
       if(script.parentNode)script.parentNode.removeChild(script);
     }
 
@@ -696,9 +701,14 @@ function loadDashboard(){
       finished=true;
       try{
         if(!apiData || apiData.status!=="success"){
-          throw new Error("Invalid API response");
+          const err=new Error("Invalid API response");err.code="API_RESPONSE";throw err;
         }
-        applyData(apiData,false);
+        try{
+          applyData(apiData,false);
+        }catch(error){
+          error.code="DASHBOARD_PROCESSING";
+          throw error;
+        }
         cleanup();
         resolve(apiData);
       }catch(error){
@@ -707,16 +717,17 @@ function loadDashboard(){
       }
     };
 
-    script.onload=function(){
-      /* JSONP callback normally completes the request.
-         Keep the callback installed until response arrives. */
-    };
+    script.onload=function(){};
 
     script.onerror=function(){
       if(finished)return;
       finished=true;
       cleanup();
-      reject(new Error("Google Apps Script connection failed"));
+      if(attempt<1){
+        setTimeout(function(){loadDashboard(attempt+1).then(resolve).catch(reject)},800);
+      }else{
+        const err=new Error("Google Apps Script connection failed");err.code="API_NETWORK";reject(err);
+      }
     };
 
     script.async=true;
@@ -730,7 +741,7 @@ let refreshing=false;
 async function refreshData(){
   if(refreshing)return;
   refreshing=true;
-  setConnection(true,"Refreshing...");
+  setConnection(true,"Connecting...");
   try{
     await loadDashboard();
     setConnection(true,"Live");
@@ -738,7 +749,12 @@ async function refreshData(){
   }catch(e){
     console.error(e);
     const has=!!cachedData();
-    setConnection(false,has?"Connection unavailable • saved data":"Connection failed: "+(e&&e.message?e.message:"Unknown error"));
+    const code=e&&e.code;
+    let msg=has?"Unable to refresh • showing saved data":"Unable to load dashboard";
+    if(code==="DASHBOARD_PROCESSING")msg=has?"Data received • dashboard processing error":"Data received • dashboard processing error";
+    else if(code==="API_TIMEOUT")msg="API timeout • showing saved data";
+    else if(code==="API_NETWORK"||code==="API_RESPONSE")msg="API connection issue • showing saved data";
+    setConnection(false,msg);
     if(!has){
       document.getElementById("stockList").innerHTML="<div class='error-box'>❌ Unable to load dashboard data.</div>";
     }
