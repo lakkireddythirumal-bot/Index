@@ -354,6 +354,55 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 #dataQualityPanel .health-strip span:last-child{color:#315efb;font-weight:700}
 @media(max-width:360px){.manager-quick-grid{gap:5px!important}.manager-quick-grid .quick{padding:7px 6px}.manager-quick-grid .quick strong{font-size:13px}.manager-quick-grid .quick p{font-size:8.5px}}
 </style>
+
+<style id="requested-ui-v29">
+/* Requested: Premix above Monthly Mix; compact reorder + production hierarchy */
+/* Raw Material Reorder: Material | Stock | Cover | status symbol */
+.stock-head,.stock-row{
+  grid-template-columns:minmax(0,1.85fr) 1.05fr .90fr .48fr !important;
+  column-gap:8px !important;
+}
+.stock-head{font-size:9.5px !important;font-weight:700 !important;}
+.stock-head span:last-child{font-size:0 !important;}
+.stock-row{min-height:56px !important;padding:8px 0 !important;}
+.stock-row .reorder-material,.stock-row strong.reorder-material{
+  font-size:13.5px !important;font-weight:600 !important;line-height:1.15 !important;
+}
+.stock-row .avg-under-material{
+  display:block !important;font-size:9px !important;line-height:1.1 !important;
+  margin-top:3px !important;color:#737985 !important;font-weight:600 !important;
+}
+.stock-row>span{
+  font-size:13.5px !important;font-weight:750 !important;line-height:1.1 !important;
+  white-space:nowrap !important;text-align:right !important;font-variant-numeric:tabular-nums !important;
+}
+.stock-row .cover-cell{font-size:13px !important;}
+.stock-row .status-symbol{
+  font-size:17px !important;width:24px !important;height:24px !important;
+  line-height:24px !important;border-radius:50% !important;background:transparent !important;
+  padding:0 !important;justify-self:center;
+}
+/* Production: keep Bags visible but compact/medium */
+.production-total{font-size:24px !important;line-height:1.1 !important;font-weight:700 !important;margin-top:1px !important;}
+.production-label{font-size:10px !important;margin-bottom:5px !important;}
+.production-row{min-height:42px !important;padding:5px 1px !important;}
+.production-row .row-name{font-size:12.5px !important;font-weight:600 !important;}
+.production-row .prod-meta{font-size:9px !important;line-height:1.2 !important;}
+.production-row .row-right strong{font-size:14px !important;line-height:1.1 !important;}
+.production-row .row-right small{font-size:8.5px !important;}
+@media(max-width:520px){
+  .stock-head,.stock-row{grid-template-columns:minmax(0,1.72fr) 1fr .88fr .46fr !important;column-gap:5px !important;}
+  .stock-head{font-size:9px !important;}
+  .stock-row{min-height:55px !important;padding:8px 0 !important;}
+  .stock-row .reorder-material,.stock-row strong.reorder-material{font-size:13px !important;}
+  .stock-row .avg-under-material{font-size:8.7px !important;}
+  .stock-row>span{font-size:12.5px !important;}
+  .stock-row .cover-cell{font-size:12px !important;}
+  .stock-row .status-symbol{font-size:16px !important;width:22px !important;height:22px !important;line-height:22px !important;}
+  .production-total{font-size:22px !important;}
+  .production-row .row-right strong{font-size:13.5px !important;}
+}
+</style>
 </head>
 <body>
 <div class="container">
@@ -397,6 +446,12 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
     </div>
   </div>
 
+  <!-- BOMMAKAL PREMIX TRANSFERS -->
+  <div class="card premix-card" id="premixTransferCard">
+    <div class="card-title"><h2>🧪 Premixes</h2><span>Transferred from Bommakal • KG</span></div>
+    <div id="premixTransferList"><div class="empty">Loading...</div></div>
+  </div>
+
   <!-- MONTHLY MIX & CONTRIBUTION -->
   <div class="card monthly-mix-card" id="monthlyMixSection">
     <div class="card-title">
@@ -418,12 +473,6 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
       </div>
     </div>
     <div class="monthly-mix-note">Percentages are calculated against the selected month total. “Others” combines items outside Top 5.</div>
-  </div>
-
-  <!-- BOMMAKAL PREMIX TRANSFERS -->
-  <div class="card premix-card" id="premixTransferCard">
-    <div class="card-title"><h2>🧪 Premixes</h2><span>Transferred from Bommakal • KG</span></div>
-    <div id="premixTransferList"><div class="empty">Loading...</div></div>
   </div>
 
   <div class="desktop-grid">
