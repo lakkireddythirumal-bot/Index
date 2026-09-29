@@ -700,118 +700,6 @@ select{border-color:#dfe5ee!important;box-shadow:0 2px 8px rgba(31,47,77,.04)}
 }
 @media(prefers-reduced-motion:reduce){.card{animation:none!important}}
 </style>
-
-<style id="material-reorder-2line-symbols-final">
-/* ONLY requested Raw Material Reorder presentation changes. */
-.stock-head,
-.stock-row{
-  grid-template-columns:minmax(0,1.72fr) 1fr .88fr .46fr !important;
-  column-gap:7px !important;
-}
-.stock-head{
-  font-size:9.5px !important;
-  font-weight:700 !important;
-}
-.stock-head span:last-child{
-  font-size:0 !important;
-}
-.stock-row{
-  min-height:56px !important;
-  padding:8px 0 !important;
-}
-.stock-row .reorder-material-wrap{
-  min-width:0 !important;
-  display:flex !important;
-  flex-direction:column !important;
-  justify-content:center !important;
-}
-.stock-row .reorder-material,
-.stock-row strong.reorder-material{
-  display:block !important;
-  font-size:13.5px !important;
-  font-weight:600 !important;
-  line-height:1.15 !important;
-  color:#253249 !important;
-  white-space:nowrap !important;
-  overflow:hidden !important;
-  text-overflow:ellipsis !important;
-}
-.stock-row .avg-under-material{
-  display:block !important;
-  margin-top:3px !important;
-  font-size:9px !important;
-  line-height:1.1 !important;
-  color:#7b8799 !important;
-  font-weight:600 !important;
-}
-.stock-row > span{
-  font-size:13px !important;
-  font-weight:750 !important;
-  line-height:1.1 !important;
-  white-space:nowrap !important;
-  text-align:right !important;
-  font-variant-numeric:tabular-nums !important;
-}
-.stock-row .cover-cell{
-  font-size:12.5px !important;
-}
-.stock-row .status-symbol{
-  display:flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  width:24px !important;
-  height:24px !important;
-  min-width:24px !important;
-  padding:0 !important;
-  margin:auto !important;
-  border-radius:50% !important;
-  background:transparent !important;
-  font-size:17px !important;
-  line-height:24px !important;
-  text-align:center !important;
-}
-.stock-row .status-symbol.good{
-  background:#e8f8ef !important;
-}
-.stock-row .status-symbol.warn{
-  background:#fff5dc !important;
-}
-.stock-row .status-symbol.bad{
-  background:#ffeded !important;
-}
-@media(max-width:520px){
-  .stock-head,
-  .stock-row{
-    grid-template-columns:minmax(0,1.72fr) 1fr .88fr .46fr !important;
-    column-gap:5px !important;
-  }
-  .stock-row{
-    min-height:55px !important;
-    padding:8px 0 !important;
-  }
-  .stock-row .reorder-material,
-  .stock-row strong.reorder-material{
-    font-size:13px !important;
-  }
-  .stock-row .avg-under-material{
-    font-size:8.7px !important;
-  }
-  .stock-row > span{
-    font-size:12px !important;
-  }
-  .stock-row .cover-cell{
-    font-size:11.5px !important;
-  }
-  .stock-row .status-symbol{
-    width:22px !important;
-    height:22px !important;
-    min-width:22px !important;
-    font-size:16px !important;
-    line-height:22px !important;
-  }
-}
-</style>
-
 </head>
 <body>
 <div class="container">
@@ -891,12 +779,12 @@ select{border-color:#dfe5ee!important;box-shadow:0 2px 8px rgba(31,47,77,.04)}
       <div class="reorder-single-wrap">
         <div class="reorder-section-title">🌾 Raw Materials</div>
         <div class="stock-table">
-          <div class="stock-head"><span>Material</span><span>Stock</span><span>Cover</span><span aria-label="Status"></span></div>
+          <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
           <div id="stockList"><div class="empty">Loading...</div></div>
         </div>
         <div class="reorder-section-title premix-section-title">🧪 Premixes</div>
         <div class="stock-table premix-reorder-table">
-          <div class="stock-head"><span>Material</span><span>Stock</span><span>Cover</span><span aria-label="Status"></span></div>
+          <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
           <div id="premixStockList"><div class="empty">Loading...</div></div>
         </div>
       </div>
@@ -1714,7 +1602,7 @@ function renderStock(){
     const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),s=stockStatus(closing,avg);
     const symbol=s.status==="REORDER"?"🔴":s.status==="WATCH"?"🟡":"🟢";
     return `<div class="stock-row" onclick="openMaterialDetails('${jsq(m)}')">
-      <div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"} ${esc(x?.unit||"MT")}</small></div><span>${fmt(closing)} ${esc(x?.unit||"MT")}</span><span class="cover-cell">${s.cover!==null?fmt(s.cover)+" d":"--"}</span><span class="status-symbol ${s.cls}" title="${esc(s.status)}">${symbol}</span>
+      <div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"}</small></div><span>${fmt(closing)} ${esc(x?.unit||"MT")}</span><span class="cover-cell">${s.cover!==null?fmt(s.cover)+" d":"--"}</span><span class="status-symbol ${s.cls}" title="${esc(s.status)}">${symbol}</span>
     </div>`;
   }).join("")||"<div class='empty'>No stock data</div>";
   const rawMats=mats.filter(m=>!isPremixMaterial(m));
