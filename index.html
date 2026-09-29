@@ -1951,9 +1951,35 @@ function setTrendRange(days,button){
   TREND_RANGE_DAYS=days;
   document.querySelectorAll('#trendRangeButtons button').forEach(b=>b.classList.toggle('active',Number(b.dataset.range)===days));
   setText('trendRangeStatus',days===30?'Last 30 days':days===90?'Last 90 days':'Last 1 year');
-  setText('trendRangeNote',days===30?'30D is loaded/processed by default.':`Additional ${days===90?'90-day':'1-year'} history is now being processed from the available API history.`);
-  renderTrends();
-  showToast(days===30?'Trend range: 30 days':days===90?'Trend range: 90 days':'Trend range: 1 year');
+  setText('trendRangeNote',days===30?'30D is loaded/processed by default.':`Additional ${days===90?'90-day':'1-year'} history is now being loaded from the API.`);
+  if(days===30 && Array.isArray(DATA.stockHistory) && DATA.stockHistory.length){
+    renderTrends();
+    showToast('Trend range: 30 days');
+    return;
+  }
+  const callbackName='trendRangeCallback_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const script=document.createElement('script');
+  let finished=false;
+  const cleanup=()=>{if(script.parentNode)script.parentNode.removeChild(script);try{delete window[callbackName]}catch(e){window[callbackName]=undefined}};
+  const timeout=setTimeout(()=>{if(finished)return;finished=true;cleanup();setText('trendRangeNote','Unable to load additional history.');showToast('History load failed');},20000);
+  window[callbackName]=function(apiData){
+    if(finished)return;
+    finished=true;
+    clearTimeout(timeout);
+    cleanup();
+    if(!apiData || apiData.status!=='success'){
+      setText('trendRangeNote','Unable to load additional history.');
+      showToast('History load failed');
+      return;
+    }
+    applyData(apiData,false);
+    renderTrends();
+    showToast(days===30?'Trend range: 30 days':days===90?'Trend range: 90 days':'Trend range: 1 year');
+  };
+  script.async=true;
+  script.referrerPolicy='no-referrer';
+  script.src=API_URL+'?range='+(days===365?'1y':days+'d')+'&callback='+encodeURIComponent(callbackName)+'&t='+Date.now();
+  document.head.appendChild(script);
 }
 function renderTrends(){
   const sel=document.getElementById('materialSelect'),mats=getMaterials();
