@@ -390,6 +390,8 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 .production-row .prod-meta{font-size:9px !important;line-height:1.2 !important;}
 .production-row .row-right strong{font-size:14px !important;line-height:1.1 !important;}
 .production-row .row-right small{font-size:8.5px !important;}
+.production-more-btn{display:block;width:100%;margin-top:9px;padding:9px 12px;border:1px solid #dfe5ec;border-radius:10px;background:#f7f8fa;color:#315efb;font-size:12px;font-weight:700;cursor:pointer;text-align:center;}
+.production-more-btn:active{transform:scale(.985)}
 @media(max-width:520px){
   .stock-head,.stock-row{grid-template-columns:minmax(0,1.72fr) 1fr .88fr .46fr !important;column-gap:5px !important;}
   .stock-head{font-size:9px !important;}
@@ -1410,14 +1412,21 @@ function renderProduction(){
   const total=DATA.production.reduce((a,r)=>a+(num(r.actual_output)||0),0);
   setText("productionTotalMain",fmtBags(total));
   const el=document.getElementById("productionList");
-  el.innerHTML=DATA.production.slice().sort((a,b)=>{
+  const sorted=DATA.production.slice().sort((a,b)=>{
     const ap=(num(a.actual_output)||0)>0?1:0;
     const bp=(num(b.actual_output)||0)>0?1:0;
     return bp-ap;
-  }).map(r=>{
+  });
+  const visible=sorted.slice(0,10);
+  const moreCount=Math.max(0,sorted.length-10);
+  const rows=visible.map(r=>{
     const p=r.product||"--",a=num(r.actual_output),op=num(r.output_percentage),loss=num(r.process_loss),remarks=clean(r.remarks);
     return `<div class="production-row" onclick="openProductDetails('${jsq(p)}')"><div><div class="row-name">${esc(p)}</div><div class="prod-meta">Output ${op!==null?fmt(op)+"%":"--"} • Loss ${loss!==null?fmt(loss)+"%":"--"}${remarks?" • "+esc(remarks):""}</div></div><div class="row-right"><strong>${fmtBags(a)}</strong><small>Standard ${fmtBags(r.standard_output)}</small></div></div>`;
-  }).join("")||"<div class='empty'>No production data</div>";
+  }).join("");
+  el.innerHTML=rows||"<div class='empty'>No production data</div>";
+  if(moreCount){
+    el.insertAdjacentHTML("beforeend",`<button class="production-more-btn" onclick="openProductionDetails()">More • ${moreCount} products →</button>`);
+  }
 }
 function renderPPBags(){
   const el=document.getElementById("bagGrid");
