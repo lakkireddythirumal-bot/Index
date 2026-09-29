@@ -1842,14 +1842,39 @@ function renderFeedUnit(){
   if(sorted.length>10)list.innerHTML+=`<button class="more-toggle" onclick="toggleFeedUnitMore()">${feedUnitExpanded?"Show less ↑":"More • "+(sorted.length-10)+" more ↓"}</button>`;
 }
 function toggleFeedUnitMore(){feedUnitExpanded=!feedUnitExpanded;renderFeedUnit();}
+let productionExpanded=false;
 function renderProduction(){
   const rows=selectedProduction(),total=rows.reduce((a,r)=>a+(num(r.actual_output)||0),0);
   setText("productionTotalMain",fmtBags(total));
   const el=document.getElementById("productionList");
-  el.innerHTML=rows.slice().sort((a,b)=>(num(b.actual_output)||0>0)-(num(a.actual_output)||0>0)).map(r=>{
+  if(!el)return;
+
+  // Display-only de-duplication: keep one row per product name.
+  const seen=new Set();
+  const unique=rows.filter(r=>{
+    const key=normalize(r.product||"");
+    if(!key||seen.has(key))return false;
+    seen.add(key);
+    return true;
+  });
+  const sorted=unique.slice().sort((a,b)=>{
+    const ap=(num(a.actual_output)||0)>0?1:0;
+    const bp=(num(b.actual_output)||0)>0?1:0;
+    return bp-ap || (num(b.actual_output)||0)-(num(a.actual_output)||0);
+  });
+  const visible=productionExpanded?sorted:sorted.slice(0,10);
+  const rowsHtml=visible.map(r=>{
     const p=r.product||"--",a=num(r.actual_output),op=num(r.output_percentage),loss=num(r.process_loss),remarks=clean(r.remarks);
     return `<div class="production-row" onclick="openProductDetails('${jsq(p)}')"><div><div class="row-name">${esc(p)}</div><div class="prod-meta">Output ${op!==null?fmt(op)+"%":"--"} • Loss ${loss!==null?fmt(loss)+"%":"--"}${remarks?" • "+esc(remarks):""}</div></div><div class="row-right"><strong>${fmtBags(a)}</strong><small>Standard ${fmtBags(r.standard_output)}</small></div></div>`;
-  }).join("")||"<div class='empty'>No production data for this date</div>";
+  }).join("");
+  el.innerHTML=rowsHtml||"<div class='empty'>No production data for this date</div>";
+  if(sorted.length>10){
+    el.insertAdjacentHTML("beforeend",`<button class="production-more-btn" onclick="toggleProductionMore()">${productionExpanded?"Show less ↑":"More • "+(sorted.length-10)+" more products ↓"}</button>`);
+  }
+}
+function toggleProductionMore(){
+  productionExpanded=!productionExpanded;
+  renderProduction();
 }
 function renderPPBags(){
   const rows=selectedBags(),el=document.getElementById("bagGrid");
