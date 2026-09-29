@@ -403,6 +403,55 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
   .production-row .row-right strong{font-size:13.5px !important;}
 }
 </style>
+
+
+<style id="pp-bags-2x5-compact">
+/* PP Bags only: 2-column compact card layout. No other dashboard logic changed. */
+.pp-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+}
+.pp-item{
+  min-width:0;
+  padding:7px 8px;
+  border-radius:10px;
+  min-height:78px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+.pp-item p:first-child{
+  font-size:10px;
+  line-height:1.1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.pp-closing-label{
+  font-size:8px!important;
+  margin-top:3px!important;
+}
+.pp-closing-number{
+  font-size:16px!important;
+  line-height:1.05;
+  margin-top:1px!important;
+}
+.pp-item p:last-child{
+  font-size:8px!important;
+  line-height:1.1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  margin-top:3px!important;
+}
+@media(max-width:360px){
+  .pp-grid{gap:5px}
+  .pp-item{padding:6px 7px;min-height:72px}
+  .pp-closing-number{font-size:15px!important}
+}
+</style>
+
 </head>
 <body>
 <div class="container">
@@ -1755,9 +1804,16 @@ function renderProduction(){
 }
 function renderPPBags(){
   const rows=selectedBags(),el=document.getElementById("bagGrid");
-  el.innerHTML=rows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0)).map(r=>{
+  const seen=new Set();
+  const uniqueRows=rows.filter(r=>{
+    const key=normalize(r.product||"PP Bags");
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  el.innerHTML=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0)).map(r=>{
     const p=r.product||"PP Bags";
-    return `<div class="pp-item" onclick="openBagProduct('${jsq(p)}')"><p>${esc(p)}</p><small class="pp-closing-label">Closing</small><strong class="pp-closing-number">${fmt(r.closing)}</strong><p style="margin-top:4px">Issue ${fmt(r.issue)} • Damage ${fmt(r.damage)}</p></div>`;
+    return `<div class="pp-item" onclick="openBagProduct('${jsq(p)}')"><p>${esc(p)}</p><small class="pp-closing-label">Closing</small><strong class="pp-closing-number">${fmt(r.closing)}</strong><p style="margin-top:3px">Issue ${fmt(r.issue)} • Damage ${fmt(r.damage)}</p></div>`;
   }).join("")||"<div class='empty'>No PP Bag data for this date</div>";
 }
 function renderStock(){
