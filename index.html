@@ -39,7 +39,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
 .feed-total p{font-size:10px;color:#777}.feed-total strong{display:block;font-size:18px;margin-top:3px}
 .feed-row,.production-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f0;cursor:pointer}
 .feed-row:last-child,.production-row:last-child{border-bottom:0}
-.row-name{font-size:13px;font-weight:500}.premix-row{padding:6px 0}.premix-row .row-name{font-size:14px}.premix-row .row-right strong{font-size:15px}.premix-total{display:flex;justify-content:space-between;align-items:center;margin-top:7px;padding-top:7px;border-top:1px solid #eceef1;font-size:12px;color:#777}.premix-total strong{font-size:15px;color:#202938}.rm-category-group{margin:8px 0 10px;border:1px solid #eceef1;border-radius:12px;overflow:hidden;background:#fff}.rm-category-title{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;background:#f7f8fa;border-bottom:1px solid #eceef1;font-size:12px}.rm-category-title span{font-size:10px;color:#888}.rm-category-group .stock-row,.rm-category-group .raw-movement-row{padding-left:10px;padding-right:10px}.raw-movement-category{margin-top:8px}.raw-movement-category .rm-category-title{background:#fafbfc}.raw-movement-row{padding:6px 0}.raw-movement-row .row-name{font-size:15px}.raw-movement-row .row-right strong{font-size:16px}.raw-movement-row .row-right small{font-size:9px}.row-right{text-align:right}.row-right strong{display:block;font-size:14px}.row-right small{font-size:10px;color:#888}
+.row-name{font-size:13px;font-weight:500}.premix-row{padding:6px 0}.premix-row .row-name{font-size:14px}.premix-row .row-right strong{font-size:15px}.premix-total{display:flex;justify-content:space-between;align-items:center;margin-top:7px;padding-top:7px;border-top:1px solid #eceef1;font-size:12px;color:#777}.premix-total strong{font-size:15px;color:#202938}.raw-movement-row{padding:6px 0}.raw-movement-row .row-name{font-size:15px}.raw-movement-row .row-right strong{font-size:16px}.raw-movement-row .row-right small{font-size:9px}.row-right{text-align:right}.row-right strong{display:block;font-size:14px}.row-right small{font-size:10px;color:#888}
 .production-total{font-size:32px;font-weight:700}.production-label{font-size:12px;color:#777;margin-bottom:7px}
 .prod-meta{font-size:10px;color:#777;margin-top:2px}
 .pp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
@@ -1412,14 +1412,11 @@ function renderRawCategory(tab){
     rows=mats.map(m=>({m,v:rawTotal(m,tab)})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
   }
   const visible=rawMovementExpanded?rows:rows.slice(0,25);
-  const renderRows=items=>{
-    if(tab==="STOCK")return items.map(({m})=>{const x=getMaterial(m);return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for complete details</small></div></div>`}).join("");
-    const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;
-    return items.map(({m,v})=>`<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • tap for details</small></div></div>`).join("");
-  };
-  const premix=visible.filter(x=>isPremixMaterial(x.m)),other=visible.filter(x=>!isPremixMaterial(x.m));
-  const group=(title,items,icon)=>items.length?`<div class="rm-category-group raw-movement-category"><div class="rm-category-title"><strong>${icon} ${title}</strong><span>${items.length} item${items.length===1?"":"s"}</span></div>${renderRows(items)}</div>`:"";
-  el.innerHTML=group("Raw Materials",other,"📦")+group("Premix",premix,"🧪")||"<div class='empty'>No data</div>";
+  if(tab==="STOCK"){
+    el.innerHTML=visible.map(({m})=>{const x=getMaterial(m);return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for complete details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
+  }else{
+    el.innerHTML=visible.map(({m,v})=>{const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • tap for details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
+  }
   if(rows.length>25)el.innerHTML+=`<button class="more-toggle" onclick="toggleRawMovementMore()">${rawMovementExpanded?"Show less ↑":"More • "+(rows.length-25)+" more ↓"}</button>`;
 }
 
@@ -1807,14 +1804,10 @@ function renderPPBags(){
 }
 function renderStock(){
   const list=document.getElementById("stockList"),mats=getMaterials();
-  const sorted=mats.slice().sort((a,b)=>{const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;return (bv>0)-(av>0)||bv-av;});
-  const renderRows=rows=>rows.map(m=>{
+  list.innerHTML=mats.slice().sort((a,b)=>{const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;return (bv>0)-(av>0)||bv-av;}).map(m=>{
     const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),st=stockStatus(closing,avg),unit=x?.unit||"MT";
     return `<div class="stock-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"} ${esc(unit)}</small></div><span>${fmt(closing)} ${esc(unit)}</span><span class="cover-cell">${st.cover!==null?fmt(st.cover)+" d":"--"}</span><span class="${st.cls} status-text">${esc(st.status)}</span></div>`;
-  }).join("");
-  const premix=sorted.filter(isPremixMaterial),other=sorted.filter(m=>!isPremixMaterial(m));
-  const group=(title,rows,icon)=>rows.length?`<div class="rm-category-group"><div class="rm-category-title"><strong>${icon} ${title}</strong><span>${rows.length} item${rows.length===1?"":"s"}</span></div>${renderRows(rows)}</div>`:"";
-  list.innerHTML=group("Raw Materials",other,"📦")+group("Premix",premix,"🧪")||"<div class='empty'>No stock data for this date</div>";
+  }).join("")||"<div class='empty'>No stock data for this date</div>";
 }
 
 function renderControlCenter(){
@@ -2499,103 +2492,4 @@ async function installPWA(){if(!deferredPrompt)return;deferredPrompt.prompt();aw
 if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(console.warn))}
 </script>
 </body>
-<script>
-/* =====================================================
-   DAILY RM MOVEMENT DISPLAY FIX
-   Categorisation only — reorder / avg-consumption logic unchanged.
-===================================================== */
-function dailyMaterialRows(material,date){
-  const d=dateOnly(date);
-  if(!d)return transactions(material);
-  const history=(DATA.stockHistory||[]).filter(t=>
-    normalize(t.material)===normalize(material) && dateOnly(rowDate(t))===d
-  );
-  return history.length?history:transactions(material).filter(t=>dateOnly(rowDate(t))===d);
-}
-function activeMovementDate(){
-  return dateOnly(VIEW_DATE)||dateOnly(DATA.report_date)||recentWindowAnchor();
-}
-
-rawTotal=function(material,tab){
-  if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
-  const rows=dailyMaterialRows(material,activeMovementDate());
-  return rows.filter(t=>{
-    const ty=tType(t);
-    if(tab==="CONSUMPTION")return ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI");
-    if(tab==="PURCHASE")return ty==="PURCHASE"||ty==="RECEIVED";
-    if(tab==="TRANSFER")return ty==="TRANSFER"||ty.includes("TRANSFER FROM")||ty.includes("TRANSFER TO");
-    if(tab==="GAIN")return ty==="GAIN";
-    if(tab==="SHORTAGE")return ty.includes("SHORTAGE");
-    if(tab==="SALE")return ty.includes("SALE");
-    return ty===tab;
-  }).reduce((a,t)=>a+tVal(t),0);
-};
-
-renderRawCategory=function(tab){
-  const el=document.getElementById("rawCategoryList");
-  const mats=getMaterials();
-  let rows;
-  if(tab==="STOCK"){
-    rows=mats.map(m=>({m,v:num(getMaterial(m)?.closing)||0}))
-      .sort((a,b)=>(b.v>0)-(a.v>0)||b.v-a.v);
-  }else{
-    rows=mats.map(m=>({m,v:rawTotal(m,tab)}))
-      .sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
-  }
-  const visible=rawMovementExpanded?rows:rows.slice(0,25);
-  const renderRows=items=>{
-    if(tab==="STOCK"){
-      return items.map(({m})=>{
-        const x=getMaterial(m);
-        return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Day closing • tap for details</small></div></div>`;
-      }).join("");
-    }
-    const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;
-    return items.map(({m,v})=>`<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • ${esc(activeMovementDate()||"Day")} • tap for details</small></div></div>`).join("");
-  };
-  const premix=visible.filter(x=>isPremixMaterial(x.m));
-  const other=visible.filter(x=>!isPremixMaterial(x.m));
-  const group=(title,items,icon)=>items.length?`<div class="rm-category-group raw-movement-category"><div class="rm-category-title"><strong>${icon} ${title}</strong><span>${items.length} item${items.length===1?"":"s"}</span></div>${renderRows(items)}</div>`:"";
-  el.innerHTML=group("Raw Materials",other,"📦")+group("Premix",premix,"🧪")||"<div class='empty'>No data</div>";
-  if(rows.length>25)el.innerHTML+=`<button class="more-toggle" onclick="toggleRawMovementMore()">${rawMovementExpanded?"Show less ↑":"More • "+(rows.length-25)+" more ↓"}</button>`;
-};
-
-renderQuick=function(){
-  const pd=latestTotal("Production_Day_MT"),pm=latestTotal("Production_Month_MT");
-  const dd=latestTotal("Dispatch_Day_MT"),dm=latestTotal("Dispatch_Month_MT");
-  setText("qProdDay",fmtMT(pd));setText("qProdMonth",fmtMT(pm));
-  setText("qDispDay",fmtMT(dd));setText("qDispMonth",fmtMT(dm));
-
-  let received=0,cons=0,closing=0;
-  const day=activeMovementDate();
-  getMaterials().forEach(material=>{
-    const x=getMaterial(material);
-    if(x&&x.closing!==null)closing+=materialValueInMT(x.closing,material);
-    dailyMaterialRows(material,day).forEach(t=>{
-      const ty=tType(t),v=materialValueInMT(tVal(t),material);
-      if(ty==="PURCHASE"||ty==="RECEIVED"||ty.includes("TRANSFER FROM"))received+=v;
-      if(ty.includes("CONSUMPTION"))cons+=v;
-    });
-  });
-
-  setText("qReceived",fmt(received)+" MT");
-  setText("qConsumption",fmt(cons)+" MT");
-  setText("qClosing",fmt(closing)+" MT");
-  setText("qFeedClosing",fmtMT(latestFeedClosingTotal()));
-  setText("qFeedClosingBagsMini",fmt(latestFeedClosingBagEquivalent())+" Bags");
-  setText("reportDate",VIEW_DATE||DATA.report_date||"Latest");
-
-  const reorderCount=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER").length;
-  const issueCount=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length+
-    feedUnitReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+
-    ppBagReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+
-    abnormalConsumptionItems().length+duplicateTransactionCount();
-  const premixKg=premixBommakalTransfers().reduce((a,r)=>a+r.value,0);
-  const damage=selectedBags().reduce((a,r)=>a+(num(r.damage)||0),0);
-  setText("mergedReorder",String(reorderCount));
-  setText("mergedIssues",String(issueCount));
-  setText("mergedPremix",fmt(premixKg)+" KG");
-  setText("mergedDamage",fmt(damage));
-};
-</script>
 </html>
