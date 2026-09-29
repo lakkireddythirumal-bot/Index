@@ -2057,11 +2057,63 @@ function renderFeedUnit(){
   if(sorted.length>10)list.innerHTML+=`<button class="more-toggle" onclick="toggleFeedUnitMore()">${feedUnitExpanded?"Show less ↑":"More • "+(sorted.length-10)+" more ↓"}</button>`;
 }
 function toggleFeedUnitMore(){feedUnitExpanded=!feedUnitExpanded;renderFeedUnit();}
+function productionDisplayRows(){
+  /*
+     Production display only: keep the existing API/data logic intact, but
+     de-duplicate products and fill products that are present in Day Production
+     (feedUnitData) but missing from the production response.
+  */
+  const source=selectedProduction();
+  const byProduct=new Map();
+
+  // 1) Production API rows are the primary source for output/standard/loss.
+  source.forEach(r=>{
+    const p=clean(r.product||r.Product);
+    if(!p)return;
+    const key=normalize(p);
+    const actual=num(r.actual_output)||0;
+    const existing=byProduct.get(key);
+    // If the API returns the same product more than once, keep the record
+    // with the highest actual output instead of displaying it twice.
+    if(!existing || actual>(num(existing.actual_output)||0)){
+      byProduct.set(key,{...r,product:p});
+    }
+  });
+
+  // 2) Day Production feed records supply any products missing above.
+  latestFeedRows().forEach(r=>{
+    const p=clean(r.Product||r.product);
+    if(!p)return;
+    const prod=feedField(r,"Production_Day_MT");
+    if(prod===null || prod<=0)return;
+    const key=normalize(p);
+    if(byProduct.has(key))return;
+
+    const bagKg=feedClosingBagSize(p);
+    const actualBags=bagKg?((feedValueInMT(prod,p)*1000)/bagKg):null;
+    byProduct.set(key,{
+      product:p,
+      actual_output:actualBags,
+      standard_output:null,
+      output_percentage:null,
+      process_loss:null,
+      remarks:"Day Production"
+    });
+  });
+
+  return [...byProduct.values()].sort((a,b)=>{
+    const av=(num(a.actual_output)||0)>0?1:0;
+    const bv=(num(b.actual_output)||0)>0?1:0;
+    return bv-av || (num(b.actual_output)||0)-(num(a.actual_output)||0);
+  });
+}
+
 function renderProduction(){
-  const rows=selectedProduction(),total=rows.reduce((a,r)=>a+(num(r.actual_output)||0),0);
+  const rows=productionDisplayRows();
+  const total=rows.reduce((a,r)=>a+(num(r.actual_output)||0),0);
   setText("productionTotalMain",fmtBags(total));
   const el=document.getElementById("productionList");
-  el.innerHTML=rows.slice().sort((a,b)=>(num(b.actual_output)||0>0)-(num(a.actual_output)||0>0)).map(r=>{
+  el.innerHTML=rows.map(r=>{
     const p=r.product||"--",a=num(r.actual_output),op=num(r.output_percentage),loss=num(r.process_loss),remarks=clean(r.remarks);
     return `<div class="production-row" onclick="openProductDetails('${jsq(p)}')"><div><div class="row-name">${esc(p)}</div><div class="prod-meta">Output ${op!==null?fmt(op)+"%":"--"} • Loss ${loss!==null?fmt(loss)+"%":"--"}${remarks?" • "+esc(remarks):""}</div></div><div class="row-right"><strong>${fmtBags(a)}</strong><small>Standard ${fmtBags(r.standard_output)}</small></div></div>`;
   }).join("")||"<div class='empty'>No production data for this date</div>";
@@ -2496,6 +2548,107 @@ function renderRawCategory(tab){
   if(hidden>0)html+=`<button class="more-toggle" onclick="toggleRawMovementMore()">${rawMovementExpanded?"Show less ↑":"More • "+hidden+" more ↓"}</button>`;
   el.innerHTML=html;
 }
+
+/* =====================================================
+   FINAL PRODUCTION DATA FIX
+   Display-only fix: use the latest production day,
+   de-duplicate products, and include all products
+   having Day Production in FEED_UNIT_DATA.
+   API URL / API fetch / source data are unchanged.
+===================================================== */
+function __productionDateOf(r){
+  return dateOnly(r?.report_date||r?.Report_Date||"");
+}
+function __latestDatedRows(rows){
+  const arr=Array.isArray(rows)?rows:[];
+  const dates=arr.map(__productionDateOf).filter(Boolean).sort();
+  if(!dates.length)return arr;
+  const latest=dates[dates.length-1];
+  return arr.filter(r=>__productionDateOf(r)===latest);
+}
+function __uniqueProductRows(rows, productGetter){
+  const map=new Map();
+  (rows||[]).forEach(r=>{
+    const p=clean(productGetter(r));
+    if(!p)return;
+    const key=normalize(p);
+    const old=map.get(key);
+    if(!old){map.set(key,{...r,product:p});return;}
+    const oldActual=num(old.actual_output)||0;
+    const newActual=num(r.actual_output)||0;
+    /* Prefer the row carrying the larger actual output; if equal,
+       prefer the later/complete row so duplicate API records never render twice. */
+    if(newActual>oldActual){
+      map.set(key,{...r,product:p});
+    }else if(newActual===oldActual){
+      const oldScore=["standard_output","output_percentage","process_loss","remarks"].reduce((n,k)=>n+(old[k]!==null&&old[k]!==undefined&&old[k]!==""?1:0),0);
+      const newScore=["standard_output","output_percentage","process_loss","remarks"].reduce((n,k)=>n+(r[k]!==null&&r[k]!==undefined&&r[k]!==""?1:0),0);
+      if(newScore>oldScore)map.set(key,{...r,product:p});
+    }
+  });
+  return [...map.values()];
+}
+function __productionSourceForDisplay(){
+  if(VIEW_DATE){
+    const d=dateOnly(VIEW_DATE);
+    const history=Array.isArray(DATA.productionHistory)?DATA.productionHistory:[];
+    const direct=(Array.isArray(DATA.production)?DATA.production:[]).filter(r=>__productionDateOf(r)===d);
+    const hist=history.filter(r=>__productionDateOf(r)===d);
+    return hist.length?hist:direct;
+  }
+  return __latestDatedRows(Array.isArray(DATA.production)?DATA.production:[]);
+}
+function __feedSourceForProductionDisplay(){
+  const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
+  if(VIEW_DATE){
+    return rows.filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(VIEW_DATE));
+  }
+  const dates=rows.map(r=>dateOnly(r.Report_Date||r.report_date)).filter(Boolean).sort();
+  if(!dates.length)return rows;
+  const latest=dates[dates.length-1];
+  return rows.filter(r=>dateOnly(r.Report_Date||r.report_date)===latest);
+}
+function productionDisplayRows(){
+  /* Production section uses ONLY PRODUCTION_DATA / production history.
+     Feed Unit data is intentionally NOT merged here. Duplicate product
+     records from the production API are collapsed to one row. */
+  const source=__productionSourceForDisplay();
+  return __uniqueProductRows(source,r=>r.product||r.Product).sort((a,b)=>{
+    const av=num(a.actual_output)||0;
+    const bv=num(b.actual_output)||0;
+    return (bv>0)-(av>0) || bv-av || normalize(a.product).localeCompare(normalize(b.product));
+  });
+}
+function renderProduction(){
+  const rows=productionDisplayRows();
+  const total=rows.reduce((sum,r)=>sum+(num(r.actual_output)||0),0);
+  setText("productionTotalMain",fmtBags(total));
+
+  const el=document.getElementById("productionList");
+  if(!el)return;
+
+  el.innerHTML=rows.map(r=>{
+    const p=r.product||"--";
+    const a=num(r.actual_output);
+    const op=num(r.output_percentage);
+    const loss=num(r.process_loss);
+    const remarks=clean(r.remarks);
+
+    return `<div class="production-row" onclick="openProductDetails('${jsq(p)}')">
+      <div>
+        <div class="row-name">${esc(p)}</div>
+        <div class="prod-meta">
+          Output ${op!==null?fmt(op)+"%":"--"} • Loss ${loss!==null?fmt(loss)+"%":"--"}${remarks?" • "+esc(remarks):""}
+        </div>
+      </div>
+      <div class="row-right">
+        <strong>${fmtBags(a)}</strong>
+        <small>Standard ${fmtBags(r.standard_output)}</small>
+      </div>
+    </div>`;
+  }).join("")||"<div class='empty'>No production data for this date</div>";
+}
+
 </script>
 
 </body>
