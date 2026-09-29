@@ -53,7 +53,6 @@ select{border:1px solid #ddd;background:#fff;border-radius:9px;padding:6px 8px;f
 canvas{width:100%;height:150px;display:block}
 .dots{display:flex;justify-content:center;gap:6px;margin-top:8px}.dot{width:6px;height:6px;border-radius:50%;background:#d5d8dd}.dot.active{width:18px;border-radius:10px;background:#4f7cff}
 .section-tabs{display:flex;gap:5px;overflow-x:auto;margin-bottom:8px}.section-tabs button{border:0;background:#f1f3f5;padding:7px 10px;border-radius:9px;font-size:11px;white-space:nowrap}.section-tabs button.active{background:#202938;color:#fff}
-.trend-range{display:flex;gap:6px;overflow-x:auto;margin:0 0 9px;padding-bottom:1px}.trend-range button{border:1px solid #e3e6eb;background:#f7f8fa;color:#596170;border-radius:9px;padding:7px 12px;font-size:10px;font-weight:700;white-space:nowrap}.trend-range button.active{background:#202938;color:#fff;border-color:#202938}.trend-range button:disabled{opacity:.65}
 .bottom-nav{position:fixed;left:0;right:0;bottom:0;height:68px;background:rgba(255,255,255,.97);border-top:1px solid #e9eaec;display:flex;justify-content:space-around;align-items:center;z-index:100}
 .nav-item{text-align:center;font-size:10px;color:#888;cursor:pointer}.nav-item div{font-size:18px}.nav-item.active{color:#315efb;font-weight:600}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.38);display:none;align-items:flex-end;z-index:500}.modal.show{display:flex}
@@ -526,13 +525,7 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 
   <!-- TRENDS -->
   <div class="card" id="trendsSection">
-    <div class="card-title"><h2>📊 Trends</h2><span id="trendRangeStatus">Last 30 days</span></div>
-    <div class="trend-range" id="trendRangeButtons">
-      <button class="active" data-range="30" onclick="setTrendRange(30,this)">30D</button>
-      <button data-range="90" onclick="setTrendRange(90,this)">90D</button>
-      <button data-range="365" onclick="setTrendRange(365,this)">1Y</button>
-    </div>
-    <div class="small-note" id="trendRangeNote">30D is loaded/processed by default. Tap 90D or 1Y to process the additional history.</div>
+    <div class="card-title"><h2>📊 Trends</h2><span>Swipe →</span></div>
     <div class="trend-wrapper" id="trendWrapper">
       <div class="trend-card"><div class="trend-header"><div><h3>📦 Raw Material Consumption</h3><small>Daily movement</small></div><select id="materialSelect" onchange="drawMaterialChart(this.value)"></select></div><canvas id="materialChart"></canvas></div>
       <div class="trend-card"><div class="trend-header"><div><h3>📥 Purchase / Received Trend</h3><small>Daily movement</small></div></div><canvas id="purchaseChart"></canvas></div>
@@ -747,7 +740,7 @@ function saveCache(payload){
 function cachedData(){
   try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null}catch(e){return null}
 }
-function applyData(apiData,fromCache=false,cacheResult=true){
+function applyData(apiData,fromCache=false){
   DATA={
     stock:Array.isArray(apiData.stock)?apiData.stock:[],
     stockHistory:Array.isArray(apiData.stock_history)?apiData.stock_history:[],
@@ -767,7 +760,7 @@ function applyData(apiData,fromCache=false,cacheResult=true){
   };
   if(DATA.report_date)setText("reportDate",VIEW_DATE||DATA.report_date);
   renderDashboard();
-  if(!fromCache && cacheResult)saveCache(apiData);
+  if(!fromCache)saveCache(apiData);
 }
 function restoreCache(){
   const c=cachedData();
@@ -1557,71 +1550,37 @@ function chart(canvasId,labels,series){
   vals.forEach((v,i)=>{const x=pad.l+(w-pad.l-pad.r)*(vals.length===1?.5:i/(vals.length-1));const y=pad.t+(h-pad.t-pad.b)*(1-(v-min)/range);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
   ctx.stroke();ctx.fillStyle="#777";ctx.font="9px sans-serif";labels.forEach((l,i)=>{if(i%Math.ceil(labels.length/5)===0){const x=pad.l+(w-pad.l-pad.r)*(labels.length===1?.5:i/(labels.length-1));ctx.fillText(String(l).slice(-5),x-10,h-7)}});
 }
-function trendWindowDates(){
-  const dates=allAvailableDates().slice().sort();
-  if(!dates.length)return [];
-  const anchor=dateOnly(VIEW_DATE)||dates[dates.length-1];
-  const anchorTime=new Date(anchor+"T00:00:00").getTime();
-  const startTime=anchorTime-(TREND_RANGE_DAYS-1)*86400000;
-  return dates.filter(d=>{const t=new Date(d+"T00:00:00").getTime();return t>=startTime&&t<=anchorTime;});
-}
-function trendDateFilter(d){
-  const dates=trendWindowDates();return dates.includes(dateOnly(d));
-}
-function usageLabels(){return trendWindowDates()}
-function drawMaterialChart(material){
-  const map=selectedUsageFor(material),labels=usageLabels();
-  chart("materialChart",labels,labels.map(d=>map[d]||0));
-}
-function trendProductionRows(){
-  const rows=Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:(DATA.production||[]);
-  return rows.filter(r=>trendDateFilter(r.report_date||r.Report_Date));
-}
-function trendBagRows(){
-  const rows=Array.isArray(DATA.bagsHistory)&&DATA.bagsHistory.length?DATA.bagsHistory:(DATA.bags||[]);
-  return rows.filter(r=>trendDateFilter(r.report_date||r.Report_Date));
-}
-function productionTrendData(){
-  const map={};trendProductionRows().forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)map[d]=(map[d]||0)+(num(r.actual_output)||0)});
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(d=>map[d])};
-}
-function productionRateTrend(field){
-  const map={};trendProductionRows().forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date),v=num(r[field]);if(d&&v!==null){if(!map[d])map[d]=[];map[d].push(v)}});
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(d=>{const a=map[d];return a.reduce((x,y)=>x+y,0)/a.length})};
-}
+function usageLabels(){const n=Math.max(...Object.values(DATA.usage).map(a=>Array.isArray(a)?a.length:0),0);return Array.from({length:n},(_,i)=>"D"+(i+1))}
+function drawMaterialChart(material){chart("materialChart",usageLabels(),Array.isArray(DATA.usage[material])?DATA.usage[material]:[])}
+function productionTrendData(){return DATA.productionTrend.map(x=>typeof x==="object"?num(x.actual_output??x.actual??x.value):num(x)).filter(v=>v!==null)}
 function renderTrends(){
   const sel=document.getElementById("materialSelect"),mats=getMaterials();sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(mats[0]);
-  const p=productionTrendData();chart("productionChart",p.labels,p.values);
+  const p=DATA.productionTrend||[];chart("productionChart",p.map((x,i)=>x.date||x.report_date||"D"+(i+1)),productionTrendData());
   const purchase=trendFromTransactions("PURCHASE");chart("purchaseChart",purchase.labels,purchase.values);
   const closing=trendClosing();chart("closingChart",closing.labels,closing.values);
-  const outs=productionRateTrend("output_percentage"),loss=productionRateTrend("process_loss");
-  chart("outputChart",outs.labels,outs.values);chart("lossChart",loss.labels,loss.values);
+  const outs=DATA.production.map(r=>num(r.output_percentage)).filter(v=>v!==null),loss=DATA.production.map(r=>num(r.process_loss)).filter(v=>v!==null);
+  chart("outputChart",outs.map((_,i)=>"P"+(i+1)),outs);chart("lossChart",loss.map((_,i)=>"P"+(i+1)),loss);
   const feed=feedTrend();chart("feedChart",feed.labels,feed.values);
   const bags=bagTrend();chart("bagChart",bags.labels,bags.values);
   const wrap=document.getElementById("trendWrapper"),dots=document.getElementById("trendDots");dots.innerHTML=[...wrap.children].map((_,i)=>`<div class="dot ${i===0?"active":""}"></div>`).join("");
   wrap.onscroll=function(){const i=Math.round(this.scrollLeft/this.clientWidth);[...dots.children].forEach((d,j)=>d.classList.toggle("active",i===j))};
 }
 function trendFromTransactions(type){
-  const map={};
-  (DATA.stockHistory||[]).forEach(t=>{if(tType(t)===type){const d=dateOnly(rowDate(t));if(d&&trendDateFilter(d))map[d]=(map[d]||0)+tVal(t)}});
-  if(!Object.keys(map).length){getMaterials().forEach(m=>transactions(m).forEach(t=>{if(tType(t)===type){const d=dateOnly(rowDate(t));if(d&&trendDateFilter(d))map[d]=(map[d]||0)+tVal(t)}}));}
+  const map={};getMaterials().forEach(m=>transactions(m).forEach(t=>{if(tType(t)===type){const d=rowDate(t)||"Latest";map[d]=(map[d]||0)+tVal(t)}}));
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 function trendClosing(){
-  const map={};
-  (DATA.stockHistory||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d&&trendDateFilter(d)&&tType(t)==="CL. STOCK")map[d]=(map[d]||0)+(num(t.for_day)||0)});
-  if(!Object.keys(map).length){getMaterials().forEach(m=>transactions(m).forEach(t=>{const d=dateOnly(rowDate(t));if(d&&trendDateFilter(d)&&tType(t)==="CL. STOCK")map[d]=(map[d]||0)+(num(t.for_day)||0)}));}
+  const map={};getMaterials().forEach(m=>transactions(m).forEach(t=>{const d=rowDate(t);if(d&&tType(t)==="CL. STOCK")map[d]=(map[d]||0)+(num(t.for_day)||0)}));
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 function feedTrend(){
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[],map={};
-  rows.forEach(r=>{const d=dateOnly(r.Report_Date||r.report_date);if(d&&trendDateFilter(d))map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0)});
+  rows.forEach(r=>{const d=clean(r.Report_Date||r.report_date)||"Latest";map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0)});
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 function bagTrend(){
-  const map={};trendBagRows().forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)map[d]=(map[d]||0)+(num(r.issue)||0)+(num(r.damage)||0)});
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
+  const labels=[],values=[];(DATA.bags||[]).forEach((r,i)=>{labels.push(r.product||"P"+(i+1));values.push((num(r.issue)||0)+(num(r.damage)||0))});return {labels,values}
 }
 
 /* =====================================================
@@ -1635,7 +1594,6 @@ function goTrend(){document.getElementById("trendsSection").scrollIntoView({beha
    DATE VIEW — COMPLETE DASHBOARD DATE FILTER
 ===================================================== */
 let VIEW_DATE=null;
-let TREND_RANGE_DAYS=30;
 
 function viewDate(){return VIEW_DATE?dateOnly(VIEW_DATE):dateOnly(DATA.report_date);}
 function isViewDate(d){return !VIEW_DATE || dateOnly(d)===dateOnly(VIEW_DATE);}
@@ -1921,41 +1879,11 @@ function saveManagerNote(key){const el=document.getElementById("managerNoteInput
 function deleteManagerNote(key){localStorage.removeItem("manager_note_"+key);closeModal();renderManagerIntelligence();showToast("Manager note cleared")}
 
 function setViewDate(date){
-  if(!date){
-    VIEW_DATE=null;
-    closeModal();
-    renderDashboard();
-    renderTrends();
-    showToast("Dashboard set to latest");
-    return;
-  }
-  const selected=dateOnly(date);
-  const latest=dateOnly(DATA.report_date);
-  if(!selected || !latest)return;
-  const diffDays=Math.max(0,Math.round((new Date(latest+"T00:00:00")-new Date(selected+"T00:00:00"))/86400000));
-  const requiredRange=diffDays<=29?30:diffDays<=89?90:365;
-  if(diffDays<=29 || hasDateInLoadedHistory(selected)){
-    VIEW_DATE=selected;
-    closeModal();
-    renderDashboard();
-    renderTrends();
-    showToast(`Dashboard set to ${selected}`);
-    return;
-  }
-  loadHistoryRange(requiredRange,function(){
-    VIEW_DATE=selected;
-    closeModal();
-    renderDashboard();
-    renderTrends();
-    showToast(`Dashboard set to ${selected}`);
-  });
-}
-function hasDateInLoadedHistory(date){
-  const d=dateOnly(date);
-  return (DATA.stockHistory||[]).some(t=>dateOnly(rowDate(t))===d) ||
-    (DATA.productionHistory||[]).some(r=>dateOnly(r.report_date||r.Report_Date)===d) ||
-    (DATA.bagsHistory||[]).some(r=>dateOnly(r.report_date||r.Report_Date)===d) ||
-    (DATA.feedUnitData||[]).some(r=>dateOnly(r.report_date||r.Report_Date)===d);
+  VIEW_DATE=date?dateOnly(date):null;
+  closeModal();
+  renderDashboard();
+  renderTrends();
+  showToast(VIEW_DATE?`Dashboard set to ${VIEW_DATE}`:"Dashboard set to latest");
 }
 function getAvailableDates(){
   const s=new Set();
@@ -1968,92 +1896,37 @@ function getAvailableDates(){
   return [...s].filter(Boolean).sort().reverse();
 }
 function openDateSelector(){
-  const latest=dateOnly(DATA.report_date)||dateOnly(new Date());
-  const minDate=(()=>{const d=new Date(latest+"T00:00:00");d.setDate(d.getDate()-364);return d.toISOString().slice(0,10)})();
-  const value=VIEW_DATE||latest;
-  showModal("Date Selector",`<div class="detail-section"><h3>📅 Dashboard Date</h3><div class="small-note">Select year, month and day. Dates within 30 days use loaded history. Older dates automatically load 90-day or 1-year history when required.</div><div style="padding:8px 0"><input id="dashboardDatePicker" type="date" value="${esc(value)}" min="${esc(minDate)}" max="${esc(latest)}" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font-size:15px"></div><div class="note-actions"><button class="primary" onclick="applyDatePicker()">View Date</button>${VIEW_DATE?`<button onclick="setViewDate(null)">Latest / Today</button>`:""}</div><div class="small-note">Available historical window: ${esc(minDate)} to ${esc(latest)}.</div></div>`);
-}
-function applyDatePicker(){
-  const el=document.getElementById("dashboardDatePicker");
-  if(el&&el.value)setViewDate(el.value);
+  const dates=getAvailableDates();
+  const buttons=(VIEW_DATE?`<button class="date-btn" onclick="setViewDate(null)"><strong>Latest / Today</strong><small>Return to latest dashboard</small></button>`:"")+dates.map(d=>`<button class="date-btn" onclick="setViewDate('${jsq(d)}')"><strong>${esc(d)}</strong><small>${d===dateOnly(DATA.report_date)?"Latest API date":"View complete dashboard →"}</small></button>`).join("");
+  showModal("Date Selector",`<div class="detail-section"><h3>📅 Dashboard Date</h3><div class="small-note">Selecting a date now changes the entire dashboard, not just the summary popup.</div><div class="date-list">${buttons||"<div class='empty'>No dated records available.</div>"}</div></div>`);
 }
 function openDateSummary(date){setViewDate(date);}
 
-/* Keep trend charts aligned with the selected dashboard date and selected history range. */
-function loadHistoryRange(days,onSuccess){
-  days=Number(days)||30;
-  if(days!==30 && days!==90 && days!==365)days=30;
-  setConnection(true,`Loading ${days===365?'1-year':days+'-day'} history...`);
-  setText('lastUpdated','Loading...');
-  const callbackName='historyRangeCallback_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-  const script=document.createElement('script');
-  let finished=false;
-  const cleanup=()=>{if(script.parentNode)script.parentNode.removeChild(script);try{delete window[callbackName]}catch(e){window[callbackName]=undefined}};
-  const fail=(message)=>{if(finished)return;finished=true;clearTimeout(timeout);cleanup();setConnection(false,message);setText('lastUpdated','Update failed');showToast('History load failed')};
-  const timeout=setTimeout(()=>fail('History load timeout'),20000);
-  window[callbackName]=function(apiData){
-    if(finished)return;
-    finished=true;
-    clearTimeout(timeout);
-    cleanup();
-    if(!apiData || apiData.status!=='success'){fail('History load failed');return;}
-    try{
-      applyData(apiData,false,apiData.history_range==='30d');
-      setConnection(true,'Updated');
-      setText('lastUpdated','Updated '+new Date().toLocaleString('en-IN',{dateStyle:'short',timeStyle:'short'}));
-      if(typeof onSuccess==='function')onSuccess(apiData);
-    }catch(e){
-      setConnection(false,'Dashboard update failed');
-      setText('lastUpdated','Update failed');
-      showToast('Dashboard update failed');
-    }
-  };
-  script.async=true;
-  script.referrerPolicy='no-referrer';
-  script.src=API_URL+'?range='+(days===365?'1y':days+'d')+'&callback='+encodeURIComponent(callbackName)+'&t='+Date.now();
-  document.head.appendChild(script);
-}
-function setTrendRange(days,button){
-  days=Number(days)||30;
-  if(days!==30 && days!==90 && days!==365)days=30;
-  TREND_RANGE_DAYS=days;
-  document.querySelectorAll('#trendRangeButtons button').forEach(b=>b.classList.toggle('active',Number(b.dataset.range)===days));
-  setText('trendRangeStatus',days===30?'Last 30 days':days===90?'Last 90 days':'Last 1 year');
-  setText('trendRangeNote',days===30?'30D is loaded/processed by default.':`Additional ${days===90?'90-day':'1-year'} history is now being loaded from the API.`);
-  if(days===30 && Array.isArray(DATA.stockHistory) && DATA.stockHistory.length){
-    renderTrends();
-    showToast('Trend range: 30 days');
-    return;
-  }
-  loadHistoryRange(days,function(){
-    renderTrends();
-    showToast(days===30?'Trend range: 30 days':days===90?'Trend range: 90 days':'Trend range: 1 year');
-  });
-}
+/* Keep trend charts aligned with the selected dashboard date. */
 function renderTrends(){
-  const sel=document.getElementById('materialSelect'),mats=getMaterials();
-  sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  const sel=document.getElementById("materialSelect"),mats=getMaterials();
+  sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(mats[0]);
-  const p=productionTrendData();chart('productionChart',p.labels,p.values);
-  const purchase=trendFromTransactions('PURCHASE');chart('purchaseChart',purchase.labels,purchase.values);
-  const closing=trendClosing();chart('closingChart',closing.labels,closing.values);
-  const outs=productionRateTrend('output_percentage'),loss=productionRateTrend('process_loss');
-  chart('outputChart',outs.labels,outs.values);chart('lossChart',loss.labels,loss.values);
-  const feed=feedTrend();chart('feedChart',feed.labels,feed.values);
-  const bags=bagTrend();chart('bagChart',bags.labels,bags.values);
-  const wrap=document.getElementById('trendWrapper'),dots=document.getElementById('trendDots');
-  dots.innerHTML=[...wrap.children].map((_,i)=>`<div class="dot ${i===0?'active':''}"></div>`).join('');
-  wrap.onscroll=function(){const i=Math.round(this.scrollLeft/this.clientWidth);[...dots.children].forEach((d,j)=>d.classList.toggle('active',i===j))};
+  const p=VIEW_DATE?selectedProduction():DATA.productionTrend||[];
+  const outs=selectedProduction().map(r=>num(r.output_percentage)).filter(v=>v!==null),loss=selectedProduction().map(r=>num(r.process_loss)).filter(v=>v!==null);
+  chart("productionChart",p.map((x,i)=>x.date||x.report_date||x.Report_Date||"D"+(i+1)),productionTrendData());
+  const purchase=trendFromTransactions("PURCHASE");chart("purchaseChart",purchase.labels,purchase.values);
+  const closing=trendClosing();chart("closingChart",closing.labels,closing.values);
+  chart("outputChart",outs.map((_,i)=>"P"+(i+1)),outs);chart("lossChart",loss.map((_,i)=>"P"+(i+1)),loss);
+  const feed=feedTrend();chart("feedChart",feed.labels,feed.values);
+  const bags=bagTrend();chart("bagChart",bags.labels,bags.values);
+  const wrap=document.getElementById("trendWrapper"),dots=document.getElementById("trendDots");dots.innerHTML=[...wrap.children].map((_,i)=>`<div class="dot ${i===0?"active":""}"></div>`).join("");
+  wrap.onscroll=function(){const i=Math.round(this.scrollLeft/this.clientWidth);[...dots.children].forEach((d,j)=>d.classList.toggle("active",i===j))};
 }
 function feedTrend(){
-  const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[],map={};
-  rows.forEach(r=>{const d=dateOnly(r.Report_Date||r.report_date);if(d&&trendDateFilter(d))map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0)});
+  const rows=selectedFeedRows(),map={};
+  rows.forEach(r=>{const d=clean(r.Report_Date||r.report_date)||"Latest";map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0)});
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 function bagTrend(){
-  const map={};
-  trendBagRows().forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)map[d]=(map[d]||0)+(num(r.issue)||0)+(num(r.damage)||0)});
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
+  const rows=selectedBags(),labels=[],values=[];
+  rows.forEach((r,i)=>{labels.push(r.product||"P"+(i+1));values.push((num(r.issue)||0)+(num(r.damage)||0))});
+  return {labels,values}
 }
 
 
@@ -2247,237 +2120,6 @@ function ensureDataQualityHost(){
 }
 const __dqBaseRenderControlCenter=renderControlCenter;
 renderControlCenter=function(){__dqBaseRenderControlCenter();ensureDataQualityHost()};
-
-/* =====================================================
-   RECENT 30-DAY DATA WINDOW — MINIMAL DATA-LAYER CHANGE
-   UI / API / existing cumulative fields remain unchanged.
-===================================================== */
-const DEFAULT_RECENT_DAYS=30;
-function recentWindowAnchor(){
-  if(typeof VIEW_DATE!=="undefined" && VIEW_DATE)return dateOnly(VIEW_DATE);
-  const ds=[];
-  if(DATA.report_date)ds.push(dateOnly(DATA.report_date));
-  (DATA.stockHistory||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)ds.push(d)});
-  (DATA.productionHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)ds.push(d)});
-  (DATA.bagsHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)ds.push(d)});
-  (DATA.feedUnitData||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)ds.push(d)});
-  (DATA.productionTrend||[]).forEach(r=>{if(r&&typeof r==="object"){const d=dateOnly(r.date||r.report_date||r.Report_Date);if(d)ds.push(d)}});
-  return ds.filter(Boolean).sort().pop()||null;
-}
-function recentWindowBounds(anchor,days=DEFAULT_RECENT_DAYS){
-  const a=dateOnly(anchor)||recentWindowAnchor();
-  if(!a)return null;
-  const end=new Date(a+"T00:00:00").getTime();
-  return {anchor:a,start:end-(days-1)*86400000,end};
-}
-function isRecentDate(d,anchor,days=DEFAULT_RECENT_DAYS){
-  const b=recentWindowBounds(anchor,days); if(!b)return false;
-  const t=new Date(dateOnly(d)+"T00:00:00").getTime();
-  return Number.isFinite(t)&&t>=b.start&&t<=b.end;
-}
-function recentStockHistoryRows(material,anchor){
-  const target=normalize(material);
-  return (DATA.stockHistory||[]).filter(t=>{
-    const d=dateOnly(rowDate(t));
-    return normalize(t.material)===target&&isRecentDate(d,anchor);
-  });
-}
-function recentMaterialHistory(material,anchor){
-  const rows=recentStockHistoryRows(material,anchor);
-  return rows.length?rows:transactions(material).filter(t=>isRecentDate(rowDate(t),anchor));
-}
-function recentProductionRows(anchor){
-  const history=(DATA.productionHistory||[]).filter(r=>isRecentDate(r.report_date||r.Report_Date,anchor));
-  if(history.length)return history;
-  return (DATA.production||[]).filter(r=>isRecentDate(r.report_date||r.Report_Date||DATA.report_date,anchor));
-}
-function recentBagRows(anchor){
-  const history=(DATA.bagsHistory||[]).filter(r=>isRecentDate(r.report_date||r.Report_Date,anchor));
-  if(history.length)return history;
-  return (DATA.bags||[]).filter(r=>isRecentDate(r.report_date||r.Report_Date||DATA.report_date,anchor));
-}
-function recentFeedRows(anchor){
-  return (DATA.feedUnitData||[]).filter(r=>isRecentDate(r.report_date||r.Report_Date,anchor));
-}
-function recentProductionTrendRows(anchor){
-  const rows=(DATA.productionTrend||[]).filter(r=>{
-    const d=typeof r==="object"?dateOnly(r.date||r.report_date||r.Report_Date):"";
-    return d?isRecentDate(d,anchor):false;
-  });
-  return rows.length?rows:recentProductionRows(anchor);
-}
-
-/* 30D average is the single source for reorder / coverage / abnormal-consumption logic. */
-avgConsumption=function(material){
-  const anchor=recentWindowAnchor(),rows=recentMaterialHistory(material,anchor),dated=new Map();
-  rows.forEach(t=>{
-    if(!tType(t).includes("CONSUMPTION"))return;
-    const d=dateOnly(rowDate(t)),v=num(t.for_day);
-    if(!d||v===null||v<=0)return;
-    dated.set(d,(dated.get(d)||0)+v);
-  });
-  const values=[...dated.values()].filter(v=>v>0);
-  return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;
-};
-
-/* Recent 30D abnormal-consumption check; UI remains unchanged. */
-abnormalConsumptionItems=function(){
-  const out=[],anchor=recentWindowAnchor();
-  getMaterials().forEach(m=>{
-    const avg=avgConsumption(m); if(!avg)return;
-    const rows=recentMaterialHistory(m,anchor).filter(t=>tType(t).includes("CONSUMPTION"));
-    if(!rows.length)return;
-    const latestDate=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||"";
-    const current=rows.filter(t=>dateOnly(rowDate(t))===latestDate).reduce((a,t)=>a+tVal(t),0);
-    if(current>0&&(current>avg*1.5||current<avg*0.5)){
-      out.push({material:m,current,avg,ratio:current/avg,date:latestDate,direction:current>avg?"HIGH":"LOW"});
-    }
-  });
-  return out.sort((a,b)=>b.ratio-a.ratio);
-};
-
-/* Recent 30D movement totals for Raw Material Movements. Stock itself stays a balance. */
-rawTotal=function(material,tab){
-  if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
-  const rows=(VIEW_DATE?transactions(material):recentMaterialHistory(material,recentWindowAnchor()));
-  return rows.filter(t=>{
-    const ty=tType(t);
-    if(tab==="CONSUMPTION")return ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI");
-    if(tab==="PURCHASE")return ty==="PURCHASE"||ty==="RECEIVED";
-    if(tab==="TRANSFER")return ty==="TRANSFER"||ty.includes("TRANSFER FROM")||ty.includes("TRANSFER TO");
-    if(tab==="GAIN")return ty==="GAIN";
-    if(tab==="SHORTAGE")return ty.includes("SHORTAGE");
-    if(tab==="SALE")return ty.includes("SALE");
-    return ty===tab;
-  }).reduce((a,t)=>a+tVal(t),0);
-};
-
-/* Recent 30D date list keeps the current date selector bounded to the default window. */
-getAvailableDates=function(){
-  const anchor=recentWindowAnchor(),s=new Set();
-  if(!anchor)return [];
-  (DATA.stockHistory||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d&&isRecentDate(d,anchor))s.add(d)});
-  (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d&&isRecentDate(d,anchor))s.add(d)}));
-  (DATA.productionHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d&&isRecentDate(d,anchor))s.add(d)});
-  (DATA.production||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||DATA.report_date);if(d&&isRecentDate(d,anchor))s.add(d)});
-  (DATA.bagsHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d&&isRecentDate(d,anchor))s.add(d)});
-  (DATA.bags||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||DATA.report_date);if(d&&isRecentDate(d,anchor))s.add(d)});
-  (DATA.feedUnitData||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d&&isRecentDate(d,anchor))s.add(d)});
-  if(isRecentDate(DATA.report_date,anchor))s.add(dateOnly(DATA.report_date));
-  return [...s].filter(Boolean).sort().reverse();
-};
-
-/* 7-day KPI sparks are still 7D, but now end at the selected/active 30D anchor. */
-renderKpiSparks=function(){
-  const dates=getAvailableDates().slice().sort().slice(-7);
-  const prod=dates.map(d=>dateFeedMetrics(d).production),disp=dates.map(d=>dateFeedMetrics(d).dispatch);
-  const draw=(id,vals)=>{const el=document.getElementById(id);if(!el)return;const max=Math.max(...vals,0),min=Math.min(...vals.filter(v=>Number.isFinite(v)),0),range=max-min||1;el.innerHTML=vals.map(v=>`<i style="height:${Math.max(3,Math.round(((v-min)/range)*17)+3)}px"></i>`).join("")};
-  draw("sparkProd",prod);draw("sparkDisp",disp);
-};
-
-/* Trend charts default to a 30D daily window; selected dates shift the 30D window end. */
-drawMaterialChart=function(material){
-  const anchor=recentWindowAnchor(),map={};
-  recentMaterialHistory(material,anchor).forEach(t=>{
-    if(!tType(t).includes("CONSUMPTION"))return;
-    const d=dateOnly(rowDate(t));if(d)map[d]=(map[d]||0)+tVal(t);
-  });
-  const labels=Object.keys(map).sort();chart("materialChart",labels,labels.map(d=>map[d]));
-};
-trendFromTransactions=function(type,anchor){
-  const map={};
-  getMaterials().forEach(m=>recentMaterialHistory(m,anchor).forEach(t=>{
-    if(tType(t)!==type)return;
-    const d=dateOnly(rowDate(t));if(d)map[d]=(map[d]||0)+tVal(t);
-  }));
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])};
-};
-trendClosing=function(anchor){
-  const map=new Map();
-  getMaterials().forEach(m=>{
-    const perDay=new Map();
-    recentMaterialHistory(m,anchor).forEach(t=>{
-      const d=dateOnly(rowDate(t));if(!d||!tType(t).includes("CL. STOCK")&&!tType(t).includes("CLOSING STOCK"))return;
-      const v=num(t.for_day);if(v!==null)perDay.set(d,v);
-    });
-    perDay.forEach((v,d)=>map.set(d,(map.get(d)||0)+v));
-  });
-  const labels=[...map.keys()].sort();return {labels,values:labels.map(k=>map.get(k))};
-};
-feedTrend=function(anchor){
-  const rows=recentFeedRows(anchor),map={};
-  rows.forEach(r=>{
-    const d=clean(r.Report_Date||r.report_date);if(!d)return;
-    map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0);
-  });
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])};
-};
-bagTrend=function(anchor){
-  const rows=recentBagRows(anchor),map={};
-  rows.forEach(r=>{
-    const d=clean(r.Report_Date||r.report_date);if(!d)return;
-    map[d]=(map[d]||0)+(num(r.issue)||0)+(num(r.damage)||0);
-  });
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])};
-};
-renderTrends=function(){
-  const sel=document.getElementById("materialSelect"),mats=getMaterials(),anchor=recentWindowAnchor();
-  if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
-  if(mats.length)drawMaterialChart(mats[0]);
-  const p=recentProductionTrendRows(anchor).slice().sort((a,b)=>dateOnly(a.date||a.report_date||a.Report_Date).localeCompare(dateOnly(b.date||b.report_date||b.Report_Date)));
-  const pValues=p.map(x=>typeof x==="object"?num(x.actual_output??x.actual??x.value):num(x)).filter(v=>v!==null);
-  const pLabels=p.map((x,i)=>typeof x==="object"?dateOnly(x.date||x.report_date||x.Report_Date):"D"+(i+1));
-  chart("productionChart",pLabels,pValues);
-  const purchase=trendFromTransactions("PURCHASE",anchor);chart("purchaseChart",purchase.labels,purchase.values);
-  const closing=trendClosing(anchor);chart("closingChart",closing.labels,closing.values);
-  const rows=recentProductionRows(anchor).slice().sort((a,b)=>dateOnly(a.report_date||a.Report_Date).localeCompare(dateOnly(b.report_date||b.Report_Date)));
-  const outs=rows.map(r=>num(r.output_percentage)).filter(v=>v!==null),loss=rows.map(r=>num(r.process_loss)).filter(v=>v!==null);
-  chart("outputChart",rows.map(r=>dateOnly(r.report_date||r.Report_Date)),outs);
-  chart("lossChart",rows.map(r=>dateOnly(r.report_date||r.Report_Date)),loss);
-  const feed=feedTrend(anchor);chart("feedChart",feed.labels,feed.values);
-  const bags=bagTrend(anchor);chart("bagChart",bags.labels,bags.values);
-  const wrap=document.getElementById("trendWrapper"),dots=document.getElementById("trendDots");
-  if(wrap&&dots){dots.innerHTML=[...wrap.children].map((_,i)=>`<div class="dot ${i===0?"active":""}"></div>`).join("");wrap.onscroll=function(){const i=Math.round(this.scrollLeft/this.clientWidth);[...dots.children].forEach((d,j)=>d.classList.toggle("active",i===j))};}
-};
-
-/* Data Health historical material table uses the same bounded 30D material history. */
-dqHistoricalRows=function(material){
-  const map={};
-  recentMaterialHistory(material,recentWindowAnchor()).forEach(t=>{
-    const d=dateOnly(rowDate(t));if(!d)return;
-    if(!map[d])map[d]={date:d,opening:null,closing:null,consumption:0,additions:0,deductions:0};
-    const x=map[d],ty=tType(t),v=tVal(t)||0;
-    if(ty.includes("OPENING STOCK"))x.opening=v;
-    else if(ty.includes("CL. STOCK")||ty.includes("CLOSING STOCK"))x.closing=v;
-    else if(dqIsConsumption(ty))x.consumption+=v;
-    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM"))x.additions+=v;
-    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty.includes("DAMAGE")||ty.includes("ISSUE")||ty.includes("RETURN TO"))x.deductions+=v;
-  });
-  return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
-};
-dqContinuityIssues=function(){
-  const out=[],anchor=recentWindowAnchor();
-  getMaterials().forEach(material=>{
-    const rows=recentMaterialHistory(material,anchor),byDate={};
-    rows.forEach(t=>{const d=dateOnly(rowDate(t));if(!d)return;(byDate[d]??=[]).push(t)});
-    const dates=Object.keys(byDate).sort();
-    for(let i=1;i<dates.length;i++){
-      const prev=dates[i-1],cur=dates[i],nextDay=new Date(prev+"T00:00:00");
-      nextDay.setDate(nextDay.getDate()+1);
-      const expected=nextDay.toISOString().slice(0,10);if(cur!==expected)continue;
-      const prevClosing=byDate[prev].filter(t=>tType(t).includes("CL. STOCK")||tType(t).includes("CLOSING STOCK")).map(t=>tVal(t)).filter(v=>v!==null).pop();
-      const curOpening=byDate[cur].filter(t=>tType(t).includes("OPENING STOCK")).map(t=>tVal(t)).filter(v=>v!==null).pop();
-      if(prevClosing!==null&&prevClosing!==undefined&&curOpening!==null&&curOpening!==undefined&&Math.abs(prevClosing-curOpening)>0.01){
-        out.push({material,previousDate:prev,currentDate:cur,previousClosing:prevClosing,currentOpening:curOpening,diff:curOpening-prevClosing});
-      }
-    }
-  });
-  return out.filter(x=>!VIEW_DATE||x.currentDate===dateOnly(VIEW_DATE));
-};
-
-/* =====================================================
-   END 30-DAY DATA WINDOW OVERRIDES
-===================================================== */
 
 /* =====================================================
    START
