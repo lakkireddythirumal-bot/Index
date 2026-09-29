@@ -53,6 +53,7 @@ select{border:1px solid #ddd;background:#fff;border-radius:9px;padding:6px 8px;f
 canvas{width:100%;height:150px;display:block}
 .dots{display:flex;justify-content:center;gap:6px;margin-top:8px}.dot{width:6px;height:6px;border-radius:50%;background:#d5d8dd}.dot.active{width:18px;border-radius:10px;background:#4f7cff}
 .section-tabs{display:flex;gap:5px;overflow-x:auto;margin-bottom:8px}.section-tabs button{border:0;background:#f1f3f5;padding:7px 10px;border-radius:9px;font-size:11px;white-space:nowrap}.section-tabs button.active{background:#202938;color:#fff}
+.trend-range{display:flex;gap:6px;overflow-x:auto;margin:0 0 9px;padding-bottom:1px}.trend-range button{border:1px solid #e3e6eb;background:#f7f8fa;color:#596170;border-radius:9px;padding:7px 12px;font-size:10px;font-weight:700;white-space:nowrap}.trend-range button.active{background:#202938;color:#fff;border-color:#202938}.trend-range button:disabled{opacity:.65}
 .bottom-nav{position:fixed;left:0;right:0;bottom:0;height:68px;background:rgba(255,255,255,.97);border-top:1px solid #e9eaec;display:flex;justify-content:space-around;align-items:center;z-index:100}
 .nav-item{text-align:center;font-size:10px;color:#888;cursor:pointer}.nav-item div{font-size:18px}.nav-item.active{color:#315efb;font-weight:600}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.38);display:none;align-items:flex-end;z-index:500}.modal.show{display:flex}
@@ -525,7 +526,13 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 
   <!-- TRENDS -->
   <div class="card" id="trendsSection">
-    <div class="card-title"><h2>📊 Trends</h2><span>Swipe →</span></div>
+    <div class="card-title"><h2>📊 Trends</h2><span id="trendRangeStatus">Last 30 days</span></div>
+    <div class="trend-range" id="trendRangeButtons">
+      <button class="active" data-range="30" onclick="setTrendRange(30,this)">30D</button>
+      <button data-range="90" onclick="setTrendRange(90,this)">90D</button>
+      <button data-range="365" onclick="setTrendRange(365,this)">1Y</button>
+    </div>
+    <div class="small-note" id="trendRangeNote">30D is loaded/processed by default. Tap 90D or 1Y to process the additional history.</div>
     <div class="trend-wrapper" id="trendWrapper">
       <div class="trend-card"><div class="trend-header"><div><h3>📦 Raw Material Consumption</h3><small>Daily movement</small></div><select id="materialSelect" onchange="drawMaterialChart(this.value)"></select></div><canvas id="materialChart"></canvas></div>
       <div class="trend-card"><div class="trend-header"><div><h3>📥 Purchase / Received Trend</h3><small>Daily movement</small></div></div><canvas id="purchaseChart"></canvas></div>
@@ -1555,7 +1562,7 @@ function trendWindowDates(){
   if(!dates.length)return [];
   const anchor=dateOnly(VIEW_DATE)||dates[dates.length-1];
   const anchorTime=new Date(anchor+"T00:00:00").getTime();
-  const startTime=anchorTime-29*86400000;
+  const startTime=anchorTime-(TREND_RANGE_DAYS-1)*86400000;
   return dates.filter(d=>{const t=new Date(d+"T00:00:00").getTime();return t>=startTime&&t<=anchorTime;});
 }
 function trendDateFilter(d){
@@ -1628,6 +1635,7 @@ function goTrend(){document.getElementById("trendsSection").scrollIntoView({beha
    DATE VIEW — COMPLETE DASHBOARD DATE FILTER
 ===================================================== */
 let VIEW_DATE=null;
+let TREND_RANGE_DAYS=30;
 
 function viewDate(){return VIEW_DATE?dateOnly(VIEW_DATE):dateOnly(DATA.report_date);}
 function isViewDate(d){return !VIEW_DATE || dateOnly(d)===dateOnly(VIEW_DATE);}
@@ -1936,31 +1944,41 @@ function openDateSelector(){
 }
 function openDateSummary(date){setViewDate(date);}
 
-/* Keep trend charts aligned with the selected dashboard date. */
+/* Keep trend charts aligned with the selected dashboard date and selected history range. */
+function setTrendRange(days,button){
+  days=Number(days)||30;
+  if(days!==30 && days!==90 && days!==365)days=30;
+  TREND_RANGE_DAYS=days;
+  document.querySelectorAll('#trendRangeButtons button').forEach(b=>b.classList.toggle('active',Number(b.dataset.range)===days));
+  setText('trendRangeStatus',days===30?'Last 30 days':days===90?'Last 90 days':'Last 1 year');
+  setText('trendRangeNote',days===30?'30D is loaded/processed by default.':`Additional ${days===90?'90-day':'1-year'} history is now being processed from the available API history.`);
+  renderTrends();
+  showToast(days===30?'Trend range: 30 days':days===90?'Trend range: 90 days':'Trend range: 1 year');
+}
 function renderTrends(){
-  const sel=document.getElementById("materialSelect"),mats=getMaterials();
-  sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  const sel=document.getElementById('materialSelect'),mats=getMaterials();
+  sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
   if(mats.length)drawMaterialChart(mats[0]);
-  const p=VIEW_DATE?selectedProduction():DATA.productionTrend||[];
-  const outs=selectedProduction().map(r=>num(r.output_percentage)).filter(v=>v!==null),loss=selectedProduction().map(r=>num(r.process_loss)).filter(v=>v!==null);
-  chart("productionChart",p.map((x,i)=>x.date||x.report_date||x.Report_Date||"D"+(i+1)),productionTrendData());
-  const purchase=trendFromTransactions("PURCHASE");chart("purchaseChart",purchase.labels,purchase.values);
-  const closing=trendClosing();chart("closingChart",closing.labels,closing.values);
-  chart("outputChart",outs.map((_,i)=>"P"+(i+1)),outs);chart("lossChart",loss.map((_,i)=>"P"+(i+1)),loss);
-  const feed=feedTrend();chart("feedChart",feed.labels,feed.values);
-  const bags=bagTrend();chart("bagChart",bags.labels,bags.values);
-  const wrap=document.getElementById("trendWrapper"),dots=document.getElementById("trendDots");dots.innerHTML=[...wrap.children].map((_,i)=>`<div class="dot ${i===0?"active":""}"></div>`).join("");
-  wrap.onscroll=function(){const i=Math.round(this.scrollLeft/this.clientWidth);[...dots.children].forEach((d,j)=>d.classList.toggle("active",i===j))};
+  const p=productionTrendData();chart('productionChart',p.labels,p.values);
+  const purchase=trendFromTransactions('PURCHASE');chart('purchaseChart',purchase.labels,purchase.values);
+  const closing=trendClosing();chart('closingChart',closing.labels,closing.values);
+  const outs=productionRateTrend('output_percentage'),loss=productionRateTrend('process_loss');
+  chart('outputChart',outs.labels,outs.values);chart('lossChart',loss.labels,loss.values);
+  const feed=feedTrend();chart('feedChart',feed.labels,feed.values);
+  const bags=bagTrend();chart('bagChart',bags.labels,bags.values);
+  const wrap=document.getElementById('trendWrapper'),dots=document.getElementById('trendDots');
+  dots.innerHTML=[...wrap.children].map((_,i)=>`<div class="dot ${i===0?'active':''}"></div>`).join('');
+  wrap.onscroll=function(){const i=Math.round(this.scrollLeft/this.clientWidth);[...dots.children].forEach((d,j)=>d.classList.toggle('active',i===j))};
 }
 function feedTrend(){
-  const rows=selectedFeedRows(),map={};
-  rows.forEach(r=>{const d=clean(r.Report_Date||r.report_date)||"Latest";map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0)});
+  const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[],map={};
+  rows.forEach(r=>{const d=dateOnly(r.Report_Date||r.report_date);if(d&&trendDateFilter(d))map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0)});
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 function bagTrend(){
-  const rows=selectedBags(),labels=[],values=[];
-  rows.forEach((r,i)=>{labels.push(r.product||"P"+(i+1));values.push((num(r.issue)||0)+(num(r.damage)||0))});
-  return {labels,values}
+  const map={};
+  trendBagRows().forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)map[d]=(map[d]||0)+(num(r.issue)||0)+(num(r.damage)||0)});
+  const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 
 
