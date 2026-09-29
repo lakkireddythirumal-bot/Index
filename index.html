@@ -747,7 +747,7 @@ function saveCache(payload){
 function cachedData(){
   try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null}catch(e){return null}
 }
-function applyData(apiData,fromCache=false){
+function applyData(apiData,fromCache=false,cacheResult=true){
   DATA={
     stock:Array.isArray(apiData.stock)?apiData.stock:[],
     stockHistory:Array.isArray(apiData.stock_history)?apiData.stock_history:[],
@@ -767,7 +767,7 @@ function applyData(apiData,fromCache=false){
   };
   if(DATA.report_date)setText("reportDate",VIEW_DATE||DATA.report_date);
   renderDashboard();
-  if(!fromCache)saveCache(apiData);
+  if(!fromCache && cacheResult)saveCache(apiData);
 }
 function restoreCache(){
   const c=cachedData();
@@ -1921,11 +1921,41 @@ function saveManagerNote(key){const el=document.getElementById("managerNoteInput
 function deleteManagerNote(key){localStorage.removeItem("manager_note_"+key);closeModal();renderManagerIntelligence();showToast("Manager note cleared")}
 
 function setViewDate(date){
-  VIEW_DATE=date?dateOnly(date):null;
-  closeModal();
-  renderDashboard();
-  renderTrends();
-  showToast(VIEW_DATE?`Dashboard set to ${VIEW_DATE}`:"Dashboard set to latest");
+  if(!date){
+    VIEW_DATE=null;
+    closeModal();
+    renderDashboard();
+    renderTrends();
+    showToast("Dashboard set to latest");
+    return;
+  }
+  const selected=dateOnly(date);
+  const latest=dateOnly(DATA.report_date);
+  if(!selected || !latest)return;
+  const diffDays=Math.max(0,Math.round((new Date(latest+"T00:00:00")-new Date(selected+"T00:00:00"))/86400000));
+  const requiredRange=diffDays<=29?30:diffDays<=89?90:365;
+  if(diffDays<=29 || hasDateInLoadedHistory(selected)){
+    VIEW_DATE=selected;
+    closeModal();
+    renderDashboard();
+    renderTrends();
+    showToast(`Dashboard set to ${selected}`);
+    return;
+  }
+  loadHistoryRange(requiredRange,function(){
+    VIEW_DATE=selected;
+    closeModal();
+    renderDashboard();
+    renderTrends();
+    showToast(`Dashboard set to ${selected}`);
+  });
+}
+function hasDateInLoadedHistory(date){
+  const d=dateOnly(date);
+  return (DATA.stockHistory||[]).some(t=>dateOnly(rowDate(t))===d) ||
+    (DATA.productionHistory||[]).some(r=>dateOnly(r.report_date||r.Report_Date)===d) ||
+    (DATA.bagsHistory||[]).some(r=>dateOnly(r.report_date||r.Report_Date)===d) ||
+    (DATA.feedUnitData||[]).some(r=>dateOnly(r.report_date||r.Report_Date)===d);
 }
 function getAvailableDates(){
   const s=new Set();
@@ -1938,13 +1968,51 @@ function getAvailableDates(){
   return [...s].filter(Boolean).sort().reverse();
 }
 function openDateSelector(){
-  const dates=getAvailableDates();
-  const buttons=(VIEW_DATE?`<button class="date-btn" onclick="setViewDate(null)"><strong>Latest / Today</strong><small>Return to latest dashboard</small></button>`:"")+dates.map(d=>`<button class="date-btn" onclick="setViewDate('${jsq(d)}')"><strong>${esc(d)}</strong><small>${d===dateOnly(DATA.report_date)?"Latest API date":"View complete dashboard →"}</small></button>`).join("");
-  showModal("Date Selector",`<div class="detail-section"><h3>📅 Dashboard Date</h3><div class="small-note">Selecting a date now changes the entire dashboard, not just the summary popup.</div><div class="date-list">${buttons||"<div class='empty'>No dated records available.</div>"}</div></div>`);
+  const latest=dateOnly(DATA.report_date)||dateOnly(new Date());
+  const minDate=(()=>{const d=new Date(latest+"T00:00:00");d.setDate(d.getDate()-364);return d.toISOString().slice(0,10)})();
+  const value=VIEW_DATE||latest;
+  showModal("Date Selector",`<div class="detail-section"><h3>📅 Dashboard Date</h3><div class="small-note">Select year, month and day. Dates within 30 days use loaded history. Older dates automatically load 90-day or 1-year history when required.</div><div style="padding:8px 0"><input id="dashboardDatePicker" type="date" value="${esc(value)}" min="${esc(minDate)}" max="${esc(latest)}" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font-size:15px"></div><div class="note-actions"><button class="primary" onclick="applyDatePicker()">View Date</button>${VIEW_DATE?`<button onclick="setViewDate(null)">Latest / Today</button>`:""}</div><div class="small-note">Available historical window: ${esc(minDate)} to ${esc(latest)}.</div></div>`);
+}
+function applyDatePicker(){
+  const el=document.getElementById("dashboardDatePicker");
+  if(el&&el.value)setViewDate(el.value);
 }
 function openDateSummary(date){setViewDate(date);}
 
 /* Keep trend charts aligned with the selected dashboard date and selected history range. */
+function loadHistoryRange(days,onSuccess){
+  days=Number(days)||30;
+  if(days!==30 && days!==90 && days!==365)days=30;
+  setConnection(true,`Loading ${days===365?'1-year':days+'-day'} history...`);
+  setText('lastUpdated','Loading...');
+  const callbackName='historyRangeCallback_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const script=document.createElement('script');
+  let finished=false;
+  const cleanup=()=>{if(script.parentNode)script.parentNode.removeChild(script);try{delete window[callbackName]}catch(e){window[callbackName]=undefined}};
+  const fail=(message)=>{if(finished)return;finished=true;clearTimeout(timeout);cleanup();setConnection(false,message);setText('lastUpdated','Update failed');showToast('History load failed')};
+  const timeout=setTimeout(()=>fail('History load timeout'),20000);
+  window[callbackName]=function(apiData){
+    if(finished)return;
+    finished=true;
+    clearTimeout(timeout);
+    cleanup();
+    if(!apiData || apiData.status!=='success'){fail('History load failed');return;}
+    try{
+      applyData(apiData,false,apiData.history_range==='30d');
+      setConnection(true,'Updated');
+      setText('lastUpdated','Updated '+new Date().toLocaleString('en-IN',{dateStyle:'short',timeStyle:'short'}));
+      if(typeof onSuccess==='function')onSuccess(apiData);
+    }catch(e){
+      setConnection(false,'Dashboard update failed');
+      setText('lastUpdated','Update failed');
+      showToast('Dashboard update failed');
+    }
+  };
+  script.async=true;
+  script.referrerPolicy='no-referrer';
+  script.src=API_URL+'?range='+(days===365?'1y':days+'d')+'&callback='+encodeURIComponent(callbackName)+'&t='+Date.now();
+  document.head.appendChild(script);
+}
 function setTrendRange(days,button){
   days=Number(days)||30;
   if(days!==30 && days!==90 && days!==365)days=30;
@@ -1957,29 +2025,10 @@ function setTrendRange(days,button){
     showToast('Trend range: 30 days');
     return;
   }
-  const callbackName='trendRangeCallback_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-  const script=document.createElement('script');
-  let finished=false;
-  const cleanup=()=>{if(script.parentNode)script.parentNode.removeChild(script);try{delete window[callbackName]}catch(e){window[callbackName]=undefined}};
-  const timeout=setTimeout(()=>{if(finished)return;finished=true;cleanup();setText('trendRangeNote','Unable to load additional history.');showToast('History load failed');},20000);
-  window[callbackName]=function(apiData){
-    if(finished)return;
-    finished=true;
-    clearTimeout(timeout);
-    cleanup();
-    if(!apiData || apiData.status!=='success'){
-      setText('trendRangeNote','Unable to load additional history.');
-      showToast('History load failed');
-      return;
-    }
-    applyData(apiData,false);
+  loadHistoryRange(days,function(){
     renderTrends();
     showToast(days===30?'Trend range: 30 days':days===90?'Trend range: 90 days':'Trend range: 1 year');
-  };
-  script.async=true;
-  script.referrerPolicy='no-referrer';
-  script.src=API_URL+'?range='+(days===365?'1y':days+'d')+'&callback='+encodeURIComponent(callbackName)+'&t='+Date.now();
-  document.head.appendChild(script);
+  });
 }
 function renderTrends(){
   const sel=document.getElementById('materialSelect'),mats=getMaterials();
