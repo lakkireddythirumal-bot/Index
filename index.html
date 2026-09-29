@@ -1844,7 +1844,16 @@ function renderFeedUnit(){
 function toggleFeedUnitMore(){feedUnitExpanded=!feedUnitExpanded;renderFeedUnit();}
 let productionExpanded=false;
 function renderProduction(){
-  const rows=selectedProduction(),total=rows.reduce((a,r)=>a+(num(r.actual_output)||0),0);
+  // Keep the existing production calculations/data untouched. Only the display list is expanded
+  // from the currently selected date plus any matching rows available in DATA.production.
+  const selected=selectedProduction();
+  const date=VIEW_DATE?dateOnly(VIEW_DATE):"";
+  const fallback=Array.isArray(DATA.production)?DATA.production.filter(r=>{
+    if(!date)return true;
+    return dateOnly(r.report_date||r.Report_Date||DATA.report_date)===date;
+  }):[];
+  const rows=selected.concat(fallback);
+  const total=selected.reduce((a,r)=>a+(num(r.actual_output)||0),0);
   setText("productionTotalMain",fmtBags(total));
   const el=document.getElementById("productionList");
   if(!el)return;
