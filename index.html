@@ -452,6 +452,29 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 }
 </style>
 
+
+<style id="raw-movement-premix-split-v1">
+.raw-movement-groups{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.raw-movement-group{background:#f8f9fb;border:1px solid #e9edf3;border-radius:12px;padding:8px;min-width:0}
+.raw-movement-group-title{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:5px;padding-bottom:6px;border-bottom:1px solid #e6eaf0}
+.raw-movement-group-title strong{font-size:10px;color:#303847}
+.raw-movement-group-title span{font-size:8px;color:#8a909b;font-weight:700}
+.raw-movement-group .raw-movement-row{min-height:42px;padding:6px 1px}
+.raw-movement-group .raw-movement-row .row-name{font-size:11px;font-weight:600;line-height:1.2;overflow-wrap:anywhere}
+.raw-movement-group .raw-movement-row .row-right strong{font-size:12px}
+.raw-movement-group .raw-movement-row .row-right small{font-size:7.5px}
+.raw-movement-group .more-toggle{font-size:8.5px;padding:7px;margin-top:5px}
+@media(max-width:520px){.raw-movement-groups{gap:6px}.raw-movement-group{padding:7px}.raw-movement-group-title strong{font-size:9px}.raw-movement-group-title span{font-size:7px}.raw-movement-group .raw-movement-row .row-name{font-size:10.5px}.raw-movement-group .raw-movement-row .row-right strong{font-size:11.5px}.raw-movement-group .raw-movement-row .row-right small{font-size:7px}}
+</style>
+
+
+<style id="raw-reorder-premix-split">
+.reorder-split-wrap{display:grid;grid-template-columns:1fr;gap:9px}
+.reorder-subcard{border:1px solid #e7ebf2;background:#fbfcfe;border-radius:13px;padding:8px}
+.reorder-subtitle{font-size:11px;font-weight:800;color:#263244;padding:2px 3px 7px;display:flex;align-items:center;gap:5px}
+.reorder-subcard .stock-table{margin:0}
+@media(min-width:560px){.reorder-split-wrap{grid-template-columns:1fr 1fr}}
+</style>
 </head>
 <body>
 <div class="container">
@@ -528,9 +551,21 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
     <!-- RAW MATERIAL REORDER -->
     <div class="card">
       <div class="card-title"><h2>📦 Raw Material Reorder</h2><span>Tap material</span></div>
-      <div class="stock-table">
-        <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
-        <div id="stockList"><div class="empty">Loading...</div></div>
+      <div class="reorder-split-wrap">
+        <div class="reorder-subcard">
+          <div class="reorder-subtitle">🌾 Raw Materials</div>
+          <div class="stock-table">
+            <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
+            <div id="stockList"><div class="empty">Loading...</div></div>
+          </div>
+        </div>
+        <div class="reorder-subcard">
+          <div class="reorder-subtitle">🧪 Premixes</div>
+          <div class="stock-table">
+            <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
+            <div id="premixStockList"><div class="empty">Loading...</div></div>
+          </div>
+        </div>
       </div>
       
     </div>
@@ -638,7 +673,7 @@ function normalize(v){return clean(v).replace(/\s+/g," ").toUpperCase()}
 function num(v){const n=Number(v);return Number.isFinite(n)?n:null}
 function fmt(v){if(v===null||v===undefined||v==="")return"--";const n=Number(v);return Number.isFinite(n)?n.toLocaleString("en-IN",{maximumFractionDigits:2}):String(v)}
 function fmtMT(v){return v===null||v===undefined||v===""?"--":fmt(v)+" MT"}
-function isPremixProduct(name){return /\bPREMIX\b/i.test(clean(name));}
+function isPremixProduct(name){return /PREMIX/i.test(clean(name));}
 function isPremixMaterial(name){return isPremixProduct(name);}
 function fmtFeed(v,product){return v===null||v===undefined||v===""?"--":isPremixProduct(product)?fmt(v)+" KG":fmt(v)+" MT"}
 function feedValueInMT(v,product){const n=num(v)||0;return isPremixProduct(product)?n/1000:n;}
@@ -1337,14 +1372,22 @@ function stockStatus(closing,avg){
 }
 function renderStock(){
   const list=document.getElementById("stockList");
+  const premixList=document.getElementById("premixStockList");
   const mats=getMaterials();
-  list.innerHTML=mats.slice().sort((a,b)=>{const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;return (bv>0)-(av>0)||bv-av}).map(m=>{
+  const renderRows=(rows)=>rows.slice().sort((a,b)=>{
+    const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;
+    return (bv>0)-(av>0)||bv-av;
+  }).map(m=>{
     const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),s=stockStatus(closing,avg);
     const symbol=s.status==="REORDER"?"🔴":s.status==="WATCH"?"🟡":"🟢";
     return `<div class="stock-row" onclick="openMaterialDetails('${jsq(m)}')">
       <div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"}</small></div><span>${fmt(closing)} ${esc(x?.unit||"MT")}</span><span class="cover-cell">${s.cover!==null?fmt(s.cover)+" d":"--"}</span><span class="status-symbol ${s.cls}" title="${esc(s.status)}">${symbol}</span>
     </div>`;
   }).join("")||"<div class='empty'>No stock data</div>";
+  const rawMats=mats.filter(m=>!isPremixMaterial(m));
+  const premixMats=mats.filter(m=>isPremixMaterial(m));
+  if(list)list.innerHTML=renderRows(rawMats);
+  if(premixList)premixList.innerHTML=renderRows(premixMats);
 }
 function renderFeedUnit(){
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
@@ -2189,5 +2232,46 @@ window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPro
 async function installPWA(){if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById("installBtn").style.display="none"}
 if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(console.warn))}
 </script>
+
+<script id="raw-movement-premix-split-v1-js">
+/* UI-only grouping for Raw Material Movements. Existing calculations/API/data logic remain unchanged. */
+function renderRawCategory(tab){
+  const el=document.getElementById("rawCategoryList");
+  if(!el)return;
+  const mats=getMaterials();
+  let rows;
+  if(tab==="STOCK") rows=mats.map(m=>({m,v:num(getMaterial(m)?.closing)||0})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
+  else rows=mats.map(m=>({m,v:rawTotal(m,tab)})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
+
+  const rawRows=rows.filter(x=>! /PREMIX/i.test(clean(x.m)));
+  const premixRows=rows.filter(x=>/PREMIX/i.test(clean(x.m)));
+  const limit=rawMovementExpanded?Infinity:25;
+  const rawVisible=rawRows.slice(0,limit);
+  const premixVisible=premixRows.slice(0,limit);
+
+  const renderGroup=(title,subtitle,list)=>{
+    if(!list.length)return `<div class="raw-movement-group"><div class="raw-movement-group-title"><strong>${title}</strong><span>0 items</span></div><div class="empty" style="padding:8px 2px;font-size:9px">No data</div></div>`;
+    const body=list.map(({m,v})=>{
+      if(tab==="STOCK"){
+        const x=getMaterial(m);
+        return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for details</small></div></div>`;
+      }
+      const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;
+      return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • details</small></div></div>`;
+    }).join("");
+    return `<div class="raw-movement-group"><div class="raw-movement-group-title"><strong>${title}</strong><span>${list.length} items</span></div>${body}</div>`;
+  };
+
+  let html='<div class="raw-movement-groups">';
+  html+=renderGroup("🌾 Raw Materials","MT",rawVisible);
+  html+=renderGroup("🧪 Premixes","KG",premixVisible);
+  html+='</div>';
+
+  const hidden=(rawRows.length>25?rawRows.length-25:0)+(premixRows.length>25?premixRows.length-25:0);
+  if(hidden>0)html+=`<button class="more-toggle" onclick="toggleRawMovementMore()">${rawMovementExpanded?"Show less ↑":"More • "+hidden+" more ↓"}</button>`;
+  el.innerHTML=html;
+}
+</script>
+
 </body>
 </html>
