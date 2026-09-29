@@ -473,6 +473,7 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 .reorder-subcard{border:1px solid #e7ebf2;background:#fbfcfe;border-radius:13px;padding:8px}
 .reorder-subtitle{font-size:11px;font-weight:800;color:#263244;padding:2px 3px 7px;display:flex;align-items:center;gap:5px}
 .reorder-subcard .stock-table{margin:0}.reorder-subcard + .reorder-subcard{margin-top:0}.reorder-subcard + .reorder-subcard .reorder-subtitle{border-top:0}
+.reorder-single-wrap{width:100%}.reorder-section-title{font-size:12px;font-weight:800;color:#263244;padding:5px 3px 7px;display:flex;align-items:center;gap:5px}.premix-section-title{margin-top:12px;padding-top:12px;border-top:1px solid #e7ebf2}.premix-reorder-table{margin-top:0}
 @media(min-width:560px){.reorder-split-wrap{grid-template-columns:1fr}}
 </style>
 </head>
@@ -551,20 +552,16 @@ body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
     <!-- RAW MATERIAL REORDER -->
     <div class="card">
       <div class="card-title"><h2>📦 Raw Material Reorder</h2><span>Tap material</span></div>
-      <div class="reorder-split-wrap">
-        <div class="reorder-subcard">
-          <div class="reorder-subtitle">🌾 Raw Materials</div>
-          <div class="stock-table">
-            <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
-            <div id="stockList"><div class="empty">Loading...</div></div>
-          </div>
+      <div class="reorder-single-wrap">
+        <div class="reorder-section-title">🌾 Raw Materials</div>
+        <div class="stock-table">
+          <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
+          <div id="stockList"><div class="empty">Loading...</div></div>
         </div>
-        <div class="reorder-subcard">
-          <div class="reorder-subtitle">🧪 Premixes</div>
-          <div class="stock-table">
-            <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
-            <div id="premixStockList"><div class="empty">Loading...</div></div>
-          </div>
+        <div class="reorder-section-title premix-section-title">🧪 Premixes</div>
+        <div class="stock-table premix-reorder-table">
+          <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
+          <div id="premixStockList"><div class="empty">Loading...</div></div>
         </div>
       </div>
       
