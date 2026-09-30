@@ -689,3 +689,70 @@ select{border-color:#dfe5ee!important;box-shadow:0 2px 8px rgba(31,47,77,.04)}
   .card:before{margin:-10px 0 10px -10px}
 }
 @media(prefers-reduced-motion:reduce){.card{animation:none!important}}
+
+
+/* =========================================================
+   FULL UI RESPONSIVE POLISH v1
+   UI-only: preserves existing data/API/calculation logic.
+========================================================= */
+:root{--ui-bg:#f5f7fb;--ui-card:#fff;--ui-text:#172033;--ui-muted:#68758a;--ui-border:#e5eaf2;--ui-accent:#315fd6;--ui-shadow:0 8px 28px rgba(31,48,78,.07)}
+html{scroll-behavior:smooth}
+body{background:var(--ui-bg);color:var(--ui-text)}
+button{font-family:inherit;-webkit-tap-highlight-color:transparent}
+.card{box-shadow:var(--ui-shadow);border:1px solid rgba(225,231,240,.7)}
+.card-title h2{letter-spacing:-.2px}
+.quick,.mini,.control-item{transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.quick:active,.mini:active,.control-item:active,.nav-item:active{transform:scale(.98)}
+.quick:focus-visible,.mini:focus-visible,.control-item:focus-visible,button:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}
+.bottom-nav{z-index:50;padding-bottom:env(safe-area-inset-bottom,0);height:calc(64px + env(safe-area-inset-bottom,0))}
+.nav-item{min-width:58px;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:14px}
+.nav-item div{line-height:1}
+.nav-item small{font-size:10px;font-weight:600}
+.status-line{min-height:32px}
+.refresh,.install,.header-tool,.notify-btn,.date-strip>button{min-height:40px}
+.date-strip{position:sticky;top:8px;z-index:20;box-shadow:0 5px 20px rgba(30,45,70,.06)}
+.date-strip-main{min-height:48px}
+.empty{color:var(--ui-muted)}
+@media(min-width:761px){
+  body{padding-bottom:24px}
+  .container{max-width:1280px;padding:22px 24px 30px}
+  .header{padding:4px 2px 8px}
+  .header h1{font-size:28px}
+  .card{border-radius:20px;padding:16px;margin-bottom:14px}
+  .quick-grid{grid-template-columns:repeat(4,1fr);gap:12px}
+  .mini-grid{grid-template-columns:repeat(4,1fr);gap:12px}
+  .manager-quick-grid{grid-template-columns:repeat(4,1fr)!important}
+  .status-line{font-size:11px}
+  .bottom-nav{position:sticky!important;bottom:12px!important;left:auto!important;right:auto!important;margin:18px auto 0;max-width:620px;border-radius:20px;box-shadow:0 10px 32px rgba(30,45,70,.13)!important}
+}
+@media(min-width:1100px){
+  .container{max-width:1380px}
+  .header-actions{gap:10px}
+  .card-title h2{font-size:18px}
+  .quick strong{font-size:19px}
+}
+@media(max-width:760px){
+  .container{width:100%}
+  .card{overflow:hidden}
+  .date-strip{top:4px}
+}
+@media(max-width:520px){
+  .header h1{font-size:21px}
+  .header p{font-size:12px}
+  .status-line{gap:5px}
+  .refresh{padding:7px 9px}
+  .date-strip{border-radius:15px}
+  .date-strip-main strong{font-size:12px}
+  .date-strip-main small{font-size:9px}
+  .quick-grid,.mini-grid{gap:7px}
+  .quick,.mini{min-height:66px}
+  .card-title h2{font-size:16px}
+}
+@media(max-width:360px){
+  .header h1{font-size:19px}
+  .header-actions{gap:3px}
+  .header-tool,.notify-btn,.plant{width:34px!important;height:34px!important}
+  .nav-item{min-width:50px}
+  .nav-item small{font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
