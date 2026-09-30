@@ -756,3 +756,155 @@ button{font-family:inherit;-webkit-tap-highlight-color:transparent}
   .nav-item small{font-size:9px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* =====================================================
+   FULL UI RESPONSIVE REDESIGN v1
+   Visual/layout only — existing data/API/JS logic untouched.
+===================================================== */
+:root{
+  --ui-bg:#f4f6fa;
+  --ui-card:#ffffff;
+  --ui-text:#172033;
+  --ui-muted:#6b778c;
+  --ui-line:#e6eaf0;
+  --ui-accent:#315fd6;
+  --ui-accent-soft:#eef3ff;
+  --ui-radius:18px;
+}
+html{scroll-behavior:smooth}
+body{background:var(--ui-bg);color:var(--ui-text)}
+.container{max-width:1180px;padding:18px 20px 96px}
+.header{padding:4px 2px 8px;margin-bottom:10px}
+.header h1{font-size:25px!important;letter-spacing:-.35px}
+.header p{font-size:12px!important;color:var(--ui-muted)!important}
+.header-actions{gap:7px!important}
+.header-tool,.notify-btn,.plant{width:42px!important;height:42px!important;border:1px solid var(--ui-line)!important;background:#fff!important;box-shadow:0 3px 12px rgba(23,32,51,.055)!important}
+.status-line{background:#fff;border:1px solid var(--ui-line);border-radius:13px;padding:7px 9px;margin-bottom:10px;box-shadow:0 2px 9px rgba(23,32,51,.035)}
+.status-line .refresh,.status-line .install{border:1px solid var(--ui-line);background:#f8faff;padding:7px 11px;border-radius:9px;font-weight:650}
+.date-strip{margin-bottom:12px}
+.date-strip button,.date-strip-main{border:1px solid var(--ui-line)!important;box-shadow:0 3px 12px rgba(23,32,51,.045)!important}
+.card{border:1px solid var(--ui-line);border-radius:var(--ui-radius);box-shadow:0 5px 18px rgba(23,32,51,.045);padding:15px;margin-bottom:13px}
+.card-title{margin-bottom:11px!important}
+.card-title h2{font-size:17px!important;letter-spacing:-.15px}
+.card-title span{color:var(--ui-muted)!important;font-size:11px!important}
+.quick-grid{gap:9px!important}
+.quick{border:1px solid #edf0f5;background:#f8faff!important;min-height:72px;padding:10px 11px!important;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.quick:active{transform:scale(.985)}
+.quick p{font-size:10px!important;color:var(--ui-muted)!important}
+.quick strong{font-size:18px!important;line-height:1.2}
+.quick-kpi{background:linear-gradient(180deg,#f5f8ff,#f8faff)!important}
+.monthly-mix-grid{gap:10px!important}
+.mix-panel{border:1px solid var(--ui-line)!important;border-radius:14px!important;background:#fbfcfe!important}
+.desktop-grid{gap:13px!important}
+.stock-row{border-bottom:1px solid #eef1f5!important}
+.stock-row:last-child{border-bottom:0!important}
+.stock-row .status-symbol{font-weight:800}
+.production-total{font-size:29px!important;font-variant-numeric:tabular-nums}
+.production-row{border-bottom:1px solid #eef1f5!important}
+.production-row:last-child{border-bottom:0!important}
+.section-tabs{position:sticky;top:0;z-index:3;background:#fff;padding:4px 0 8px}
+.section-tabs button{min-height:34px!important;padding:7px 11px!important;border:1px solid var(--ui-line)!important;background:#f7f9fc!important;border-radius:10px!important;font-weight:650!important}
+.section-tabs button.active{background:var(--ui-accent-soft)!important;color:var(--ui-accent)!important;border-color:#d9e3ff!important}
+.pp-grid{gap:9px!important}
+.trend-wrapper{gap:11px!important}
+.trend-card{border:1px solid var(--ui-line)!important;border-radius:15px!important;background:#fbfcfe!important;box-shadow:none!important;padding:11px!important}
+.trend-header h3{font-size:13px!important}
+.bottom-nav{border:1px solid var(--ui-line)!important;box-shadow:0 -6px 24px rgba(23,32,51,.09)!important;background:rgba(255,255,255,.96)!important}
+.nav-item{min-width:58px!important;min-height:56px!important;border-radius:13px!important;font-weight:650!important;transition:background .15s ease,color .15s ease}
+.nav-item div{font-size:21px!important;line-height:1.1!important;margin-bottom:3px}
+.nav-item.active{background:var(--ui-accent-soft)!important;color:var(--ui-accent)!important}
+.modal-box{border:1px solid var(--ui-line)!important;box-shadow:0 18px 50px rgba(23,32,51,.18)!important}
+
+/* Tablet */
+@media(min-width:700px) and (max-width:1099px){
+  .container{max-width:980px;padding:18px 22px 92px}
+  .manager-quick-grid{grid-template-columns:repeat(3,1fr)!important}
+  .monthly-mix-grid{grid-template-columns:repeat(2,1fr)!important}
+  .monthly-mix-grid .mix-panel:last-child{grid-column:1/-1}
+  .desktop-grid{grid-template-columns:1fr 1fr!important}
+  .card{padding:17px}
+  .quick{min-height:78px}
+  .quick strong{font-size:19px!important}
+  .feed-row,.production-row{min-height:48px!important}
+  .trend-wrapper{grid-template-columns:repeat(2,1fr)!important;overflow:visible!important}
+  .trend-card{min-width:0!important}
+  .dots{display:none!important}
+}
+
+/* Desktop */
+@media(min-width:1100px){
+  body{padding-bottom:24px}
+  .container{margin-left:104px;margin-right:24px;max-width:none;padding:22px 28px 30px}
+  .header{position:relative;padding-top:2px}
+  .header h1{font-size:28px!important}
+  .manager-quick-grid{grid-template-columns:repeat(5,1fr)!important}
+  .quick{min-height:88px!important;padding:13px!important}
+  .quick strong{font-size:21px!important}
+  .monthly-mix-grid{grid-template-columns:repeat(3,1fr)!important}
+  .desktop-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)!important}
+  .desktop-grid>.card{min-width:0}
+  .trend-wrapper{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible!important}
+  .trend-card{min-width:0!important}
+  .dots{display:none!important}
+  .bottom-nav{
+    position:fixed!important;left:16px!important;top:50%!important;bottom:auto!important;transform:translateY(-50%);
+    width:72px!important;height:auto!important;padding:10px 7px!important;
+    display:flex!important;flex-direction:column!important;gap:7px!important;
+    border-radius:20px!important;z-index:50!important;
+  }
+  .nav-item{width:58px!important;min-width:58px!important;min-height:62px!important;padding:8px 3px!important;font-size:10px!important}
+  .nav-item div{font-size:21px!important}
+  .header-actions{padding-right:2px}
+  .status-line{max-width:760px}
+}
+
+/* Large desktop */
+@media(min-width:1450px){
+  .container{margin-left:112px;padding-left:36px;padding-right:36px}
+  .manager-quick-grid{grid-template-columns:repeat(9,1fr)!important}
+  .quick{min-height:92px!important}
+  .trend-wrapper{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+
+/* Mobile — keep dense but highly tappable */
+@media(max-width:699px){
+  .container{padding:12px 10px 92px}
+  .header{align-items:flex-start}
+  .header h1{font-size:21px!important}
+  .header p{font-size:11px!important}
+  .header-actions{gap:4px!important}
+  .header-tool,.notify-btn,.plant{width:36px!important;height:36px!important;font-size:18px!important}
+  .status-line{font-size:9px;padding:6px 7px}
+  .status-line .refresh,.status-line .install{padding:6px 8px;font-size:10px}
+  .date-strip{grid-template-columns:34px 1fr 34px;gap:5px}
+  .date-strip button{height:35px}
+  .card{padding:12px!important;border-radius:16px!important;margin-bottom:9px!important}
+  .card-title h2{font-size:15px!important}
+  .card-title span{font-size:9px!important}
+  .manager-quick-grid{grid-template-columns:repeat(2,1fr)!important}
+  .quick{min-height:67px!important;padding:9px!important;border-radius:12px!important}
+  .quick strong{font-size:16px!important}
+  .monthly-mix-grid{grid-template-columns:1fr!important}
+  .monthly-mix-grid .mix-panel{min-height:0}
+  .desktop-grid{grid-template-columns:1fr!important}
+  .section-tabs{overflow-x:auto;display:flex;gap:5px;scrollbar-width:none}
+  .section-tabs::-webkit-scrollbar{display:none}
+  .section-tabs button{flex:0 0 auto}
+  .trend-wrapper{overflow-x:auto!important;scroll-snap-type:x mandatory;gap:9px!important}
+  .trend-card{scroll-snap-align:start!important;min-width:91%!important}
+  .bottom-nav{height:68px!important;padding:5px 4px!important}
+  .nav-item{min-height:57px!important;font-size:9px!important}
+  .nav-item div{font-size:20px!important}
+}
+
+@media(max-width:380px){
+  .header-actions .header-tool:first-child{display:none}
+  .quick{min-height:64px!important}
+  .quick strong{font-size:15px!important}
+  .nav-item{min-width:54px!important}
+}
+
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .quick,.nav-item{transition:none!important}
+}
