@@ -38,7 +38,7 @@
 
   <!-- MANAGEMENT QUICK VIEW -->
   <div class="card">
-    <div class="card-title"><h2>⚡ Management Quick View</h2><span>Tap for details</span></div>
+    <div class="card-title"><h2>⚡ Management Quick View</h2><span id="dateQuickView">Data: --</span></div>
     <div class="quick-grid manager-quick-grid">
       <div class="quick quick-kpi" onclick="openFeedTotals('production_day')"><p>Day Production</p><strong id="qProdDay">-- MT</strong><div class="spark" id="sparkProd"></div></div>
       <div class="quick" onclick="openFeedTotals('production_month')"><p>Month Production</p><strong id="qProdMonth">-- MT</strong></div>
@@ -54,14 +54,14 @@
 
   <!-- BOMMAKAL PREMIX TRANSFERS -->
   <div class="card premix-card" id="premixTransferCard">
-    <div class="card-title"><h2>🧪 Premixes</h2><span>Transferred from Bommakal • KG</span></div>
+    <div class="card-title"><h2>🧪 Premixes</h2><span id="datePremix">Data: --</span></div>
     <div id="premixTransferList"><div class="empty">Loading...</div></div>
   </div>
 
   <!-- MONTHLY MIX & CONTRIBUTION -->
   <div class="card monthly-mix-card" id="monthlyMixSection">
     <div class="card-title">
-      <div><h2>📊 Monthly Mix &amp; Contribution</h2><span>Top 5 • Monthly % share</span></div>
+      <div><h2>📊 Monthly Mix &amp; Contribution</h2><span id="dateMonthlyMix">Month: --</span></div>
       <select id="mixMonthSelect" class="mix-month-select" onchange="setMixMonth(this.value)"></select>
     </div>
     <div class="monthly-mix-grid">
@@ -84,16 +84,14 @@
   <div class="desktop-grid">
     <!-- RAW MATERIAL REORDER -->
     <div class="card">
-      <div class="card-title"><h2>📦 Raw Material Reorder</h2><span>Tap material</span></div>
+      <div class="card-title"><h2>📦 Raw Material Reorder</h2><span id="dateRawReorder">Data: --</span></div>
       <div class="reorder-single-wrap">
         <div class="reorder-section-title">🌾 Raw Materials</div>
-        <div class="stock-table">
-          <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
+        <div class="stock-table reorder-card-list">
           <div id="stockList"><div class="empty">Loading...</div></div>
         </div>
         <div class="reorder-section-title premix-section-title">🧪 Premixes</div>
-        <div class="stock-table premix-reorder-table">
-          <div class="stock-head"><span>Material / Avg Day</span><span>Stock</span><span>Cover</span><span>Status</span></div>
+        <div class="stock-table premix-reorder-table reorder-card-list">
           <div id="premixStockList"><div class="empty">Loading...</div></div>
         </div>
       </div>
@@ -102,7 +100,7 @@
 
     <!-- PRODUCTION -->
     <div class="card">
-      <div class="card-title"><h2>🏭 Production</h2><span>Actual output in Bags</span></div>
+      <div class="card-title"><h2>🏭 Production</h2><span id="dateProduction">Data: --</span></div>
       <div class="production-total" id="productionTotalMain">-- Bags</div>
       <div class="production-label">Actual Production</div>
       <div id="productionList"><div class="empty">Loading...</div></div>
@@ -112,13 +110,13 @@
 
   <!-- FEED UNIT -->
   <div class="card">
-    <div class="card-title"><h2>🌾 Feed Unit</h2><span>Product-wise details</span></div>
+    <div class="card-title"><h2>🌾 Feed Unit</h2><span id="dateFeedUnit">Data: --</span></div>
     <div id="feedUnitList"><div class="empty">Loading...</div></div>
   </div>
 
   <!-- RAW MATERIAL MOVEMENTS -->
   <div class="card">
-    <div class="card-title"><h2>📋 Raw Material Movements</h2><span>Material-wise</span></div>
+    <div class="card-title"><h2>📋 Raw Material Movements</h2><span id="dateRawMovements">Data: --</span></div>
     <div class="section-tabs">
       <button class="active" onclick="setRawTab(this,'STOCK')">Stock</button>
       <button onclick="setRawTab(this,'CONSUMPTION')">Consumption</button>
@@ -133,22 +131,34 @@
 
     <!-- PP BAGS -->
     <div class="card">
-      <div class="card-title"><h2>🛍 PP Bags</h2><span>Tap product</span></div>
+      <div class="card-title"><h2>🛍 PP Bags</h2><span id="datePPBags">Data: --</span></div>
       <div class="pp-grid" id="bagGrid"><div class="empty">Loading...</div></div>
     </div>
 
+  <!-- SPARE PARTS -->
+  <div class="card spare-parts-card" id="sparePartsSection">
+    <div class="card-title"><div><h2>🔧 Spare Parts</h2><span id="dateSpareParts">Data: --</span></div><button class="spare-refresh-btn" onclick="loadSpareParts(true)">↻ Refresh</button></div>
+    <div class="section-tabs spare-tabs">
+      <button class="active" onclick="setSpareTab(this,'SPARE_STOCK')">Stock</button>
+      <button onclick="setSpareTab(this,'SPARE_ORDERS')">Orders</button>
+      <button onclick="setSpareTab(this,'EMPLOYEE_MESSAGES')">Employee Messages</button>
+    </div>
+    <div class="spare-search-wrap"><input id="spareSearch" class="search-input" placeholder="Search spare parts..." oninput="renderSpareParts(this.value)"></div>
+    <div id="sparePartsList"><div class="empty">Loading spare parts...</div></div>
+  </div>
+
   <!-- TRENDS -->
   <div class="card" id="trendsSection">
-    <div class="card-title"><h2>📊 Trends</h2><span>Swipe →</span></div>
+    <div class="card-title"><h2>📊 Trends</h2><span id="dateTrends">Data through: --</span></div>
     <div class="trend-wrapper" id="trendWrapper">
-      <div class="trend-card"><div class="trend-header"><div><h3>📦 Raw Material Consumption</h3><small>Daily movement</small></div><select id="materialSelect" onchange="drawMaterialChart(this.value)"></select></div><canvas id="materialChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>📥 Purchase / Received Trend</h3><small>Daily movement</small></div></div><canvas id="purchaseChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>📦 Closing Stock Trend</h3><small>Daily movement</small></div></div><canvas id="closingChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>🏭 Production Trend</h3><small>Bags • available days</small></div></div><canvas id="productionChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>📈 Output % Trend</h3><small>Production records</small></div></div><canvas id="outputChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>⚙ Process Loss Trend</h3><small>Production records</small></div></div><canvas id="lossChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>🌾 Feed Unit Production / Dispatch</h3><small>MT • available days</small></div></div><canvas id="feedChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>🛍 PP Bags Issue / Damage</h3><small>Available records</small></div></div><canvas id="bagChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>📦 Raw Material Consumption</h3><small id="trendDateMaterial">Data: --</small></div><select id="materialSelect" onchange="drawMaterialChart(this.value)"></select></div><canvas id="materialChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>📥 Purchase / Received Trend</h3><small id="trendDatePurchase">Data: --</small></div></div><canvas id="purchaseChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>📦 Closing Stock Trend</h3><small id="trendDateClosing">Data: --</small></div></div><canvas id="closingChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>🏭 Production Trend</h3><small id="trendDateProduction">Data through: --</small></div></div><canvas id="productionChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>📈 Output % Trend</h3><small id="trendDateOutput">Data through: --</small></div></div><canvas id="outputChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>⚙ Process Loss Trend</h3><small id="trendDateLoss">Data through: --</small></div></div><canvas id="lossChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>🌾 Feed Unit Production / Dispatch</h3><small id="trendDateFeed">Data through: --</small></div></div><canvas id="feedChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>🛍 PP Bags Issue / Damage</h3><small id="trendDateBags">Data through: --</small></div></div><canvas id="bagChart"></canvas></div>
     </div>
     <div class="dots" id="trendDots"></div>
   </div>
@@ -158,6 +168,7 @@
     <div class="nav-item" onclick="openStockDetails()"><div>📦</div>Stock</div>
     <div class="nav-item" onclick="openProductionDetails()"><div>🏭</div>Production</div>
     <div class="nav-item" onclick="openPPBagDetails()"><div>🛍</div>PP Bags</div>
+    <div class="nav-item" onclick="goSpareParts()"><div>🔧</div>Spares</div>
     <div class="nav-item" onclick="goTrend()"><div>📊</div>Reports</div>
   </div>
 </div>

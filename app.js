@@ -3,6 +3,7 @@
    WORKING GOOGLE APPS SCRIPT URL — KEEP UNCHANGED • UI REFINEMENT
 ===================================================== */
 const API_URL="https://script.google.com/macros/s/AKfycbxhiO5LAGwqkvDHW9DjH8jynYzYlyjAvNxgYlV9J3Y1GGZJxGb_3oXCvk-Bzefp74oa/exec";
+const SPARE_PARTS_API="https://script.google.com/macros/s/AKfycbweDXm7if7XuHwAUju9WkIkNXkg0CakJJ9mmEBkQBwuQVuyYC9YkxjClVvovSSjv320/exec";
 
 /* =====================================================
    SETTINGS
@@ -562,6 +563,90 @@ function openMonthlyMixDetails(type){
   showModal(title+" • "+label,html);
 }
 
+function formatSectionDate(v){
+  const d=dateOnly(v);
+  if(!d)return "Data: --";
+  const m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m)return "Data: "+d;
+  const names=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `Data: ${m[3]}-${names[Number(m[2])-1]||m[2]}-${m[1]}`;
+}
+function latestDateFromRows(rows, keys=[]){
+  const dates=[];
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    if(!r)return;
+    keys.forEach(k=>{if(r[k]){const d=dateOnly(r[k]);if(d)dates.push(d)}});
+  });
+  return dates.sort().pop()||"";
+}
+function latestStockDataDate(){
+  const dates=[];
+  (DATA.stock||[]).forEach(r=>{
+    [r.report_date,r.Report_Date,r.date,r.DATE].forEach(v=>{const d=dateOnly(v);if(d)dates.push(d)});
+    (r.transactions||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)dates.push(d)});
+  });
+  (DATA.stockHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);if(d)dates.push(d)});
+  return dates.sort().pop()||"";
+}
+function latestProductionDataDate(){
+  const dates=[];
+  (DATA.production||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);if(d)dates.push(d)});
+  (DATA.productionHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);if(d)dates.push(d)});
+  (DATA.productionTrend||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);if(d)dates.push(d)});
+  return dates.sort().pop()||"";
+}
+function latestFeedUnitDataDate(){
+  return latestDateFromRows(DATA.feedUnitData,["report_date","Report_Date","date","DATE"])||latestDateFromRows(DATA.feedUnitTotals,["report_date","Report_Date","date","DATE"]);
+}
+function latestPPBagDataDate(){
+  const a=latestDateFromRows(DATA.bags,["report_date","Report_Date","date","DATE"]);
+  const b=latestDateFromRows(DATA.bagsHistory,["report_date","Report_Date","date","DATE"]);
+  return [a,b].filter(Boolean).sort().pop()||"";
+}
+function latestTrendDataDate(){
+  return [latestStockDataDate(),latestProductionDataDate(),latestFeedUnitDataDate(),latestPPBagDataDate(),dateOnly(DATA.report_date)].filter(Boolean).sort().pop()||"";
+}
+function latestSpareDataDate(tab=spareTab){
+  const rows=Array.isArray(SPARE_DATA[tab])?SPARE_DATA[tab]:[];
+  const dates=[];
+  rows.forEach(r=>{
+    Object.keys(r||{}).forEach(k=>{
+      const nk=normalize(k);
+      if(nk.includes("DATE")||nk.includes("UPDATED")){
+        const d=dateOnly(r[k]);if(d)dates.push(d);
+      }
+    });
+  });
+  return dates.sort().pop()||"";
+}
+function updateSectionDates(){
+  const selected=VIEW_DATE?dateOnly(VIEW_DATE):"";
+  const stockDate=selected||latestStockDataDate()||dateOnly(DATA.report_date);
+  const prodDate=selected||latestProductionDataDate()||dateOnly(DATA.report_date);
+  const feedDate=selected||latestFeedUnitDataDate()||dateOnly(DATA.report_date);
+  const bagDate=selected||latestPPBagDataDate()||dateOnly(DATA.report_date);
+  const trendDate=selected||latestTrendDataDate()||dateOnly(DATA.report_date);
+  setText("dateQuickView",formatSectionDate(selected||dateOnly(DATA.report_date)||trendDate));
+  setText("datePremix",formatSectionDate(selected||latestBommakalDate()||dateOnly(DATA.report_date)));
+  setText("dateMonthlyMix",MIX_MONTH?`Month: ${monthLabel(MIX_MONTH)}`:"Month: --");
+  setText("dateRawReorder",formatSectionDate(stockDate));
+  setText("dateProduction",formatSectionDate(prodDate));
+  setText("dateFeedUnit",formatSectionDate(feedDate));
+  setText("dateRawMovements",formatSectionDate(stockDate));
+  setText("datePPBags",formatSectionDate(bagDate));
+  setText("dateTrends",trendDate?`Data through: ${formatSectionDate(trendDate).replace(/^Data: /,"")}`:"Data through: --");
+  const spareDate=latestSpareDataDate(spareTab);
+  setText("dateSpareParts",spareDate?formatSectionDate(spareDate):"Data: --");
+  setText("trendDateMaterial",formatSectionDate(stockDate));
+  setText("trendDatePurchase",formatSectionDate(stockDate));
+  setText("trendDateClosing",formatSectionDate(stockDate));
+  setText("trendDateProduction",trendDate?`Data through: ${formatSectionDate(trendDate).replace(/^Data: /,"")}`:"Data through: --");
+  setText("trendDateOutput",formatSectionDate(prodDate));
+  setText("trendDateLoss",formatSectionDate(prodDate));
+  setText("trendDateFeed",formatSectionDate(feedDate));
+  setText("trendDateBags",formatSectionDate(bagDate));
+}
+
 function renderDashboard(){
   renderSmartHeader();
   renderQuick();
@@ -575,6 +660,7 @@ function renderDashboard(){
   renderAlerts();
   renderRawCategory("STOCK");
   renderTrends();
+  updateSectionDates();
 }
 
 
@@ -836,6 +922,7 @@ function trendClosing(){
    NAVIGATION
 ===================================================== */
 function goHome(){window.scrollTo({top:0,behavior:"smooth"})}
+function goSpareParts(){document.getElementById("sparePartsSection")?.scrollIntoView({behavior:"smooth",block:"start"});loadSpareParts(false)}
 function goTrend(){document.getElementById("trendsSection").scrollIntoView({behavior:"smooth"})}
 
 
@@ -1003,7 +1090,8 @@ function renderStock(){
   const list=document.getElementById("stockList"),premixList=document.getElementById("premixStockList"),mats=getMaterials();
   const renderRows=(rows)=>rows.slice().sort((a,b)=>{const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;return (bv>0)-(av>0)||bv-av;}).map(m=>{
     const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),st=stockStatus(closing,avg),unit=x?.unit||"MT";
-    return `<div class="stock-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"} ${esc(unit)}</small></div><span>${fmt(closing)} ${esc(unit)}</span><span class="cover-cell">${st.cover!==null?fmt(st.cover)+" d":"--"}</span><span class="${st.cls} status-text">${esc(st.status)}</span></div>`;
+    const dot=st.status==="REORDER"?"🔴":st.status==="WATCH"?"🟡":st.status==="OK"?"🟢":"⚪";
+    return `<div class="stock-row reorder-card" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-card-top"><strong class="reorder-material">${esc(m)}</strong><span class="status-dot ${st.cls}" title="${esc(st.status)}" aria-label="${esc(st.status)}"></span></div><div class="reorder-card-metrics"><span><b>Stock</b><strong>${fmt(closing)} ${esc(unit)}</strong></span><span><b>Avg/day</b><strong>${avg?fmt(avg):"--"} ${esc(unit)}</strong></span><span><b>Cover</b><strong>${st.cover!==null?fmt(st.cover)+" d":"--"}</strong></span></div></div>`;
   }).join("")||"<div class='empty'>No stock data for this date</div>";
   const rawMats=mats.filter(m=>!isPremixMaterial(m));
   const premixMats=mats.filter(m=>isPremixMaterial(m));
@@ -1308,20 +1396,115 @@ function renderDataQualityPanel(){
   host.innerHTML=`<div class="card control-card" id="dataQualityPanel"><div class="card-title"><h2>🛡 Data Health &amp; Issues</h2><span>Quality • Accuracy • Issues</span></div><div class="control-grid"><button class="control-item" onclick="openDQDuplicates()"><small>🔁 Duplicate Transactions</small><strong>${dup.length}</strong></button><button class="control-item" onclick="openDQUnknown()"><small>❓ Unknown Transactions</small><strong>${unk.length}</strong></button><button class="control-item" onclick="openDQContinuity()"><small>🔗 Opening → Closing</small><strong>${cont.length}</strong></button><button class="control-item" onclick="openDQAbnormal()"><small>⚠ Abnormal Activity</small><strong>${ab.length}</strong></button><button class="control-item" onclick="openDQHistory()"><small>📈 Historical Trend</small><strong>${getMaterials().length}</strong></button><button class="control-item" onclick="openDQCoverage()"><small>🎯 Coverage</small><strong>${cov.filter(x=>x.percent===100).length}/${cov.length}</strong></button></div><div class="health-strip" onclick="openDataHealth()"><span>⚠ Data Issues</span><b>${badDataIssueCount()}</b> <span>View details →</span></div><div class="small-note">Consumption spelling variations are automatically treated as Consumption; only genuinely unrecognized transaction names are shown as Unknown.</div></div>`;
 }
 function ensureDataQualityHost(){
-  const bagGrid=document.getElementById("bagGrid");if(!bagGrid)return;
-  const bagCard=bagGrid.closest(".card");if(!bagCard)return;
+  const premixCard=document.getElementById("premixTransferCard");
+  if(!premixCard)return;
   let host=document.getElementById("dataQualityPanelHost");
-  if(!host){host=document.createElement("div");host.id="dataQualityPanelHost";bagCard.parentNode.insertBefore(host,bagCard.nextSibling)}
+  if(!host){
+    host=document.createElement("div");
+    host.id="dataQualityPanelHost";
+    premixCard.parentNode.insertBefore(host,premixCard.nextSibling);
+  }
   renderDataQualityPanel();
 }
 const __dqBaseRenderControlCenter=renderControlCenter;
 renderControlCenter=function(){__dqBaseRenderControlCenter();ensureDataQualityHost()};
 
 /* =====================================================
+   SPARE PARTS — ADDITIVE SEPARATE API / UI
+   Existing Feed Plant API and logic remain unchanged.
+===================================================== */
+let SPARE_DATA={SPARE_STOCK:[],SPARE_ORDERS:[],EMPLOYEE_MESSAGES:[]};
+let spareTab="SPARE_STOCK";
+
+function spareVal(row, keys){
+  for(const k of keys){ if(row && row[k]!==undefined && row[k]!==null && row[k]!=="") return row[k]; }
+  return "";
+}
+function spareText(v){return clean(v);}
+function setSpareTab(btn,tab){
+  document.querySelectorAll('.spare-tabs button').forEach(x=>x.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  spareTab=tab;
+  const input=document.getElementById('spareSearch');
+  if(input)input.value="";
+  renderSpareParts("");
+}
+function renderSpareParts(query=""){
+  const el=document.getElementById('sparePartsList');
+  if(!el)return;
+  const q=normalize(query);
+  const rows=Array.isArray(SPARE_DATA[spareTab])?SPARE_DATA[spareTab]:[];
+  const filtered=q?rows.filter(r=>normalize(Object.values(r||{}).join(" ")).includes(q)):rows;
+  updateSectionDates();
+  if(!filtered.length){el.innerHTML=`<div class="empty">No ${spareTab==='SPARE_STOCK'?'spare stock':spareTab==='SPARE_ORDERS'?'orders':'employee messages'} found.</div>`;return;}
+
+  if(spareTab==='SPARE_STOCK'){
+    el.innerHTML=filtered.map(r=>{
+      const name=spareVal(r,['NAME','Name','PART_NAME','Part_Name','PART NAME'])||'Unnamed Part';
+      const category=spareVal(r,['CATEGORY','Category']);
+      const size=spareVal(r,['SIZE','Size']);
+      const code=spareVal(r,['CODE','Code']);
+      const stock=spareVal(r,['STOCK','Stock']);
+      const unit=spareVal(r,['UNIT','Unit'])||'Nos';
+      const reorder=spareVal(r,['REORDER_LEVEL','Reorder_Level','REORDER LEVEL']);
+      const location=spareVal(r,['LOCATION','Location']);
+      const n=num(stock), rl=num(reorder);
+      const low=rl!==null && n!==null && n<=rl;
+      return `<div class="spare-stock-row ${low?'spare-low-stock':''}">
+        <div class="spare-main"><strong>${esc(name)}</strong><small>${esc(category||'')}${size?' • '+esc(size):''}${code?' • Code: '+esc(code):''}</small></div>
+        <div class="spare-stock-right"><strong>${esc(fmt(stock))}</strong><small>${esc(unit)}${low?' • Reorder':''}</small></div>
+        ${location?`<div class="spare-location">📍 ${esc(location)}</div>`:''}
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  if(spareTab==='SPARE_ORDERS'){
+    el.innerHTML=filtered.map(r=>{
+      const date=spareVal(r,['DATE','Date']);
+      const title=spareVal(r,['ORDER_TITLE','Order_Title','ORDER TITLE']);
+      const msg=spareVal(r,['ORDER_MESSAGE','Order_Message','ORDER MESSAGE','MESSAGE','Message']);
+      const status=spareVal(r,['STATUS','Status']);
+      return `<div class="spare-message-card"><div class="spare-message-head"><strong>${esc(title||'Spare Parts Order')}</strong><small>${esc(date)}</small></div>${status?`<span class="spare-status">${esc(status)}</span>`:''}<div class="spare-message-body">${esc(msg||'')}</div></div>`;
+    }).join('');
+    return;
+  }
+
+  el.innerHTML=filtered.map(r=>{
+    const date=spareVal(r,['DATE','Date']);
+    const employee=spareVal(r,['EMPLOYEE','Employee','EMPLOYEE_NAME','Employee_Name']);
+    const msg=spareVal(r,['MESSAGE','Message','EMPLOYEE_MESSAGE','Employee_Message']);
+    const category=spareVal(r,['CATEGORY','Category']);
+    const status=spareVal(r,['STATUS','Status']);
+    return `<div class="spare-message-card"><div class="spare-message-head"><strong>${esc(employee||'Employee Message')}</strong><small>${esc(date)}</small></div>${category?`<div class="spare-message-meta">${esc(category)}${status?' • '+esc(status):''}</div>`:''}<div class="spare-message-body">${esc(msg||'')}</div></div>`;
+  }).join('');
+}
+async function loadSpareParts(showToastOnSuccess=false){
+  const el=document.getElementById('sparePartsList');
+  if(el && !showToastOnSuccess)el.innerHTML='<div class="empty">Loading spare parts...</div>';
+  try{
+    const response=await fetch(SPARE_PARTS_API+`?t=${Date.now()}`,{cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const data=await response.json();
+    SPARE_DATA={
+      SPARE_STOCK:Array.isArray(data.SPARE_STOCK)?data.SPARE_STOCK:[],
+      SPARE_ORDERS:Array.isArray(data.SPARE_ORDERS)?data.SPARE_ORDERS:[],
+      EMPLOYEE_MESSAGES:Array.isArray(data.EMPLOYEE_MESSAGES)?data.EMPLOYEE_MESSAGES:[]
+    };
+    renderSpareParts(document.getElementById('spareSearch')?.value||'');
+    if(showToastOnSuccess)showToast('Spare Parts updated');
+  }catch(error){
+    console.error('Spare Parts API:',error);
+    if(el)el.innerHTML='<div class="error-box">❌ Spare Parts API connection failed.</div>';
+  }
+}
+
+/* =====================================================
    START
 ===================================================== */
 restoreCache();
 refreshData();
+loadSpareParts();
 
 /* PWA */
 let deferredPrompt=null;
