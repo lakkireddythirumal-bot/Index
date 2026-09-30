@@ -94,9 +94,12 @@ function fmtBags(v){return v===null||v===undefined||v===""?"--":fmt(v)+" Bags"}
 function esc(v){return clean(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;")}
 function jsq(v){return clean(v).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
 function txName(v){return clean(v).replace(/\s+/g," ")}
-function getMaterials(){return [...new Set(DATA.stock.map(x=>clean(x.material)).filter(Boolean))]}
-function getMaterial(material){return DATA.stock.find(x=>normalize(x.material)===normalize(material))||null}
-function transactions(material){const x=getMaterial(material);return x&&Array.isArray(x.transactions)?x.transactions:[]}
+
+
+
+
+
+
 function tType(t){return normalize(t.transaction||t.type||t.movement||"")}
 function tVal(t){return Math.abs(num(t.for_day??t.value??t.quantity??t.qty??0)||0)}
 function rowDate(t){return clean(t.report_date||t.date||t.Report_Date||"")}
@@ -110,30 +113,12 @@ function feedField(r,key){
   for(const k of (map[key]||[key])){const v=num(r?.[k]);if(v!==null)return v;}
   return null;
 }
-function latestFeedRows(){
-  const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
-  const latest={};
-  rows.forEach(r=>{
-    const p=clean(r.Product||r.product);
-    if(p)latest[normalize(p)]=r;
-  });
-  return Object.values(latest);
-}
-function latestTotal(key){
-  // Calculate from the latest record of each product.
-  // PREMIX values are stored in KG, so convert KG -> MT only for the total.
-  return latestFeedRows().reduce((sum,r)=>{
-    const product=r.Product||r.product||"";
-    return sum+feedValueInMT(feedField(r,key),product);
-  },0);
-}
-function latestFeedClosingTotal(){
-  return latestFeedRows().reduce((sum,r)=>{
-    const product=r.Product||r.product||"";
-    const v=num(r.Closing_Day_MT??r.closing_day_mt??r.Closing_Day??r.closing_day??r.Closing??r.closing);
-    return sum+feedValueInMT(v,product);
-  },0);
-}
+
+
+
+
+
+
 function feedClosingBagSize(product){
   const name=String(product||"").toUpperCase();
   if(/\bLOOSE\b/.test(name))return null;
@@ -374,30 +359,10 @@ function abnormalConsumptionItems(){
   });
   return out.sort((a,b)=>b.ratio-a.ratio);
 }
-function dailyControlMetrics(){
-  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER").length;
-  const mismatches=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length;
-  const abnormal=abnormalConsumptionItems().length;
-  const outs=DATA.production.map(r=>num(r.output_percentage)).filter(v=>v!==null);
-  const losses=DATA.production.map(r=>num(r.process_loss)).filter(v=>v!==null);
-  const premix=premixBommakalTransfers().reduce((a,r)=>a+r.value,0)/1000;
-  const damage=DATA.bags.reduce((a,r)=>a+(num(r.damage)||0),0);
-  return {reorder,mismatches,abnormal,efficiency:outs.length?outs.reduce((a,b)=>a+b,0)/outs.length:null,loss:losses.length?losses.reduce((a,b)=>a+b,0)/losses.length:null,premix,damage};
-}
-function renderControlCenter(){
-  const m=dailyControlMetrics();
-  setText("controlDate",DATA.report_date?String(DATA.report_date):"Latest data");
-  setText("ctlReorder",String(m.reorder));
-  setText("ctlMismatch",String(m.mismatches+(m.abnormal?m.abnormal:0)));
-  setText("ctlEfficiency",m.efficiency===null?"--":fmt(m.efficiency)+"%");
-  setText("ctlLoss",m.loss===null?"--":fmt(m.loss)+"%");
-  setText("ctlPremix",fmt(m.premix)+" MT");
-  setText("ctlBagDamage",fmt(m.damage));
-  const problems=m.reorder+m.mismatches+m.abnormal;
-  const h=document.getElementById("healthIcon"),t=document.getElementById("healthText");
-  if(problems===0){if(h)h.textContent="✓";if(t)t.textContent="Data Issues • No issues detected";}
-  else {if(h)h.textContent="⚠";if(t)t.textContent=`Data Issues • ${problems} item${problems===1?"":"s"} need checking`;}
-}
+
+
+
+
 function duplicateTransactionCount(){let count=0;getMaterials().forEach(m=>{const seen=new Set();transactions(m).forEach(t=>{const key=[dateOnly(rowDate(t)),tType(t),tVal(t),clean(t.for_day),clean(t.for_month),clean(t.for_year)].join("|");if(seen.has(key))count++;else seen.add(key);});});return count;}
 function openDataHealth(){
   const rec=reconciliationItems(),bad=rec.filter(x=>x.r.status==="MISMATCH"),no=rec.filter(x=>x.r.status==="NO DATA");
@@ -493,35 +458,12 @@ function showToast(msg){
   if(!t){t=document.createElement("div");t.id="dashToast";t.style.cssText="position:fixed;left:50%;bottom:82px;transform:translateX(-50%);background:#202938;color:#fff;padding:9px 13px;border-radius:12px;font-size:11px;z-index:900;box-shadow:0 5px 20px rgba(0,0,0,.2)";document.body.appendChild(t);}
   t.textContent=msg;t.style.display="block";clearTimeout(window.__toastTimer);window.__toastTimer=setTimeout(()=>t.style.display="none",1800);
 }
-function getAvailableDates(){
-  const s=new Set();
-  DATA.stock.forEach(x=>(x.transactions||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)s.add(d)}));
-  DATA.production.forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||DATA.report_date);if(d)s.add(d)});
-  DATA.bags.forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||DATA.report_date);if(d)s.add(d)});
-  DATA.feedUnitData.forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)s.add(d)});
-  if(DATA.report_date)s.add(dateOnly(DATA.report_date));
-  return [...s].filter(Boolean).sort().reverse();
-}
-function openDateSelector(){
-  const dates=getAvailableDates();
-  const html=`<div class="detail-section"><h3>📅 Available report dates</h3><div class="small-note">Select a date to inspect the historical records available for that day.</div><div class="date-list">${dates.map(d=>`<button class="date-btn" onclick="openDateSummary('${jsq(d)}')"><strong>${esc(d)}</strong><small>View available data →</small></button>`).join("")||"<div class='empty'>No dated records available.</div>"}</div></div>`;
-  showModal("Date Selector",html);
-}
-function openDateSummary(date){
-  const stockRows=[];
-  getMaterials().forEach(m=>{
-    const ts=transactions(m).filter(t=>dateOnly(rowDate(t))===date);
-    if(ts.length)stockRows.push({m,ts});
-  });
-  const cons=stockRows.reduce((a,x)=>a+x.ts.filter(t=>tType(t).includes("CONSUMPTION")).reduce((s,t)=>s+materialValueInMT(tVal(t),x.m),0),0);
-  const rec=stockRows.reduce((a,x)=>a+x.ts.filter(t=>["PURCHASE","RECEIVED"].includes(tType(t))).reduce((s,t)=>s+materialValueInMT(tVal(t),x.m),0),0);
-  const feed=DATA.feedUnitData.filter(r=>dateOnly(r.report_date||r.Report_Date)===date);
-  const prod=DATA.production.filter(r=>dateOnly(r.report_date||r.Report_Date||DATA.report_date)===date);
-  const bags=DATA.bags.filter(r=>dateOnly(r.report_date||r.Report_Date||DATA.report_date)===date);
-  let html=`<div class="detail-section"><h3>📅 ${esc(date)}</h3>${detail("Recorded RM Consumption",fmt(cons)+" MT")}${detail("RM Received",fmt(rec)+" MT")}${detail("Feed Unit records",feed.length)}${detail("Production records",prod.length)}${detail("PP Bag records",bags.length)}</div>`;
-  if(stockRows.length)html+=`<div class="detail-section"><h3>Raw Materials</h3>`+stockRows.sort((a,b)=>b.ts.filter(t=>tType(t).includes("CONSUMPTION")).reduce((s,t)=>s+tVal(t),0)-a.ts.filter(t=>tType(t).includes("CONSUMPTION")).reduce((s,t)=>s+tVal(t),0)).slice(0,20).map(x=>{const cv=x.ts.filter(t=>tType(t).includes("CONSUMPTION")).reduce((s,t)=>s+tVal(t),0);return `<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div class="row-name">${esc(x.m)}</div><div class="row-right"><strong>${fmtMaterial(cv,x.m)}</strong><small>Consumption • tap details</small></div></div>`}).join("")+"</div>";
-  showModal("Historical Day",html);
-}
+
+
+
+
+
+
 function openGlobalSearch(){
   showModal("🔎 Search",`<div class="detail-section"><input id="globalSearchInput" class="search-input" placeholder="Search material or feed product..." oninput="renderGlobalSearch(this.value)" autofocus><div id="globalSearchResults" style="margin-top:8px"></div></div>`);
   renderGlobalSearch("");
@@ -669,25 +611,8 @@ function renderDashboard(){
   renderRawCategory("STOCK");
   renderTrends();
 }
-function renderQuick(){
-  const pd=latestTotal("Production_Day_MT"),pm=latestTotal("Production_Month_MT");
-  const dd=latestTotal("Dispatch_Day_MT"),dm=latestTotal("Dispatch_Month_MT");
-  setText("qProdDay",fmtMT(pd));setText("qProdMonth",fmtMT(pm));setText("qDispDay",fmtMT(dd));setText("qDispMonth",fmtMT(dm));
-  let received=0,cons=0,closing=0;
-  DATA.stock.forEach(x=>{
-    const material=x.material||"";
-    closing+=materialValueInMT(x.closing,material);
-    (Array.isArray(x.transactions)?x.transactions:[]).forEach(t=>{
-      const ty=tType(t),v=materialValueInMT(tVal(t),material);
-      if(ty==="PURCHASE"||ty==="RECEIVED")received+=v;
-      if(ty==="CONSUMPTION")cons+=v;
-    });
-  });
-  setText("qReceived",fmt(received)+" MT");setText("qConsumption",fmt(cons)+" MT");setText("qClosing",fmt(closing)+" MT");
-  // Feed Closing Stock is taken directly from FEED_UNIT_DATA Closing_Day_MT.
-  setText("qFeedClosing",fmtMT(latestFeedClosingTotal()));setText("qFeedClosingBagsMini",fmt(latestFeedClosingBagEquivalent())+" Bags");
-  renderKpiSparks();
-}
+
+
 function renderSmartHeader(){
   const d=selectedDateForIntelligence()||dateOnly(DATA.report_date)||"";
   setText("reportDate",d||"Latest");
@@ -715,12 +640,8 @@ function shiftViewDate(dir){
   if(next)setViewDate(next);
 }
 
-function avgConsumption(material){
-  const vals=Array.isArray(DATA.usage[material])?DATA.usage[material].map(Number).filter(Number.isFinite):[];
-  if(vals.length)return vals.reduce((a,b)=>a+b,0)/vals.length;
-  const rows=transactions(material).filter(t=>tType(t)==="CONSUMPTION").map(t=>tVal(t)).filter(v=>v>0);
-  return rows.length?rows.reduce((a,b)=>a+b,0)/rows.length:0;
-}
+
+
 function stockStatus(closing,avg){
   if(!avg)return {cover:null,status:"NO HISTORY",cls:"warn"};
   const cover=closing/avg;
@@ -729,65 +650,14 @@ function stockStatus(closing,avg){
   if(cover<=DEFAULT_SAFETY_DAYS*1.5)return {cover,status:"WATCH",cls:"warn"};
   return {cover,status:"OK",cls:"good"};
 }
-function renderStock(){
-  const list=document.getElementById("stockList");
-  const premixList=document.getElementById("premixStockList");
-  const mats=getMaterials();
-  const renderRows=(rows)=>rows.slice().sort((a,b)=>{
-    const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;
-    return (bv>0)-(av>0)||bv-av;
-  }).map(m=>{
-    const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),s=stockStatus(closing,avg);
-    const symbol=s.status==="REORDER"?"🔴":s.status==="WATCH"?"🟡":"🟢";
-    return `<div class="stock-row" onclick="openMaterialDetails('${jsq(m)}')">
-      <div class="reorder-material-wrap"><strong class="reorder-material">${esc(m)}</strong><small class="avg-under-material">Avg/day ${avg?fmt(avg):"--"}</small></div><span>${fmt(closing)} ${esc(x?.unit||"MT")}</span><span class="cover-cell">${s.cover!==null?fmt(s.cover)+" d":"--"}</span><span class="status-symbol ${s.cls}" title="${esc(s.status)}">${symbol}</span>
-    </div>`;
-  }).join("")||"<div class='empty'>No stock data</div>";
-  const rawMats=mats.filter(m=>!isPremixMaterial(m));
-  const premixMats=mats.filter(m=>isPremixMaterial(m));
-  if(list)list.innerHTML=renderRows(rawMats);
-  if(premixList)premixList.innerHTML=renderRows(premixMats);
-}
-function renderFeedUnit(){
-  const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
-  const list=document.getElementById("feedUnitList");
-  if(!rows.length){list.innerHTML="<div class='empty'>Feed Unit product-wise data not available for this date.</div>";return}
-  const latest={};
-  rows.forEach(r=>{const p=clean(r.Product||r.product);if(p)latest[normalize(p)]=r});
-  list.innerHTML=Object.values(latest).sort((a,b)=>{
-    const av=(num(a.Production_Day_MT??a.production_day_mt??a.Production??a.production)||0)>0?1:0;
-    const bv=(num(b.Production_Day_MT??b.production_day_mt??b.Production??b.production)||0)>0?1:0;
-    return bv-av;
-  }).map(r=>{
-    const p=r.Product||r.product||"--";
-    const prod=num(r.Production_Day_MT??r.production_day_mt??(r.Production||r.production));
-    const disp=num(r.Dispatch_Day_MT??r.dispatch_day_mt??(r.Dispatch||r.dispatch));
-    const close=num(r.Closing_Day_MT??r.closing_day_mt??(r.Closing||r.closing));
-    const transfer=num(r.Transfer_Day_MT??r.transfer_day_mt??r.Transfer??r.transfer);
-    const received=isPremixProduct(p)?transfer:null;
-    return `<div class="feed-row" onclick="openFeedProductDetails('${jsq(p)}')"><div><div class="row-name">${esc(p)}</div><div class="prod-meta">Closing ${fmtFeed(close,p)}${feedClosingBagSize(p)!==null&&close!==null?` • ${fmtFeedClosingBags(close,p)}`:""}${received!==null?` • Received ${fmtFeed(received,p)}`:""}</div></div><div class="row-right"><strong>${fmtFeed(prod,p)}</strong><small>Dispatch ${fmtFeed(disp,p)}</small></div></div>`;
-  }).join("");
-}
-function renderProduction(){
-  const total=DATA.production.reduce((a,r)=>a+(num(r.actual_output)||0),0);
-  setText("productionTotalMain",fmtBags(total));
-  const el=document.getElementById("productionList");
-  el.innerHTML=DATA.production.slice().sort((a,b)=>{
-    const ap=(num(a.actual_output)||0)>0?1:0;
-    const bp=(num(b.actual_output)||0)>0?1:0;
-    return bp-ap;
-  }).map(r=>{
-    const p=r.product||"--",a=num(r.actual_output),op=num(r.output_percentage),loss=num(r.process_loss),remarks=clean(r.remarks);
-    return `<div class="production-row" onclick="openProductDetails('${jsq(p)}')"><div><div class="row-name">${esc(p)}</div><div class="prod-meta">Output ${op!==null?fmt(op)+"%":"--"} • Loss ${loss!==null?fmt(loss)+"%":"--"}${remarks?" • "+esc(remarks):""}</div></div><div class="row-right"><strong>${fmtBags(a)}</strong><small>Standard ${fmtBags(r.standard_output)}</small></div></div>`;
-  }).join("")||"<div class='empty'>No production data</div>";
-}
-function renderPPBags(){
-  const el=document.getElementById("bagGrid");
-  el.innerHTML=DATA.bags.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0)).map(r=>{
-    const p=r.product||"PP Bags";
-    return `<div class="pp-item" onclick="openBagProduct('${jsq(p)}')"><p>${esc(p)}</p><small class="pp-closing-label">Closing</small><strong class="pp-closing-number">${fmt(r.closing)}</strong><p style="margin-top:4px">Issue ${fmt(r.issue)} • Damage ${fmt(r.damage)}</p></div>`;
-  }).join("")||"<div class='empty'>No PP Bag data</div>";
-}
+
+
+
+
+
+
+
+
 function renderAlerts(){
   const items=[];
   const reorder=Array.isArray(DATA.reorder_items)?DATA.reorder_items:[];
@@ -846,23 +716,8 @@ let currentRawTab="STOCK";
 let rawMovementExpanded=false;
 function setRawTab(btn,tab){document.querySelectorAll(".section-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");currentRawTab=tab;rawMovementExpanded=false;renderRawCategory(tab)}
 function toggleRawMovementMore(){rawMovementExpanded=!rawMovementExpanded;renderRawCategory(currentRawTab)}
-function renderRawCategory(tab){
-  const el=document.getElementById("rawCategoryList");
-  const mats=getMaterials();
-  let rows;
-  if(tab==="STOCK"){
-    rows=mats.map(m=>({m,v:num(getMaterial(m)?.closing)||0})).sort((a,b)=>(b.v>0)-(a.v>0)||b.v-a.v);
-  }else{
-    rows=mats.map(m=>({m,v:rawTotal(m,tab)})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
-  }
-  const visible=rawMovementExpanded?rows:rows.slice(0,25);
-  if(tab==="STOCK"){
-    el.innerHTML=visible.map(({m})=>{const x=getMaterial(m);return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for complete details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
-  }else{
-    el.innerHTML=visible.map(({m,v})=>{const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • tap for details</small></div></div>`}).join("")||"<div class='empty'>No data</div>";
-  }
-  if(rows.length>25)el.innerHTML+=`<button class="more-toggle" onclick="toggleRawMovementMore()">${rawMovementExpanded?"Show less ↑":"More • "+(rows.length-25)+" more ↓"}</button>`;
-}
+
+
 
 /* =====================================================
    DETAILS
@@ -1004,19 +859,8 @@ function chart(canvasId,labels,series){
 function usageLabels(){const n=Math.max(...Object.values(DATA.usage).map(a=>Array.isArray(a)?a.length:0),0);return Array.from({length:n},(_,i)=>"D"+(i+1))}
 function drawMaterialChart(material){chart("materialChart",usageLabels(),Array.isArray(DATA.usage[material])?DATA.usage[material]:[])}
 function productionTrendData(){return DATA.productionTrend.map(x=>typeof x==="object"?num(x.actual_output??x.actual??x.value):num(x)).filter(v=>v!==null)}
-function renderTrends(){
-  const sel=document.getElementById("materialSelect"),mats=getMaterials();sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
-  if(mats.length)drawMaterialChart(mats[0]);
-  const p=DATA.productionTrend||[];chart("productionChart",p.map((x,i)=>x.date||x.report_date||"D"+(i+1)),productionTrendData());
-  const purchase=trendFromTransactions("PURCHASE");chart("purchaseChart",purchase.labels,purchase.values);
-  const closing=trendClosing();chart("closingChart",closing.labels,closing.values);
-  const outs=DATA.production.map(r=>num(r.output_percentage)).filter(v=>v!==null),loss=DATA.production.map(r=>num(r.process_loss)).filter(v=>v!==null);
-  chart("outputChart",outs.map((_,i)=>"P"+(i+1)),outs);chart("lossChart",loss.map((_,i)=>"P"+(i+1)),loss);
-  const feed=feedTrend();chart("feedChart",feed.labels,feed.values);
-  const bags=bagTrend();chart("bagChart",bags.labels,bags.values);
-  const wrap=document.getElementById("trendWrapper"),dots=document.getElementById("trendDots");dots.innerHTML=[...wrap.children].map((_,i)=>`<div class="dot ${i===0?"active":""}"></div>`).join("");
-  wrap.onscroll=function(){const i=Math.round(this.scrollLeft/this.clientWidth);[...dots.children].forEach((d,j)=>d.classList.toggle("active",i===j))};
-}
+
+
 function trendFromTransactions(type){
   const map={};getMaterials().forEach(m=>transactions(m).forEach(t=>{if(tType(t)===type){const d=rowDate(t)||"Latest";map[d]=(map[d]||0)+tVal(t)}}));
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
@@ -1025,14 +869,10 @@ function trendClosing(){
   const map={};getMaterials().forEach(m=>transactions(m).forEach(t=>{const d=rowDate(t);if(d&&tType(t)==="CL. STOCK")map[d]=(map[d]||0)+(num(t.for_day)||0)}));
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
-function feedTrend(){
-  const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[],map={};
-  rows.forEach(r=>{const d=clean(r.Report_Date||r.report_date)||"Latest";map[d]=(map[d]||0)+(num(r.Production_Day_MT??r.production_day_mt)||0)-(num(r.Dispatch_Day_MT??r.dispatch_day_mt)||0)});
-  const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
-}
-function bagTrend(){
-  const labels=[],values=[];(DATA.bags||[]).forEach((r,i)=>{labels.push(r.product||"P"+(i+1));values.push((num(r.issue)||0)+(num(r.damage)||0))});return {labels,values}
-}
+
+
+
+
 
 /* =====================================================
    NAVIGATION
@@ -1195,67 +1035,11 @@ function renderFeedUnit(){
   if(sorted.length>10)list.innerHTML+=`<button class="more-toggle" onclick="toggleFeedUnitMore()">${feedUnitExpanded?"Show less ↑":"More • "+(sorted.length-10)+" more ↓"}</button>`;
 }
 function toggleFeedUnitMore(){feedUnitExpanded=!feedUnitExpanded;renderFeedUnit();}
-function productionDisplayRows(){
-  /*
-     Production display only: keep the existing API/data logic intact, but
-     de-duplicate products and fill products that are present in Day Production
-     (feedUnitData) but missing from the production response.
-  */
-  const source=selectedProduction();
-  const byProduct=new Map();
 
-  // 1) Production API rows are the primary source for output/standard/loss.
-  source.forEach(r=>{
-    const p=clean(r.product||r.Product);
-    if(!p)return;
-    const key=normalize(p);
-    const actual=num(r.actual_output)||0;
-    const existing=byProduct.get(key);
-    // If the API returns the same product more than once, keep the record
-    // with the highest actual output instead of displaying it twice.
-    if(!existing || actual>(num(existing.actual_output)||0)){
-      byProduct.set(key,{...r,product:p});
-    }
-  });
 
-  // 2) Day Production feed records supply any products missing above.
-  latestFeedRows().forEach(r=>{
-    const p=clean(r.Product||r.product);
-    if(!p)return;
-    const prod=feedField(r,"Production_Day_MT");
-    if(prod===null || prod<=0)return;
-    const key=normalize(p);
-    if(byProduct.has(key))return;
 
-    const bagKg=feedClosingBagSize(p);
-    const actualBags=bagKg?((feedValueInMT(prod,p)*1000)/bagKg):null;
-    byProduct.set(key,{
-      product:p,
-      actual_output:actualBags,
-      standard_output:null,
-      output_percentage:null,
-      process_loss:null,
-      remarks:"Day Production"
-    });
-  });
 
-  return [...byProduct.values()].sort((a,b)=>{
-    const av=(num(a.actual_output)||0)>0?1:0;
-    const bv=(num(b.actual_output)||0)>0?1:0;
-    return bv-av || (num(b.actual_output)||0)-(num(a.actual_output)||0);
-  });
-}
 
-function renderProduction(){
-  const rows=productionDisplayRows();
-  const total=rows.reduce((a,r)=>a+(num(r.actual_output)||0),0);
-  setText("productionTotalMain",fmtBags(total));
-  const el=document.getElementById("productionList");
-  el.innerHTML=rows.map(r=>{
-    const p=r.product||"--",a=num(r.actual_output),op=num(r.output_percentage),loss=num(r.process_loss),remarks=clean(r.remarks);
-    return `<div class="production-row" onclick="openProductDetails('${jsq(p)}')"><div><div class="row-name">${esc(p)}</div><div class="prod-meta">Output ${op!==null?fmt(op)+"%":"--"} • Loss ${loss!==null?fmt(loss)+"%":"--"}${remarks?" • "+esc(remarks):""}</div></div><div class="row-right"><strong>${fmtBags(a)}</strong><small>Standard ${fmtBags(r.standard_output)}</small></div></div>`;
-  }).join("")||"<div class='empty'>No production data for this date</div>";
-}
 function renderPPBags(){
   const rows=selectedBags(),el=document.getElementById("bagGrid");
   const seen=new Set();
