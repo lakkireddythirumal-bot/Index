@@ -771,7 +771,7 @@ function refreshRMHistoryTable(){
   const rows=rmHistoryTransactions(m).filter(t=>inHistoryRange(dateOnly(rowDate(t)),from,to));
   const dates=[...new Set(rows.map(t=>dateOnly(rowDate(t))).filter(Boolean))].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
-  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Consumption</th><th>Transfer</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const day=rows.filter(t=>dateOnly(rowDate(t))===d);const received=rmHistoryValue(day,"received"),consumption=rmHistoryValue(day,"consumption"),transfer=rmHistoryValue(day,"transfer"),closing=rmHistoryClosing(day);return `<tr><td>${esc(d)}</td><td>${fmt(received)} ${esc(unit)}</td><td>${fmt(consumption)} ${esc(unit)}</td><td>${fmt(transfer)} ${esc(unit)}</td><td>${closing===null?"--":fmt(closing)+" "+esc(unit)}</td></tr>`}).join("")}</tbody></table></div><div class="report-actions history-report-actions"><button onclick="generateHistoryReportPDF('material')">📄 PDF</button><button onclick="exportHistoryReportExcel('material')">📊 Excel</button><button onclick="copyHistoryWhatsApp('material')">📱 WhatsApp</button></div>`;
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Consumption</th><th>Transfer</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const day=rows.filter(t=>dateOnly(rowDate(t))===d);const received=rmHistoryValue(day,"received"),consumption=rmHistoryValue(day,"consumption"),transfer=rmHistoryValue(day,"transfer"),closing=rmHistoryClosing(day);return `<tr><td>${esc(d)}</td><td>${fmt(received)} ${esc(unit)}</td><td>${fmt(consumption)} ${esc(unit)}</td><td>${fmt(transfer)} ${esc(unit)}</td><td>${closing===null?"--":fmt(closing)+" "+esc(unit)}</td></tr>`}).join("")}</tbody></table></div>`;
 }
 function feedHistoryProducts(){
   const set=new Map();
@@ -797,7 +797,7 @@ function refreshFeedHistoryTable(){
   if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
   const rows=feedHistoryRows(p),dates=[...new Set(rows.map(r=>dateOnly(r.Report_Date||r.report_date||r.date)).filter(d=>inHistoryRange(d,from,to)))].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
-  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Production</th><th>Dispatch</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date)===d);const r=rr[rr.length-1];const prod=feedHistoryValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]),disp=feedHistoryValue(r,["Dispatch_Day_MT","dispatch_day_mt","Dispatch_Day","dispatch_day","Dispatch","dispatch"]),close=feedHistoryValue(r,["Closing_Day_MT","closing_day_mt","Closing_Day","closing_day","Closing","closing"]);return `<tr><td>${esc(d)}</td><td>${prod===null?"--":fmtFeed(prod,p)}</td><td>${disp===null?"--":fmtFeed(disp,p)}</td><td>${close===null?"--":fmtFeed(close,p)}</td></tr>`}).join("")}</tbody></table></div><div class="report-actions history-report-actions"><button onclick="generateHistoryReportPDF('feed')">📄 PDF</button><button onclick="exportHistoryReportExcel('feed')">📊 Excel</button><button onclick="copyHistoryWhatsApp('feed')">📱 WhatsApp</button></div>`;
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Production</th><th>Dispatch</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date)===d);const r=rr[rr.length-1];const prod=feedHistoryValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]),disp=feedHistoryValue(r,["Dispatch_Day_MT","dispatch_day_mt","Dispatch_Day","dispatch_day","Dispatch","dispatch"]),close=feedHistoryValue(r,["Closing_Day_MT","closing_day_mt","Closing_Day","closing_day","Closing","closing"]);return `<tr><td>${esc(d)}</td><td>${prod===null?"--":fmtFeed(prod,p)}</td><td>${disp===null?"--":fmtFeed(disp,p)}</td><td>${close===null?"--":fmtFeed(close,p)}</td></tr>`}).join("")}</tbody></table></div>`;
 }
 function bagsHistoryProducts(){
   const set=new Map();
@@ -823,7 +823,7 @@ function refreshBagsHistoryTable(){
   if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
   const rows=bagsHistoryRows(p),dates=[...new Set(rows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)).filter(d=>inHistoryRange(d,from,to)))].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
-  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Issue</th><th>Damage</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)===d),r=rr[rr.length-1],v=k=>num(r[k]);return `<tr><td>${esc(d)}</td><td>${v("received")===null?"--":fmt(v("received"))}</td><td>${v("issue")===null?"--":fmt(v("issue"))}</td><td>${v("damage")===null?"--":fmt(v("damage"))}</td><td>${v("closing")===null?"--":fmt(v("closing"))}</td></tr>`}).join("")}</tbody></table></div><div class="report-actions history-report-actions"><button onclick="generateHistoryReportPDF('bags')">📄 PDF</button><button onclick="exportHistoryReportExcel('bags')">📊 Excel</button><button onclick="copyHistoryWhatsApp('bags')">📱 WhatsApp</button></div>`;
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Issue</th><th>Damage</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)===d),r=rr[rr.length-1],v=k=>num(r[k]);return `<tr><td>${esc(d)}</td><td>${v("received")===null?"--":fmt(v("received"))}</td><td>${v("issue")===null?"--":fmt(v("issue"))}</td><td>${v("damage")===null?"--":fmt(v("damage"))}</td><td>${v("closing")===null?"--":fmt(v("closing"))}</td></tr>`}).join("")}</tbody></table></div>`;
 }
 
 
@@ -1869,16 +1869,17 @@ function reportProductHistoryRows(kind,product,from,to){
   });
 }
 function reportHistorySelection(kind){
-  const material=document.getElementById('rmHistoryMaterial')?.value||rmHistoryMaterials()[0]||'';
-  const feed=document.getElementById('feedHistoryProduct')?.value||feedHistoryProducts()[0]||'';
-  const bags=document.getElementById('bagsHistoryProduct')?.value||bagsHistoryProducts()[0]||'';
+  const material=document.getElementById('reportHistoryMaterial')?.value||rmHistoryMaterials()[0]||'';
+  const feed=document.getElementById('reportHistoryFeedProduct')?.value||feedHistoryProducts()[0]||'';
+  const bags=document.getElementById('reportHistoryBagProduct')?.value||bagsHistoryProducts()[0]||'';
   return kind==='material'?material:(kind==='feed'?feed:bags);
 }
-function reportHistoryRange(kind){
-  const ids=kind==='material'?['rmHistoryFrom','rmHistoryTo']:kind==='feed'?['feedHistoryFrom','feedHistoryTo']:['bagsHistoryFrom','bagsHistoryTo'];
-  return {from:document.getElementById(ids[0])?.value||'',to:document.getElementById(ids[1])?.value||''};
+function refreshReportHistorySelectors(){
+  const fill=(id,items)=>{const el=document.getElementById(id);if(!el)return;const cur=el.value;el.innerHTML=historySelectOptions(items,items.includes(cur)?cur:(items[0]||''));};
+  fill('reportHistoryMaterial',rmHistoryMaterials());
+  fill('reportHistoryFeedProduct',feedHistoryProducts());
+  fill('reportHistoryBagProduct',bagsHistoryProducts());
 }
-function refreshReportHistorySelectors(){}
 function reportHistoryData(kind,from,to){
   const selected=reportHistorySelection(kind);
   if(kind==='material')return {title:'Raw Material Material-wise History',headers:['Date','Material','Unit','Received','Consumption','Transfer','Closing'],rows:reportMaterialHistoryRows(selected,from,to).map(r=>[r.Date,r.Material,r.Unit,r.Received,r.Consumption,r.Transfer,r.Closing===null?'':r.Closing]),selected};
@@ -1886,7 +1887,7 @@ function reportHistoryData(kind,from,to){
   return {title:'PP Bags Product-wise History',headers:['Date','Product','Received','Issue','Damage','Closing'],rows:reportProductHistoryRows('bags',selected,from,to).map(r=>[r.Date,r.Product,r.Received??'',r.Issue??'',r.Damage??'',r.Closing??'']),selected};
 }
 function generateHistoryReportPDF(kind){
-  const {from,to}=reportHistoryRange(kind);if(!from||!to){showToast('No report dates available');return}
+  const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
   const sec=reportHistoryData(kind,from,to);if(!sec.rows.length){showToast('No history for selected range');return}
   const title=sec.title+' • '+sec.selected;
   if(!(window.jspdf&&window.jspdf.jsPDF)){reportPdfFallback(title,[sec]);return;}
@@ -1894,16 +1895,16 @@ function generateHistoryReportPDF(kind){
     const {jsPDF}=window.jspdf,doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
     doc.setFontSize(16);doc.text(title,14,14);doc.setFontSize(9);doc.text('Period: '+from+' → '+to+'   Generated: '+new Date().toLocaleString('en-IN'),14,20);
     doc.autoTable({startY:25,head:[sec.headers],body:reportCleanRows(sec.rows),margin:{left:10,right:10},styles:{fontSize:7,cellPadding:2},headStyles:{fillColor:[39,58,86],textColor:255},alternateRowStyles:{fillColor:[248,250,252]},theme:'grid',didDrawPage:d=>{doc.setFontSize(7);doc.text('Feed Plant Report • '+from+' → '+to,10,202);}});
-    doc.save('Feed_Plant_'+reportSafeName(sec.title)+'_'+reportSafeName(sec.selected)+'_'+historyFileStamp(from,to)+'.pdf');showToast('History PDF generated');
+    doc.save('Feed_Plant_'+reportSafeName(sec.title)+'_'+reportSafeName(sec.selected)+'_'+reportFileStamp()+'.pdf');showToast('History PDF generated');
   }catch(e){console.error(e);reportPdfFallback(title,[sec])}
 }
 function exportHistoryReportExcel(kind){
-  const {from,to}=reportHistoryRange(kind);if(!from||!to){showToast('No report dates available');return}
+  const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
   const sec=reportHistoryData(kind,from,to);if(!sec.rows.length){showToast('No history for selected range');return}
   if(!(window.XLSX&&window.XLSX.utils)){showToast('Excel engine not loaded');return}
   const wb=XLSX.utils.book_new(),aoa=[sec.headers,...sec.rows.map(r=>r.map(reportRound))],ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=sec.headers.map(h=>({wch:Math.max(12,Math.min(28,String(h).length+6))}));XLSX.utils.book_append_sheet(wb,ws,'History');
-  XLSX.writeFile(wb,'Feed_Plant_'+reportSafeName(sec.title)+'_'+reportSafeName(sec.selected)+'_'+historyFileStamp(from,to)+'.xlsx');showToast('History Excel exported');
+  XLSX.writeFile(wb,'Feed_Plant_'+reportSafeName(sec.title)+'_'+reportSafeName(sec.selected)+'_'+reportFileStamp()+'.xlsx');showToast('History Excel exported');
 }
 function historyWhatsAppText(kind,from,to){
   const sec=reportHistoryData(kind,from,to),s0=kind==='material'?'📦 RAW MATERIAL HISTORY':kind==='feed'?'🌾 FEED UNIT HISTORY':'🛍 PP BAGS HISTORY';
@@ -1922,7 +1923,7 @@ function showWhatsAppCopyModal(text){
   showModal('📱 WhatsApp Message',`<div class="detail-section"><div class="small-note">Message ready. Tap Copy Message, then paste directly into WhatsApp.</div><textarea id="reportWhatsAppBox" readonly style="width:100%;min-height:260px;box-sizing:border-box;border:1px solid #dfe5ee;border-radius:10px;padding:10px;font:12px/1.5 inherit;resize:vertical;background:#fff">${esc(text)}</textarea><div style="display:flex;gap:8px;margin-top:9px"><button class="more-toggle" onclick="copyVisibleWhatsApp()">📋 Copy Message</button><button class="more-toggle" onclick="closeModal()">Close</button></div></div>`);
 }
 async function copyVisibleWhatsApp(){const ta=document.getElementById('reportWhatsAppBox');if(!ta)return;const ok=await copyTextRobust(ta.value);if(ok)showToast('WhatsApp message copied');else{ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);showToast('Tap and hold the message to copy');}}
-async function copyHistoryWhatsApp(kind){const {from,to}=reportHistoryRange(kind);if(!from||!to){showToast('No report dates available');return}const text=historyWhatsAppText(kind,from,to);if(!text){showToast('No history for selected range');return}const ok=await copyTextRobust(text);showToast(ok?'WhatsApp message copied':'Tap Copy Message in the message window');showWhatsAppCopyModal(text)}
+async function copyHistoryWhatsApp(kind){const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}const text=historyWhatsAppText(kind,from,to);if(!text){showToast('No history for selected range');return}const ok=await copyTextRobust(text);showToast(ok?'WhatsApp message copied':'Tap Copy Message in the message window');showWhatsAppCopyModal(text)}
 
 function reportSectionData(section,from,to){
   switch(section){
@@ -1945,7 +1946,6 @@ function reportCompleteSections(from,to){
   return sections;
 }
 function reportFileStamp(){return (document.getElementById('reportFromDate')?.value||'')+'_'+(document.getElementById('reportToDate')?.value||'')}
-function historyFileStamp(from,to){return (from||'')+'_'+(to||'')}
 function reportSafeName(s){return clean(s).replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'')}
 function reportPdfFallback(title,sections){
   const w=window.open('','_blank');if(!w){showToast('Popup blocked — allow popups for PDF');return;}
