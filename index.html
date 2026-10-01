@@ -13,7 +13,7 @@
 <body>
 <div class="container">
   <div class="header">
-    <div><div class="smart-greeting" id="smartGreeting">GOOD MORNING, SIR</div><div class="smart-title"><h1>Feed Plant Control Center</h1></div><p>Manager Dashboard • <span id="reportDate">Latest</span></p><span class="selected-date-chip" id="selectedDateChip">Latest</span></div>
+    <div><div class="smart-greeting" id="smartGreeting">GOOD MORNING, SIR</div><div class="smart-title"><h1>Feed Plant Control Center</h1></div><p><span id="reportDate">Latest</span></p><span class="selected-date-chip" id="selectedDateChip">Latest</span></div>
     <div class="header-actions">
       <button class="header-tool" onclick="openGlobalSearch()" aria-label="Search">🔎</button>
       <button class="header-tool" onclick="openDateSelector()" aria-label="Date selector">📅</button>
@@ -35,6 +35,21 @@
     <div class="date-strip-main" onclick="openDateSelector()"><div><strong id="dateStripTitle">Latest available day</strong><small id="dateStripSub">Tap to change date</small></div><span class="date-state" id="dateStripState">LATEST</span></div>
     <button onclick="shiftViewDate(1)" aria-label="Next date">›</button>
   </div>
+
+  <!-- ATTENTION REQUIRED -->
+  <section class="attention-card" id="attentionRequiredCard" aria-live="polite">
+    <div class="attention-head">
+      <div>
+        <div class="attention-kicker">MANAGER FOCUS</div>
+        <h2>Attention Required</h2>
+      </div>
+      <div class="attention-head-actions">
+        <span id="attentionCount" class="attention-count">0</span>
+        <button type="button" class="attention-view-all" onclick="openNotifications()">View all</button>
+      </div>
+    </div>
+    <div id="attentionList" class="attention-list"></div>
+  </section>
 
   <!-- MANAGEMENT QUICK VIEW -->
   <div class="card">
@@ -89,30 +104,6 @@
   <div class="card">
     <div class="card-title"><h2>🌾 Feed Unit</h2><span id="dateFeedUnit">Data: --</span></div>
     <div id="feedUnitList"><div class="empty">Loading...</div></div>
-  </div>
-
-  <!-- COLLAPSED HISTORY CARDS -->
-  <div class="history-cards-wrap">
-    <div class="history-card" id="rmHistoryCard">
-      <button class="history-card-head" type="button" onclick="toggleHistoryCard('rmHistoryCard','rmHistoryBody')">
-        <span><strong>📦 Raw Material History</strong><small>Material → Date</small></span><b id="rmHistoryChevron">＋</b>
-      </button>
-      <div class="history-card-body" id="rmHistoryBody"></div>
-    </div>
-
-    <div class="history-card" id="feedHistoryCard">
-      <button class="history-card-head" type="button" onclick="toggleHistoryCard('feedHistoryCard','feedHistoryBody')">
-        <span><strong>🌾 Feed Unit History</strong><small>Product → Date</small></span><b id="feedHistoryChevron">＋</b>
-      </button>
-      <div class="history-card-body" id="feedHistoryBody"></div>
-    </div>
-
-    <div class="history-card" id="bagsHistoryCard">
-      <button class="history-card-head" type="button" onclick="toggleHistoryCard('bagsHistoryCard','bagsHistoryBody')">
-        <span><strong>🛍 PP Bags History</strong><small>Product → Date</small></span><b id="bagsHistoryChevron">＋</b>
-      </button>
-      <div class="history-card-body" id="bagsHistoryBody"></div>
-    </div>
   </div>
 
   <!-- RAW MATERIAL MOVEMENTS -->
@@ -190,8 +181,11 @@
     </div>
     <div class="report-note">Select any date range. Reports use the actual data already loaded in the dashboard; no new values are calculated into the source data.</div>
 
-    <div class="report-main-card">
-      <div class="report-card-head"><div><strong>📕 Complete Dashboard Report</strong><small>Maximum available detail from all plant sections</small></div></div>
+    <div class="report-main-card report-complete-card">
+      <div class="report-card-head">
+        <div><strong>📕 Complete Dashboard Report</strong><small>All available plant data for the selected date range</small></div>
+        <button class="report-view-btn" onclick="openReportView('complete')">👁 View</button>
+      </div>
       <div class="report-actions">
         <button onclick="generateReportPDF('complete')">📄 PDF</button>
         <button onclick="exportReportExcel('complete')">📊 Excel</button>
@@ -199,25 +193,106 @@
       </div>
     </div>
 
-    <div class="report-main-card history-report-card">
-      <div class="report-card-head"><div><strong>📦 Material-wise History Report</strong><small>Select one Raw Material • selected date range • Received / Consumption / Transfer / Closing</small></div></div>
-      <div class="report-history-filter"><label>Material<select id="reportHistoryMaterial"></select></label></div>
-      <div class="report-actions"><button onclick="generateHistoryReportPDF('material')">📄 PDF</button><button onclick="exportHistoryReportExcel('material')">📊 Excel</button><button onclick="copyHistoryWhatsApp('material')">📱 WhatsApp</button></div>
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>📦 Raw Material — Material-wise</strong><small>Material • Date • Received • Consumption • Transfer • Closing</small></div>
+        <button class="report-view-btn" onclick="openReportView('material')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateHistoryReportPDF('material')">📄 PDF</button><button onclick="exportHistoryReportExcel('material')">📊 Excel</button><button onclick="copyHistoryWhatsApp('material')">📱 WhatsApp</button>
+      </div>
     </div>
-    <div class="report-section-grid">
 
-      <div class="report-main-card"><div class="report-card-head"><div><strong>📦 Raw Material</strong><small>Material • Date • Received • Consumption • Transfer • Closing</small></div></div><div class="report-actions"><button onclick="generateReportPDF('raw')">📄 PDF</button><button onclick="exportReportExcel('raw')">📊 Excel</button><button onclick="copyReportWhatsApp('raw')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>🌾 Feed Unit</strong><small>Product • Date • Production • Dispatch • Closing</small></div></div><div class="report-actions"><button onclick="generateReportPDF('feed')">📄 PDF</button><button onclick="exportReportExcel('feed')">📊 Excel</button><button onclick="copyReportWhatsApp('feed')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>🛍 PP Bags</strong><small>Product • Date • Received • Issue • Damage • Closing</small></div></div><div class="report-actions"><button onclick="generateReportPDF('bags')">📄 PDF</button><button onclick="exportReportExcel('bags')">📊 Excel</button><button onclick="copyReportWhatsApp('bags')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>🏭 Production</strong><small>Product-wise production records and performance</small></div></div><div class="report-actions"><button onclick="generateReportPDF('production')">📄 PDF</button><button onclick="exportReportExcel('production')">📊 Excel</button><button onclick="copyReportWhatsApp('production')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>🧪 Premix</strong><small>Premix transfer and monthly mix data</small></div></div><div class="report-actions"><button onclick="generateReportPDF('premix')">📄 PDF</button><button onclick="exportReportExcel('premix')">📊 Excel</button><button onclick="copyReportWhatsApp('premix')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>📊 Monthly Mix & Contribution</strong><small>RM consumption • Production • Dispatch by selected month</small></div></div><div class="report-actions"><button onclick="generateReportPDF('mix')">📄 PDF</button><button onclick="exportReportExcel('mix')">📊 Excel</button><button onclick="copyReportWhatsApp('mix')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>📋 RM Movements</strong><small>Stock • Consumption • Received • Transfer • Gain • Shortage • Sale</small></div></div><div class="report-actions"><button onclick="generateReportPDF('movements')">📄 PDF</button><button onclick="exportReportExcel('movements')">📊 Excel</button><button onclick="copyReportWhatsApp('movements')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>🔧 Spare Parts</strong><small>Stock • Reorder • Orders • Employee messages</small></div></div><div class="report-actions"><button onclick="generateReportPDF('spares')">📄 PDF</button><button onclick="exportReportExcel('spares')">📊 Excel</button><button onclick="copyReportWhatsApp('spares')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card"><div class="report-card-head"><div><strong>⚠️ Data Health</strong><small>Reorder, reconciliation and available-data checks</small></div></div><div class="report-actions"><button onclick="generateReportPDF('health')">📄 PDF</button><button onclick="exportReportExcel('health')">📊 Excel</button><button onclick="copyReportWhatsApp('health')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card history-report-card"><div class="report-card-head"><div><strong>🌾 Feed Unit Product-wise History</strong><small>Select one Product • selected date range • Production / Dispatch / Closing</small></div></div><div class="report-history-filter"><label>Product<select id="reportHistoryFeedProduct"></select></label></div><div class="report-actions"><button onclick="generateHistoryReportPDF('feed')">📄 PDF</button><button onclick="exportHistoryReportExcel('feed')">📊 Excel</button><button onclick="copyHistoryWhatsApp('feed')">📱 WhatsApp</button></div></div>
-      <div class="report-main-card history-report-card"><div class="report-card-head"><div><strong>🛍 PP Bags Product-wise History</strong><small>Select one Product • selected date range • Received / Issue / Damage / Closing</small></div></div><div class="report-history-filter"><label>Product<select id="reportHistoryBagProduct"></select></label></div><div class="report-actions"><button onclick="generateHistoryReportPDF('bags')">📄 PDF</button><button onclick="exportHistoryReportExcel('bags')">📊 Excel</button><button onclick="copyHistoryWhatsApp('bags')">📱 WhatsApp</button></div></div>
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>🌾 Feed Unit — Product-wise</strong><small>Product • Date • Production • Dispatch • Closing</small></div>
+        <button class="report-view-btn" onclick="openReportView('feed')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('feed')">📄 PDF</button><button onclick="exportReportExcel('feed')">📊 Excel</button><button onclick="copyReportWhatsApp('feed')">📱 WhatsApp</button>
+      </div>
     </div>
+
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>🛍 PP Bags — Product-wise</strong><small>Product • Date • Received • Issue • Damage • Closing</small></div>
+        <button class="report-view-btn" onclick="openReportView('bags')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('bags')">📄 PDF</button><button onclick="exportReportExcel('bags')">📊 Excel</button><button onclick="copyReportWhatsApp('bags')">📱 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>🏭 Production — Product-wise</strong><small>Product-wise production records and performance</small></div>
+        <button class="report-view-btn" onclick="openReportView('production')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('production')">📄 PDF</button><button onclick="exportReportExcel('production')">📊 Excel</button><button onclick="copyReportWhatsApp('production')">📱 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>🧪 Premix</strong><small>Premix transfer and monthly mix data</small></div>
+        <button class="report-view-btn" onclick="openReportView('premix')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('premix')">📄 PDF</button><button onclick="exportReportExcel('premix')">📊 Excel</button><button onclick="copyReportWhatsApp('premix')">📱 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>📊 Monthly Mix & Contribution</strong><small>RM consumption • Production • Dispatch by selected month</small></div>
+        <button class="report-view-btn" onclick="openReportView('mix')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('mix')">📄 PDF</button><button onclick="exportReportExcel('mix')">📊 Excel</button><button onclick="copyReportWhatsApp('mix')">📱 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>📋 RM Movements</strong><small>Stock • Consumption • Received • Transfer • Gain • Shortage • Sale</small></div>
+        <button class="report-view-btn" onclick="openReportView('movements')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('movements')">📄 PDF</button><button onclick="exportReportExcel('movements')">📊 Excel</button><button onclick="copyReportWhatsApp('movements')">📱 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>🔧 Spare Parts</strong><small>Stock • Reorder • Orders • Employee messages</small></div>
+        <button class="report-view-btn" onclick="openReportView('spares')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('spares')">📄 PDF</button><button onclick="exportReportExcel('spares')">📊 Excel</button><button onclick="copyReportWhatsApp('spares')">📱 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="report-main-card">
+      <div class="report-card-head">
+        <div><strong>⚠️ Data Health</strong><small>Reorder, reconciliation and available-data checks</small></div>
+        <button class="report-view-btn" onclick="openReportView('health')">👁 View</button>
+      </div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('health')">📄 PDF</button><button onclick="exportReportExcel('health')">📊 Excel</button><button onclick="copyReportWhatsApp('health')">📱 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="report-view-panel" id="reportViewPanel" hidden>
+      <div class="report-view-panel-head">
+        <div><strong id="reportViewTitle">Selected Dates Data</strong><small id="reportViewSubtitle">Click View on any report to see the data here.</small></div>
+        <button class="report-close-btn" onclick="closeReportView()">✕ Close</button>
+      </div>
+      <div class="report-view-controls" id="reportViewControls"></div>
+      <div class="report-preview-meta" id="reportPreviewMeta"></div>
+      <div class="report-preview-table-wrap" id="reportPreviewTable"><div class="empty">Select a report and tap View.</div></div>
+    </div>
+
   </div>
 
   <!-- TRENDS -->

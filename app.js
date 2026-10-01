@@ -830,6 +830,7 @@ function refreshBagsHistoryTable(){
 function renderDashboard(){
   initReportCenter();
   renderSmartHeader();
+  renderAttentionRequired();
   renderQuick();
   renderMonthlyMix();
   renderControlCenter();
@@ -844,6 +845,40 @@ function renderDashboard(){
   updateSectionDates();
 }
 
+
+function renderAttentionRequired(){
+  const card=document.getElementById("attentionRequiredCard");
+  const list=document.getElementById("attentionList");
+  const count=document.getElementById("attentionCount");
+  if(!card||!list)return;
+
+  const items=managerAttentionItems();
+  const critical=items.filter(x=>x.level==="critical").length;
+  if(count){
+    count.textContent=String(items.length);
+    count.className="attention-count"+(critical?" critical":items.length?" warning":" clear");
+  }
+  card.classList.toggle("has-critical",critical>0);
+  card.classList.toggle("has-warning",critical===0&&items.length>0);
+  card.classList.toggle("is-clear",items.length===0);
+
+  if(!items.length){
+    list.innerHTML=`<div class="attention-clear"><span>✓</span><div><strong>No immediate action</strong><small>Stock, consumption and reconciliation checks are normal for the selected date.</small></div></div>`;
+    return;
+  }
+
+  const visible=items.slice(0,4);
+  list.innerHTML=visible.map((x,i)=>{
+    const criticalLevel=x.level==="critical";
+    return `<button type="button" class="attention-item ${criticalLevel?"critical":"warning"}" onclick="${x.action||"openNotifications()"}">
+      <span class="attention-icon">${criticalLevel?"!":"•"}</span>
+      <span class="attention-copy"><strong>${esc(x.title)}</strong><small>${esc(x.msg)}</small></span>
+      <span class="attention-arrow">›</span>
+    </button>`;
+  }).join("") + (items.length>visible.length
+    ? `<button type="button" class="attention-more" onclick="openNotifications()">+${items.length-visible.length} more attention item${items.length-visible.length===1?"":"s"} · View all →</button>`
+    : "");
+}
 
 function renderSmartHeader(){
   const d=selectedDateForIntelligence()||dateOnly(DATA.report_date)||"";
@@ -1255,6 +1290,7 @@ function toggleFeedUnitMore(){feedUnitExpanded=!feedUnitExpanded;renderFeedUnit(
 
 function renderPPBags(){
   const rows=selectedBags(),el=document.getElementById("bagGrid");
+  if(!el)return;
   const seen=new Set();
   const uniqueRows=rows.filter(r=>{
     const key=normalize(r.product||"PP Bags");
@@ -1262,9 +1298,24 @@ function renderPPBags(){
     seen.add(key);
     return true;
   });
-  el.innerHTML=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0)).map(r=>{
+  const sorted=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0)).slice(0,10);
+  el.innerHTML=sorted.map(r=>{
     const p=r.product||"PP Bags";
-    return `<div class="pp-item" onclick="openBagProduct('${jsq(p)}')"><p>${esc(p)}</p><small class="pp-closing-label">Closing</small><strong class="pp-closing-number">${fmt(r.closing)}</strong><p style="margin-top:3px">Issue ${fmt(r.issue)} • Damage ${fmt(r.damage)}</p></div>`;
+    const opening=num(r.opening)||0, received=num(r.received)||0, issue=num(r.issue)||0, damage=num(r.damage)||0, closing=num(r.closing)||0;
+    const rec=ppBagReconciliation(p);
+    const status=rec.status==="MISMATCH"?"CHECK":(damage>0?"DAMAGE":"OK");
+    const statusCls=status.toLowerCase();
+    const statusIcon=status==="CHECK"?"⚠":(status==="DAMAGE"?"🟠":"✓");
+    return `<div class="pp-item pp-status-${statusCls}" role="button" tabindex="0" onclick="openBagProduct('${jsq(p)}')" onkeydown="if(event.key==='Enter'||event.key===' ')openBagProduct('${jsq(p)}')">
+      <div class="pp-card-head"><p title="${esc(p)}">${esc(p)}</p><span class="pp-status ${statusCls}" title="${status}">${statusIcon}</span></div>
+      <div class="pp-metrics">
+        <span><b>Open</b><strong>${fmt(opening)}</strong></span>
+        <span><b>Recv</b><strong>${fmt(received)}</strong></span>
+        <span><b>Issue</b><strong>${fmt(issue)}</strong></span>
+        <span><b>Damage</b><strong>${fmt(damage)}</strong></span>
+        <span class="pp-closing"><b>Close</b><strong>${fmt(closing)}</strong></span>
+      </div>
+    </div>`;
   }).join("")||"<div class='empty'>No PP Bag data for this date</div>";
 }
 function renderStock(){
@@ -1327,6 +1378,18 @@ function managerAttentionItems(){
   reorder.slice(0,8).forEach(m=>items.push({level:"critical",title:m,msg:`Stock ${fmtMaterial(num(getMaterial(m)?.closing)||0,m,getMaterial(m)?.unit||"MT")} • coverage ${(()=>{const s=stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m));return s.cover===null?"--":fmt(s.cover)+" days"})()}`,action:`openMaterialDetails('${jsq(m)}')`}));
   reconciliationItems().filter(x=>x.r.status==="MISMATCH").slice(0,8).forEach(x=>items.push({level:"warning",title:x.m,msg:"Stock reconciliation mismatch — check transactions",action:`openMaterialDetails('${jsq(x.m)}')`}));
   abnormalConsumptionItems().slice(0,8).forEach(x=>items.push({level:"warning",title:x.material,msg:`Consumption ${fmt(x.current)} vs avg ${fmt(x.avg)} • ${fmt(Math.abs(x.ratio*100-100))}% ${x.direction==="LOW"?"below":"above"} average`,action:`openMaterialDetails('${jsq(x.material)}')`}));
+  DATA.production.forEach(r=>{
+    const op=num(r.output_percentage);
+    if(op!==null&&op<95){
+      items.push({level:"warning",title:r.product||"Production",msg:`Output ${fmt(op)}% • below 95% target`,action:`openProductionDetails('${jsq(r.product||"")}')`});
+    }
+  });
+  getMaterials().forEach(m=>{
+    const closing=num(getMaterial(m)?.closing);
+    if(closing!==null&&closing<0){
+      items.push({level:"critical",title:m,msg:`Negative closing stock: ${fmt(closing)} ${materialUnit(m,getMaterial(m)?.unit||"MT")}`,action:`openMaterialDetails('${jsq(m)}')`});
+    }
+  });
   const damage=selectedBags().reduce((a,r)=>a+(num(r.damage)||0),0);
   if(damage>0)items.push({level:"warning",title:"PP Bag Damage",msg:`${fmt(damage)} bags damaged on ${selectedDateForIntelligence()}`,action:"openPPBagDetails()"});
   return items;
@@ -1710,16 +1773,21 @@ function reportRange(){
   if(from>to){const x=from;from=to;to=x;}
   return {from,to,all};
 }
+let reportActiveView='';
 function initReportCenter(){
-  refreshReportHistorySelectors();
-  const all=reportAllDates();if(!all.length)return;
+  const all=reportAllDates();
   const f=document.getElementById('reportFromDate'),t=document.getElementById('reportToDate');
-  if(f&&!f.value)f.value=all[Math.max(0,all.length-7)];
-  if(t&&!t.value)t.value=all[all.length-1];
+  if(all.length){
+    if(f&&!f.value)f.value=all[Math.max(0,all.length-7)];
+    if(t&&!t.value)t.value=all[all.length-1];
+  }
+  f?.addEventListener('change',()=>{if(reportActiveView)refreshReportPreview()});
+  t?.addEventListener('change',()=>{if(reportActiveView)refreshReportPreview()});
 }
 function resetReportDates(){
   const all=reportAllDates();const f=document.getElementById('reportFromDate'),t=document.getElementById('reportToDate');
   if(f)f.value=all[Math.max(0,all.length-7)]||'';if(t)t.value=all[all.length-1]||'';
+  if(reportActiveView)refreshReportPreview();
   showToast('Report range reset');
 }
 function reportInRange(d,from,to){return !!d&&(!from||d>=from)&&(!to||d<=to)}
@@ -1924,6 +1992,62 @@ function showWhatsAppCopyModal(text){
 }
 async function copyVisibleWhatsApp(){const ta=document.getElementById('reportWhatsAppBox');if(!ta)return;const ok=await copyTextRobust(ta.value);if(ok)showToast('WhatsApp message copied');else{ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);showToast('Tap and hold the message to copy');}}
 async function copyHistoryWhatsApp(kind){const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}const text=historyWhatsAppText(kind,from,to);if(!text){showToast('No history for selected range');return}const ok=await copyTextRobust(text);showToast(ok?'WhatsApp message copied':'Tap Copy Message in the message window');showWhatsAppCopyModal(text)}
+
+function openReportView(kind){
+  reportActiveView=kind;
+  const panel=document.getElementById('reportViewPanel');
+  if(!panel)return;
+  panel.hidden=false;
+  const titles={
+    complete:['📕 Complete Dashboard Report','Management summary for the selected date range'],
+    material:['📦 Raw Material — Material-wise','Select a material to view its history'],
+    feed:['🌾 Feed Unit — Product-wise','Select a product to view its history'],
+    bags:['🛍 PP Bags — Product-wise','Select a PP bag product to view its history'],
+    production:['🏭 Production — Product-wise','Production records for the selected date range'],
+    premix:['🧪 Premix','Premix transfer records for the selected date range'],
+    mix:['📊 Monthly Mix & Contribution','Monthly mix and contribution for the selected range'],
+    movements:['📋 RM Movements','Raw material stock movement records'],
+    spares:['🔧 Spare Parts','Current spare parts stock and reorder data'],
+    health:['⚠️ Data Health','Reorder, reconciliation and data-quality checks']
+  };
+  const title=document.getElementById('reportViewTitle'),sub=document.getElementById('reportViewSubtitle'),controls=document.getElementById('reportViewControls');
+  if(title)title.textContent=titles[kind]?.[0]||'Report View';
+  if(sub)sub.textContent=titles[kind]?.[1]||'';
+  if(controls){
+    if(kind==='material') controls.innerHTML='<label>Material<select id="reportHistoryMaterial" onchange="refreshReportPreview()"></select></label>';
+    else if(kind==='feed') controls.innerHTML='<label>Product<select id="reportHistoryFeedProduct" onchange="refreshReportPreview()"></select></label>';
+    else if(kind==='bags') controls.innerHTML='<label>PP Bag Product<select id="reportHistoryBagProduct" onchange="refreshReportPreview()"></select></label>';
+    else controls.innerHTML='';
+  }
+  if(['material','feed','bags'].includes(kind))refreshReportHistorySelectors();
+  refreshReportPreview();
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function closeReportView(){
+  reportActiveView='';
+  const panel=document.getElementById('reportViewPanel');
+  if(panel)panel.hidden=true;
+}
+function refreshReportPreview(){
+  const table=document.getElementById('reportPreviewTable'),meta=document.getElementById('reportPreviewMeta');
+  if(!table||!reportActiveView)return;
+  const {from,to}=reportRange();
+  if(!from||!to){table.innerHTML='<div class="empty">No report dates available.</div>';if(meta)meta.textContent='';return;}
+  let sec;
+  if(reportActiveView==='complete'){
+    const summary=reportSummary(from,to);
+    sec={title:'Management Summary',headers:['Metric','Value','Unit / Context'],rows:summary};
+  }else if(['material','feed','bags'].includes(reportActiveView)){
+    sec=reportHistoryData(reportActiveView,from,to);
+  }else{
+    sec=reportSectionData(reportActiveView,from,to);
+  }
+  const rows=sec.rows||[];
+  if(meta)meta.innerHTML=`<span>${esc(from)} → ${esc(to)}${sec.selected?' • '+esc(sec.selected):''}</span><b>${rows.length.toLocaleString('en-IN')} records</b>`;
+  if(!rows.length){table.innerHTML='<div class="history-empty">No data available for the selected date range.</div>';return;}
+  const maxRows=500,visible=rows.slice(0,maxRows);
+  table.innerHTML=`<table><thead><tr>${sec.headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${visible.map(r=>`<tr>${r.map(v=>`<td>${esc(reportDisplayCell(v))}</td>`).join('')}</tr>`).join('')}</tbody></table>${rows.length>maxRows?`<div class="report-preview-more">Showing first ${maxRows.toLocaleString('en-IN')} of ${rows.length.toLocaleString('en-IN')} records. Download Excel/PDF for the complete report.</div>`:''}`;
+}
 
 function reportSectionData(section,from,to){
   switch(section){
