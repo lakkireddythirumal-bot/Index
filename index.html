@@ -58,29 +58,6 @@
     <div id="premixTransferList"><div class="empty">Loading...</div></div>
   </div>
 
-  <!-- MONTHLY MIX & CONTRIBUTION -->
-  <div class="card monthly-mix-card" id="monthlyMixSection">
-    <div class="card-title">
-      <div><h2>📊 Monthly Mix &amp; Contribution</h2><span id="dateMonthlyMix">Month: --</span></div>
-      <select id="mixMonthSelect" class="mix-month-select" onchange="setMixMonth(this.value)"></select>
-    </div>
-    <div class="monthly-mix-grid">
-      <div class="mix-panel rm">
-        <div class="mix-panel-head"><div><strong>🧪 RM Consumption Mix</strong><small id="mixRmTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('rm')">View All →</button></div>
-        <div id="mixRmList"><div class="empty">Loading...</div></div>
-      </div>
-      <div class="mix-panel prod">
-        <div class="mix-panel-head"><div><strong>🏭 Production Mix</strong><small id="mixProdTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('production')">View All →</button></div>
-        <div id="mixProdList"><div class="empty">Loading...</div></div>
-      </div>
-      <div class="mix-panel disp">
-        <div class="mix-panel-head"><div><strong>🚚 Dispatch Mix</strong><small id="mixDispTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('dispatch')">View All →</button></div>
-        <div id="mixDispList"><div class="empty">Loading...</div></div>
-      </div>
-    </div>
-    <div class="monthly-mix-note">Percentages are calculated against the selected month total. “Others” combines items outside Top 5.</div>
-  </div>
-
   <div class="desktop-grid">
     <!-- RAW MATERIAL REORDER -->
     <div class="card">
@@ -114,6 +91,30 @@
     <div id="feedUnitList"><div class="empty">Loading...</div></div>
   </div>
 
+  <!-- COLLAPSED HISTORY CARDS -->
+  <div class="history-cards-wrap">
+    <div class="history-card" id="rmHistoryCard">
+      <button class="history-card-head" type="button" onclick="toggleHistoryCard('rmHistoryCard','rmHistoryBody')">
+        <span><strong>📦 Raw Material History</strong><small>Material → Date</small></span><b id="rmHistoryChevron">＋</b>
+      </button>
+      <div class="history-card-body" id="rmHistoryBody"></div>
+    </div>
+
+    <div class="history-card" id="feedHistoryCard">
+      <button class="history-card-head" type="button" onclick="toggleHistoryCard('feedHistoryCard','feedHistoryBody')">
+        <span><strong>🌾 Feed Unit History</strong><small>Product → Date</small></span><b id="feedHistoryChevron">＋</b>
+      </button>
+      <div class="history-card-body" id="feedHistoryBody"></div>
+    </div>
+
+    <div class="history-card" id="bagsHistoryCard">
+      <button class="history-card-head" type="button" onclick="toggleHistoryCard('bagsHistoryCard','bagsHistoryBody')">
+        <span><strong>🛍 PP Bags History</strong><small>Product → Date</small></span><b id="bagsHistoryChevron">＋</b>
+      </button>
+      <div class="history-card-body" id="bagsHistoryBody"></div>
+    </div>
+  </div>
+
   <!-- RAW MATERIAL MOVEMENTS -->
   <div class="card">
     <div class="card-title"><h2>📋 Raw Material Movements</h2><span id="dateRawMovements">Data: --</span></div>
@@ -135,6 +136,35 @@
       <div class="pp-grid" id="bagGrid"><div class="empty">Loading...</div></div>
     </div>
 
+
+  <!-- MONTHLY MIX & CONTRIBUTION -->
+  <div class="card monthly-mix-card" id="monthlyMixSection">
+    <div class="card-title">
+      <div><h2>📊 Monthly Mix &amp; Contribution</h2><span id="dateMonthlyMix">Month: --</span></div>
+      <select id="mixMonthSelect" class="mix-month-select" onchange="setMixMonth(this.value)"></select>
+    </div>
+    <div class="monthly-mix-tabs" role="tablist" aria-label="Monthly Mix">
+      <button type="button" class="monthly-mix-tab active" data-mix-tab="rm" onclick="setMonthlyMixTab('rm',this)">🧪 RM</button>
+      <button type="button" class="monthly-mix-tab" data-mix-tab="production" onclick="setMonthlyMixTab('production',this)">🏭 Production</button>
+      <button type="button" class="monthly-mix-tab" data-mix-tab="dispatch" onclick="setMonthlyMixTab('dispatch',this)">🚚 Dispatch</button>
+    </div>
+    <div class="monthly-mix-tab-panels">
+      <div class="mix-panel rm monthly-mix-tab-panel active" data-mix-panel="rm">
+        <div class="mix-panel-head"><div><strong>🧪 RM Consumption Mix</strong><small id="mixRmTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('rm')">View All →</button></div>
+        <div id="mixRmList"><div class="empty">Loading...</div></div>
+      </div>
+      <div class="mix-panel prod monthly-mix-tab-panel" data-mix-panel="production" hidden>
+        <div class="mix-panel-head"><div><strong>🏭 Production Mix</strong><small id="mixProdTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('production')">View All →</button></div>
+        <div id="mixProdList"><div class="empty">Loading...</div></div>
+      </div>
+      <div class="mix-panel disp monthly-mix-tab-panel" data-mix-panel="dispatch" hidden>
+        <div class="mix-panel-head"><div><strong>🚚 Dispatch Mix</strong><small id="mixDispTotal">Total -- MT</small></div><button onclick="openMonthlyMixDetails('dispatch')">View All →</button></div>
+        <div id="mixDispList"><div class="empty">Loading...</div></div>
+      </div>
+    </div>
+    <div class="monthly-mix-note">Percentages are calculated against the selected month total. “Others” combines items outside Top 5.</div>
+  </div>
+
   <!-- SPARE PARTS -->
   <div class="card spare-parts-card" id="sparePartsSection">
     <div class="card-title"><div><h2>🔧 Spare Parts</h2><span id="dateSpareParts">Data: --</span></div><button class="spare-refresh-btn" onclick="loadSpareParts(true)">↻ Refresh</button></div>
@@ -145,6 +175,49 @@
     </div>
     <div class="spare-search-wrap"><input id="spareSearch" class="search-input" placeholder="Search spare parts..." oninput="renderSpareParts(this.value)"></div>
     <div id="sparePartsList"><div class="empty">Loading spare parts...</div></div>
+  </div>
+
+
+  <!-- REPORT CENTER -->
+  <div class="card report-center-card" id="reportCenterSection">
+    <div class="card-title">
+      <div><h2>📊 Report Center</h2><span>Complete plant reports • PDF • Excel • WhatsApp Copy</span></div>
+    </div>
+    <div class="report-range-bar">
+      <label>From Date<input type="date" id="reportFromDate"></label>
+      <label>To Date<input type="date" id="reportToDate"></label>
+      <button class="report-reset-btn" onclick="resetReportDates()">↺ Reset</button>
+    </div>
+    <div class="report-note">Select any date range. Reports use the actual data already loaded in the dashboard; no new values are calculated into the source data.</div>
+
+    <div class="report-main-card">
+      <div class="report-card-head"><div><strong>📕 Complete Dashboard Report</strong><small>Maximum available detail from all plant sections</small></div></div>
+      <div class="report-actions">
+        <button onclick="generateReportPDF('complete')">📄 PDF</button>
+        <button onclick="exportReportExcel('complete')">📊 Excel</button>
+        <button onclick="copyReportWhatsApp('complete')">📱 WhatsApp Copy</button>
+      </div>
+    </div>
+
+    <div class="report-main-card history-report-card">
+      <div class="report-card-head"><div><strong>📦 Material-wise History Report</strong><small>Select one Raw Material • selected date range • Received / Consumption / Transfer / Closing</small></div></div>
+      <div class="report-history-filter"><label>Material<select id="reportHistoryMaterial"></select></label></div>
+      <div class="report-actions"><button onclick="generateHistoryReportPDF('material')">📄 PDF</button><button onclick="exportHistoryReportExcel('material')">📊 Excel</button><button onclick="copyHistoryWhatsApp('material')">📱 WhatsApp</button></div>
+    </div>
+    <div class="report-section-grid">
+
+      <div class="report-main-card"><div class="report-card-head"><div><strong>📦 Raw Material</strong><small>Material • Date • Received • Consumption • Transfer • Closing</small></div></div><div class="report-actions"><button onclick="generateReportPDF('raw')">📄 PDF</button><button onclick="exportReportExcel('raw')">📊 Excel</button><button onclick="copyReportWhatsApp('raw')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>🌾 Feed Unit</strong><small>Product • Date • Production • Dispatch • Closing</small></div></div><div class="report-actions"><button onclick="generateReportPDF('feed')">📄 PDF</button><button onclick="exportReportExcel('feed')">📊 Excel</button><button onclick="copyReportWhatsApp('feed')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>🛍 PP Bags</strong><small>Product • Date • Received • Issue • Damage • Closing</small></div></div><div class="report-actions"><button onclick="generateReportPDF('bags')">📄 PDF</button><button onclick="exportReportExcel('bags')">📊 Excel</button><button onclick="copyReportWhatsApp('bags')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>🏭 Production</strong><small>Product-wise production records and performance</small></div></div><div class="report-actions"><button onclick="generateReportPDF('production')">📄 PDF</button><button onclick="exportReportExcel('production')">📊 Excel</button><button onclick="copyReportWhatsApp('production')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>🧪 Premix</strong><small>Premix transfer and monthly mix data</small></div></div><div class="report-actions"><button onclick="generateReportPDF('premix')">📄 PDF</button><button onclick="exportReportExcel('premix')">📊 Excel</button><button onclick="copyReportWhatsApp('premix')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>📊 Monthly Mix & Contribution</strong><small>RM consumption • Production • Dispatch by selected month</small></div></div><div class="report-actions"><button onclick="generateReportPDF('mix')">📄 PDF</button><button onclick="exportReportExcel('mix')">📊 Excel</button><button onclick="copyReportWhatsApp('mix')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>📋 RM Movements</strong><small>Stock • Consumption • Received • Transfer • Gain • Shortage • Sale</small></div></div><div class="report-actions"><button onclick="generateReportPDF('movements')">📄 PDF</button><button onclick="exportReportExcel('movements')">📊 Excel</button><button onclick="copyReportWhatsApp('movements')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>🔧 Spare Parts</strong><small>Stock • Reorder • Orders • Employee messages</small></div></div><div class="report-actions"><button onclick="generateReportPDF('spares')">📄 PDF</button><button onclick="exportReportExcel('spares')">📊 Excel</button><button onclick="copyReportWhatsApp('spares')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card"><div class="report-card-head"><div><strong>⚠️ Data Health</strong><small>Reorder, reconciliation and available-data checks</small></div></div><div class="report-actions"><button onclick="generateReportPDF('health')">📄 PDF</button><button onclick="exportReportExcel('health')">📊 Excel</button><button onclick="copyReportWhatsApp('health')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card history-report-card"><div class="report-card-head"><div><strong>🌾 Feed Unit Product-wise History</strong><small>Select one Product • selected date range • Production / Dispatch / Closing</small></div></div><div class="report-history-filter"><label>Product<select id="reportHistoryFeedProduct"></select></label></div><div class="report-actions"><button onclick="generateHistoryReportPDF('feed')">📄 PDF</button><button onclick="exportHistoryReportExcel('feed')">📊 Excel</button><button onclick="copyHistoryWhatsApp('feed')">📱 WhatsApp</button></div></div>
+      <div class="report-main-card history-report-card"><div class="report-card-head"><div><strong>🛍 PP Bags Product-wise History</strong><small>Select one Product • selected date range • Received / Issue / Damage / Closing</small></div></div><div class="report-history-filter"><label>Product<select id="reportHistoryBagProduct"></select></label></div><div class="report-actions"><button onclick="generateHistoryReportPDF('bags')">📄 PDF</button><button onclick="exportHistoryReportExcel('bags')">📊 Excel</button><button onclick="copyHistoryWhatsApp('bags')">📱 WhatsApp</button></div></div>
+    </div>
   </div>
 
   <!-- TRENDS -->
@@ -180,6 +253,9 @@
   </div>
 </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

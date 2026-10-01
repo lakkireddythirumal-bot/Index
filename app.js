@@ -552,6 +552,16 @@ function renderMonthlyMix(){
   renderMixList("mixRmList",rm,rt);renderMixList("mixProdList",prod,pt);renderMixList("mixDispList",disp,dt);
 }
 function setMixMonth(m){MIX_MONTH=m||null;renderMonthlyMix()}
+function setMonthlyMixTab(type,btn){
+  const allowed=['rm','production','dispatch'];
+  const active=allowed.includes(type)?type:'rm';
+  document.querySelectorAll('.monthly-mix-tab').forEach(b=>b.classList.toggle('active',b.dataset.mixTab===active));
+  document.querySelectorAll('.monthly-mix-tab-panel').forEach(panel=>{
+    const show=panel.dataset.mixPanel===active;
+    panel.classList.toggle('active',show);
+    panel.hidden=!show;
+  });
+}
 function openMonthlyMixDetails(type){
   const m=MIX_MONTH||mixDefaultMonth(), label=monthLabel(m);
   let title="",rows=[];
@@ -647,7 +657,178 @@ function updateSectionDates(){
   setText("trendDateBags",formatSectionDate(bagDate));
 }
 
+
+/* =====================================================
+   COLLAPSED HISTORY CARDS — MATERIAL / PRODUCT / DATE
+===================================================== */
+function toggleHistoryCard(cardId,bodyId){
+  const card=document.getElementById(cardId), body=document.getElementById(bodyId);
+  if(!card||!body)return;
+  const opening=!card.classList.contains("open");
+  card.classList.toggle("open",opening);
+  const key=cardId.replace("HistoryCard","");
+  const chev=document.getElementById(key+"HistoryChevron");
+  if(chev)chev.textContent=opening?"−":"＋";
+  if(opening){
+    if(key==="rm")renderRMHistoryCard();
+    else if(key==="feed")renderFeedHistoryCard();
+    else if(key==="bags")renderBagsHistoryCard();
+  }
+}
+function historyDateOptions(dates,selected){
+  return dates.slice().sort().reverse().map(d=>`<option value="${esc(d)}" ${d===selected?"selected":""}>${esc(d)}</option>`).join("");
+}
+function historySelectOptions(items,selected){
+  return items.map(x=>`<option value="${esc(x)}" ${normalize(x)===normalize(selected)?"selected":""}>${esc(x)}</option>`).join("");
+}
+function rmHistoryTransactions(material){
+  const target=normalize(material),map=new Map();
+  /* Prefer the dedicated stock_history because it contains the full dated
+     movement history. Current STOCK transaction arrays can be only a latest
+     snapshot on some API responses. */
+  (DATA.stockHistory||[]).forEach(t=>{
+    if(normalize(t.material)!==target)return;
+    const d=dateOnly(rowDate(t));
+    const key=[d,tType(t),String(tVal(t)),String(t.for_day??""),String(t.for_month??""),String(t.for_year??"")].join("|");
+    map.set(key,t);
+  });
+  /* If stock_history is unavailable for this material, fall back to the
+     transactions embedded in the current stock object. */
+  if(!map.size){
+    (DATA.stock||[]).forEach(x=>{
+      if(normalize(x.material)!==target)return;
+      (Array.isArray(x.transactions)?x.transactions:[]).forEach(t=>{
+        const d=dateOnly(rowDate(t));
+        const key=[d,tType(t),String(tVal(t)),String(t.for_day??""),String(t.for_month??""),String(t.for_year??"")].join("|");
+        map.set(key,t);
+      });
+    });
+  }
+  return [...map.values()].sort((a,b)=>dateOnly(rowDate(a)).localeCompare(dateOnly(rowDate(b))));
+}
+function rmHistoryMaterials(){
+  const set=new Map();
+  (DATA.stock||[]).forEach(x=>{const m=clean(x.material);if(m)set.set(normalize(m),m)});
+  (DATA.stockHistory||[]).forEach(x=>{const m=clean(x.material);if(m)set.set(normalize(m),m)});
+  return [...set.values()].sort((a,b)=>a.localeCompare(b));
+}
+function rmHistoryDates(material){
+  return [...new Set(rmHistoryTransactions(material).map(t=>dateOnly(rowDate(t))).filter(Boolean))].sort().reverse();
+}
+function rmHistoryValue(rows,kind){
+  return rows.filter(t=>{
+    const type=tType(t);
+    if(kind==="received")return type==="PURCHASE";
+    if(kind==="consumption")return type.includes("CONSUMPTION");
+    if(kind==="transfer")return type.includes("TRANSFER");
+    return type==="CL. STOCK";
+  }).reduce((sum,t)=>sum+tVal(t),0);
+}
+function rmHistoryClosing(rows){
+  const r=rows.filter(t=>tType(t)==="CL. STOCK").slice(-1)[0];
+  return r? tVal(r):null;
+}
+function historyRangeDefaults(dates){
+  const ds=[...new Set(dates.filter(Boolean))].sort();
+  if(!ds.length)return {all:[],from:"",to:""};
+  const last=ds[ds.length-1];
+  const from=ds[Math.max(0,ds.length-7)];
+  return {all:ds,from,to:last};
+}
+function historyRangeOptions(dates,selected){
+  return dates.slice().sort().reverse().map(d=>`<option value="${esc(d)}" ${d===selected?"selected":""}>${esc(d)}</option>`).join("");
+}
+function inHistoryRange(d,from,to){return !!d && (!from||d>=from) && (!to||d<=to)}
+function rmHistoryRowsForRange(material,from,to){
+  return rmHistoryTransactions(material).filter(t=>inHistoryRange(dateOnly(rowDate(t)),from,to));
+}
+function renderRMHistoryCard(){
+  const body=document.getElementById("rmHistoryBody");if(!body)return;
+  const mats=rmHistoryMaterials(),material=mats[0]||"",defaults=historyRangeDefaults(rmHistoryDates(material));
+  body.innerHTML=`<div class="history-filter history-filter-3">
+    <label>Material<select id="rmHistoryMaterial" onchange="refreshRMHistoryCard()">${historySelectOptions(mats,material)}</select></label>
+    <label>From Date<select id="rmHistoryFrom">${historyRangeOptions(defaults.all,defaults.from)}</select></label>
+    <label>To Date<select id="rmHistoryTo">${historyRangeOptions(defaults.all,defaults.to)}</select></label>
+  </div><div id="rmHistoryTable"></div>`;
+  document.getElementById("rmHistoryFrom")?.addEventListener("change",refreshRMHistoryTable);
+  document.getElementById("rmHistoryTo")?.addEventListener("change",refreshRMHistoryTable);
+  refreshRMHistoryTable();
+}
+function refreshRMHistoryCard(){
+  const m=document.getElementById("rmHistoryMaterial")?.value||"";
+  const dates=rmHistoryDates(m),defaults=historyRangeDefaults(dates);
+  const fs=document.getElementById("rmHistoryFrom"),ts=document.getElementById("rmHistoryTo");
+  if(fs)fs.innerHTML=historyRangeOptions(defaults.all,defaults.from);
+  if(ts)ts.innerHTML=historyRangeOptions(defaults.all,defaults.to);
+  fs?.addEventListener("change",refreshRMHistoryTable);ts?.addEventListener("change",refreshRMHistoryTable);
+  refreshRMHistoryTable();
+}
+function refreshRMHistoryTable(){
+  const m=document.getElementById("rmHistoryMaterial")?.value||"",from=document.getElementById("rmHistoryFrom")?.value||"",to=document.getElementById("rmHistoryTo")?.value||"",el=document.getElementById("rmHistoryTable");
+  if(!el)return;
+  if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
+  const unit=materialUnit(m,getMaterial(m)?.unit||"MT");
+  const rows=rmHistoryTransactions(m).filter(t=>inHistoryRange(dateOnly(rowDate(t)),from,to));
+  const dates=[...new Set(rows.map(t=>dateOnly(rowDate(t))).filter(Boolean))].sort();
+  if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Consumption</th><th>Transfer</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const day=rows.filter(t=>dateOnly(rowDate(t))===d);const received=rmHistoryValue(day,"received"),consumption=rmHistoryValue(day,"consumption"),transfer=rmHistoryValue(day,"transfer"),closing=rmHistoryClosing(day);return `<tr><td>${esc(d)}</td><td>${fmt(received)} ${esc(unit)}</td><td>${fmt(consumption)} ${esc(unit)}</td><td>${fmt(transfer)} ${esc(unit)}</td><td>${closing===null?"--":fmt(closing)+" "+esc(unit)}</td></tr>`}).join("")}</tbody></table></div>`;
+}
+function feedHistoryProducts(){
+  const set=new Map();
+  (DATA.feedUnitData||[]).forEach(r=>{const p=clean(r.Product||r.product);if(p)set.set(normalize(p),p)});
+  return [...set.values()].sort((a,b)=>a.localeCompare(b));
+}
+function feedHistoryRows(product){return (DATA.feedUnitData||[]).filter(r=>normalize(r.Product||r.product)===normalize(product));}
+function feedHistoryDates(product){return [...new Set(feedHistoryRows(product).map(r=>dateOnly(r.Report_Date||r.report_date||r.date)).filter(Boolean))].sort();}
+function feedHistoryValue(r,names){for(const n of names){const v=num(r[n]);if(v!==null)return v}return null;}
+function renderFeedHistoryCard(){
+  const body=document.getElementById("feedHistoryBody");if(!body)return;
+  const products=feedHistoryProducts(),product=products[0]||"",defaults=historyRangeDefaults(feedHistoryDates(product));
+  body.innerHTML=`<div class="history-filter history-filter-3"><label>Product<select id="feedHistoryProduct" onchange="refreshFeedHistoryCard()">${historySelectOptions(products,product)}</select></label><label>From Date<select id="feedHistoryFrom">${historyRangeOptions(defaults.all,defaults.from)}</select></label><label>To Date<select id="feedHistoryTo">${historyRangeOptions(defaults.all,defaults.to)}</select></label></div><div id="feedHistoryTable"></div>`;
+  document.getElementById("feedHistoryFrom")?.addEventListener("change",refreshFeedHistoryTable);document.getElementById("feedHistoryTo")?.addEventListener("change",refreshFeedHistoryTable);refreshFeedHistoryTable();
+}
+function refreshFeedHistoryCard(){
+  const p=document.getElementById("feedHistoryProduct")?.value||"",dates=feedHistoryDates(p),defaults=historyRangeDefaults(dates),fs=document.getElementById("feedHistoryFrom"),ts=document.getElementById("feedHistoryTo");
+  if(fs)fs.innerHTML=historyRangeOptions(defaults.all,defaults.from);if(ts)ts.innerHTML=historyRangeOptions(defaults.all,defaults.to);
+  fs?.addEventListener("change",refreshFeedHistoryTable);ts?.addEventListener("change",refreshFeedHistoryTable);refreshFeedHistoryTable();
+}
+function refreshFeedHistoryTable(){
+  const p=document.getElementById("feedHistoryProduct")?.value||"",from=document.getElementById("feedHistoryFrom")?.value||"",to=document.getElementById("feedHistoryTo")?.value||"",el=document.getElementById("feedHistoryTable");if(!el)return;
+  if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
+  const rows=feedHistoryRows(p),dates=[...new Set(rows.map(r=>dateOnly(r.Report_Date||r.report_date||r.date)).filter(d=>inHistoryRange(d,from,to)))].sort();
+  if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Production</th><th>Dispatch</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date)===d);const r=rr[rr.length-1];const prod=feedHistoryValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]),disp=feedHistoryValue(r,["Dispatch_Day_MT","dispatch_day_mt","Dispatch_Day","dispatch_day","Dispatch","dispatch"]),close=feedHistoryValue(r,["Closing_Day_MT","closing_day_mt","Closing_Day","closing_day","Closing","closing"]);return `<tr><td>${esc(d)}</td><td>${prod===null?"--":fmtFeed(prod,p)}</td><td>${disp===null?"--":fmtFeed(disp,p)}</td><td>${close===null?"--":fmtFeed(close,p)}</td></tr>`}).join("")}</tbody></table></div>`;
+}
+function bagsHistoryProducts(){
+  const set=new Map();
+  (DATA.bags||[]).forEach(r=>{const p=clean(r.product||"PP Bags");if(p)set.set(normalize(p),p)});
+  (DATA.bagsHistory||[]).forEach(r=>{const p=clean(r.product||"PP Bags");if(p)set.set(normalize(p),p)});
+  return [...set.values()].sort((a,b)=>a.localeCompare(b));
+}
+function bagsHistoryRows(product){const rows=(DATA.bagsHistory||[]).filter(r=>normalize(r.product||"PP Bags")===normalize(product));return rows.length?rows:(DATA.bags||[]).filter(r=>normalize(r.product||"PP Bags")===normalize(product));}
+function bagsHistoryDates(product){return [...new Set(bagsHistoryRows(product).map(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)).filter(Boolean))].sort();}
+function renderBagsHistoryCard(){
+  const body=document.getElementById("bagsHistoryBody");if(!body)return;
+  const products=bagsHistoryProducts(),product=products[0]||"",defaults=historyRangeDefaults(bagsHistoryDates(product));
+  body.innerHTML=`<div class="history-filter history-filter-3"><label>Product<select id="bagsHistoryProduct" onchange="refreshBagsHistoryCard()">${historySelectOptions(products,product)}</select></label><label>From Date<select id="bagsHistoryFrom">${historyRangeOptions(defaults.all,defaults.from)}</select></label><label>To Date<select id="bagsHistoryTo">${historyRangeOptions(defaults.all,defaults.to)}</select></label></div><div id="bagsHistoryTable"></div>`;
+  document.getElementById("bagsHistoryFrom")?.addEventListener("change",refreshBagsHistoryTable);document.getElementById("bagsHistoryTo")?.addEventListener("change",refreshBagsHistoryTable);refreshBagsHistoryTable();
+}
+function refreshBagsHistoryCard(){
+  const p=document.getElementById("bagsHistoryProduct")?.value||"",dates=bagsHistoryDates(p),defaults=historyRangeDefaults(dates),fs=document.getElementById("bagsHistoryFrom"),ts=document.getElementById("bagsHistoryTo");
+  if(fs)fs.innerHTML=historyRangeOptions(defaults.all,defaults.from);if(ts)ts.innerHTML=historyRangeOptions(defaults.all,defaults.to);
+  fs?.addEventListener("change",refreshBagsHistoryTable);ts?.addEventListener("change",refreshBagsHistoryTable);refreshBagsHistoryTable();
+}
+function refreshBagsHistoryTable(){
+  const p=document.getElementById("bagsHistoryProduct")?.value||"",from=document.getElementById("bagsHistoryFrom")?.value||"",to=document.getElementById("bagsHistoryTo")?.value||"",el=document.getElementById("bagsHistoryTable");if(!el)return;
+  if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
+  const rows=bagsHistoryRows(p),dates=[...new Set(rows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)).filter(d=>inHistoryRange(d,from,to)))].sort();
+  if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Issue</th><th>Damage</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)===d),r=rr[rr.length-1],v=k=>num(r[k]);return `<tr><td>${esc(d)}</td><td>${v("received")===null?"--":fmt(v("received"))}</td><td>${v("issue")===null?"--":fmt(v("issue"))}</td><td>${v("damage")===null?"--":fmt(v("damage"))}</td><td>${v("closing")===null?"--":fmt(v("closing"))}</td></tr>`}).join("")}</tbody></table></div>`;
+}
+
+
 function renderDashboard(){
+  initReportCenter();
   renderSmartHeader();
   renderQuick();
   renderMonthlyMix();
@@ -1497,6 +1678,329 @@ async function loadSpareParts(showToastOnSuccess=false){
     console.error('Spare Parts API:',error);
     if(el)el.innerHTML='<div class="error-box">❌ Spare Parts API connection failed.</div>';
   }
+}
+
+
+/* =====================================================
+   REPORT CENTER — ADDITIVE REPORTING LAYER
+   Uses existing DATA / SPARE_DATA only. No source API or dashboard data is changed.
+===================================================== */
+function reportAllDates(){
+  const s=new Set();
+  const add=v=>{const d=dateOnly(v);if(d)s.add(d)};
+  (DATA.stockHistory||[]).forEach(r=>add(rowDate(r)));
+  (DATA.stock||[]).forEach(r=>{add(r.report_date||r.Report_Date||r.date);(r.transactions||[]).forEach(t=>add(rowDate(t)))});
+  (DATA.productionHistory||[]).forEach(r=>add(r.report_date||r.Report_Date||r.date));
+  (DATA.production||[]).forEach(r=>add(r.report_date||r.Report_Date||r.date));
+  (DATA.productionTrend||[]).forEach(r=>add(r.report_date||r.Report_Date||r.date));
+  (DATA.feedUnitData||[]).forEach(r=>add(r.report_date||r.Report_Date||r.date));
+  (DATA.bagsHistory||[]).forEach(r=>add(r.report_date||r.Report_Date||r.date));
+  (DATA.bags||[]).forEach(r=>add(r.report_date||r.Report_Date||r.date));
+  add(DATA.report_date);
+  Object.values(SPARE_DATA||{}).forEach(rows=>(rows||[]).forEach(r=>Object.keys(r||{}).forEach(k=>{if(normalize(k).includes('DATE'))add(r[k])})));
+  return [...s].filter(Boolean).sort();
+}
+function reportRange(){
+  const all=reportAllDates();
+  let from=document.getElementById('reportFromDate')?.value||'';
+  let to=document.getElementById('reportToDate')?.value||'';
+  if(!all.length)return {from,to,all};
+  if(!from)from=all[Math.max(0,all.length-7)];
+  if(!to)to=all[all.length-1];
+  if(from>to){const x=from;from=to;to=x;}
+  return {from,to,all};
+}
+function initReportCenter(){
+  refreshReportHistorySelectors();
+  const all=reportAllDates();if(!all.length)return;
+  const f=document.getElementById('reportFromDate'),t=document.getElementById('reportToDate');
+  if(f&&!f.value)f.value=all[Math.max(0,all.length-7)];
+  if(t&&!t.value)t.value=all[all.length-1];
+}
+function resetReportDates(){
+  const all=reportAllDates();const f=document.getElementById('reportFromDate'),t=document.getElementById('reportToDate');
+  if(f)f.value=all[Math.max(0,all.length-7)]||'';if(t)t.value=all[all.length-1]||'';
+  showToast('Report range reset');
+}
+function reportInRange(d,from,to){return !!d&&(!from||d>=from)&&(!to||d<=to)}
+function reportDate(v){return dateOnly(v)}
+function reportNum(v){const n=Number(v);return Number.isFinite(n)?n:0}
+function reportFmt(v){return reportNum(v).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2})}
+function reportDisplayCell(v){
+  if(v===null||v===undefined||v==='')return '';
+  const n=Number(v);
+  if(Number.isFinite(n))return n.toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2});
+  return String(v);
+}
+function reportRound(v){
+  const n=Number(v);
+  return Number.isFinite(n)?Math.round(n*100)/100:v;
+}
+function reportCleanRows(rows){return (rows||[]).map(r=>r.map(reportRound));}
+function reportTypeTotals(rows,from,to){
+  const out={};
+  (rows||[]).forEach(t=>{const d=reportDate(rowDate(t));if(!reportInRange(d,from,to))return;const ty=tType(t);out[ty]=(out[ty]||0)+tVal(t)});
+  return out;
+}
+function reportRawRows(from,to){
+  const map=new Map();
+  const key=(d,m)=>d+'|'+normalize(m);
+  (DATA.stockHistory||[]).forEach(t=>{
+    const d=reportDate(rowDate(t)),m=clean(t.material);if(!m||!reportInRange(d,from,to))return;
+    const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
+    const r=map.get(k),ty=tType(t),v=tVal(t);
+    if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;
+    else if(ty.includes('CONSUMPTION')||ty.includes('CONSUMPION'))r.Consumption+=v;
+    else if(ty.includes('TRANSFER'))r.Transfer+=v;
+    if(ty==='CL. STOCK')r.Closing=v;
+  });
+  if(!map.size){
+    (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{
+      const d=reportDate(rowDate(t)),m=clean(x.material||t.material);if(!m||!reportInRange(d,from,to))return;
+      const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
+      const r=map.get(k),ty=tType(t),v=tVal(t);if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;else if(ty.includes('CONSUMPTION')||ty.includes('CONSUMPION'))r.Consumption+=v;else if(ty.includes('TRANSFER'))r.Transfer+=v;if(ty==='CL. STOCK')r.Closing=v;
+    }));
+  }
+  return [...map.values()].sort((a,b)=>a.Date.localeCompare(b.Date)||a.Material.localeCompare(b.Material));
+}
+function reportFeedRows(from,to){
+  return (DATA.feedUnitData||[]).filter(r=>reportInRange(reportDate(r.report_date||r.Report_Date||r.date),from,to)).map(r=>{
+    const p=clean(r.Product||r.product);
+    return {Date:reportDate(r.report_date||r.Report_Date||r.date),Product:p,Production:feedHistoryValue(r,['Production_Day_MT','production_day_mt','Production_Day','production_day','Production','production']),Dispatch:feedHistoryValue(r,['Dispatch_Day_MT','dispatch_day_mt','Dispatch_Day','dispatch_day','Dispatch','dispatch']),Closing:feedHistoryValue(r,['Closing_Day_MT','closing_day_mt','Closing_Day','closing_day','Closing','closing'])};
+  }).sort((a,b)=>a.Date.localeCompare(b.Date)||a.Product.localeCompare(b.Product));
+}
+function reportBagRows(from,to){
+  const src=(DATA.bagsHistory&&DATA.bagsHistory.length?DATA.bagsHistory:DATA.bags)||[];
+  return src.filter(r=>reportInRange(reportDate(r.report_date||r.Report_Date||r.date||r.DATE),from,to)).map(r=>({Date:reportDate(r.report_date||r.Report_Date||r.date||r.DATE),Product:clean(r.product||'PP Bags'),Received:reportNum(r.received),Issue:reportNum(r.issue),Damage:reportNum(r.damage),Closing:reportNum(r.closing)})).sort((a,b)=>a.Date.localeCompare(b.Date)||a.Product.localeCompare(b.Product));
+}
+function reportProductionRows(from,to){
+  const src=(DATA.productionHistory&&DATA.productionHistory.length?DATA.productionHistory:DATA.production)||[];
+  return src.filter(r=>reportInRange(reportDate(r.report_date||r.Report_Date||r.date),from,to)).map(r=>({Date:reportDate(r.report_date||r.Report_Date||r.date),Product:clean(r.product||r.Product),Actual_Output:reportNum(r.actual_output),Standard_Output:reportNum(r.standard_output),Output_Percentage:r.output_percentage===null||r.output_percentage===undefined||r.output_percentage===''?'':reportNum(r.output_percentage),Process_Loss:r.process_loss===null||r.process_loss===undefined||r.process_loss===''?'':reportNum(r.process_loss),Remarks:clean(r.remarks)})).sort((a,b)=>a.Date.localeCompare(b.Date)||a.Product.localeCompare(b.Product));
+}
+function reportPremixRows(from,to){
+  const out=[];
+  const seen=new Set();
+  (DATA.stockHistory||[]).forEach(t=>{
+    const d=reportDate(rowDate(t)),m=clean(t.material),ty=tType(t);if(!m||!isPremixMaterial(m)||!reportInRange(d,from,to)||!isBommakalTransfer(t))return;
+    const k=d+'|'+normalize(m)+'|'+tVal(t);if(seen.has(k))return;seen.add(k);out.push({Date:d,Premix:m,Transfer_KG:tVal(t)});
+  });
+  return out.sort((a,b)=>a.Date.localeCompare(b.Date)||a.Premix.localeCompare(b.Premix));
+}
+function reportMovementRows(from,to){
+  const rows=[];
+  (DATA.stockHistory||[]).forEach(t=>{const d=reportDate(rowDate(t)),m=clean(t.material);if(m&&reportInRange(d,from,to))rows.push({Date:d,Material:m,Movement:tType(t),Value:tVal(t),For_Month:reportNum(t.for_month),For_Year:reportNum(t.for_year)});});
+  return rows.sort((a,b)=>a.Date.localeCompare(b.Date)||a.Material.localeCompare(b.Material)||a.Movement.localeCompare(b.Movement));
+}
+function reportSpareRows(){
+  const stock=(SPARE_DATA.SPARE_STOCK||[]).map(r=>({Category:spareVal(r,['CATEGORY','Category']),Part_Name:spareVal(r,['NAME','Name','PART_NAME','Part_Name','PART NAME']),Size:spareVal(r,['SIZE','Size']),Code:spareVal(r,['CODE','Code']),Stock:spareVal(r,['STOCK','Stock']),Unit:spareVal(r,['UNIT','Unit'])||'Nos',Reorder_Level:spareVal(r,['REORDER_LEVEL','Reorder_Level','REORDER LEVEL']),Location:spareVal(r,['LOCATION','Location'])}));
+  return stock;
+}
+function reportHealthRows(from,to){
+  let reorder=0,issues=0,abnormal=0;
+  try{reorder=getMaterials().filter(m=>stockStatus(reportNum(getMaterial(m)?.closing),avgConsumption(m)).status==='REORDER').length}catch(e){}
+  try{issues=reconciliationItems().length+feedUnitReconciliationItems().length+ppBagReconciliationItems().length+duplicateTransactionCount()}catch(e){}
+  try{abnormal=abnormalConsumptionItems().length}catch(e){}
+  return [
+    {Metric:'Report Period',Value:from+' → '+to},
+    {Metric:'Raw Material Reorder Items',Value:reorder},
+    {Metric:'Reconciliation / Data Issues',Value:issues},
+    {Metric:'Abnormal Consumption Items',Value:abnormal},
+    {Metric:'Raw Material Records',Value:reportRawRows(from,to).length},
+    {Metric:'Feed Unit Records',Value:reportFeedRows(from,to).length},
+    {Metric:'PP Bag Records',Value:reportBagRows(from,to).length},
+    {Metric:'Production Records',Value:reportProductionRows(from,to).length}
+  ];
+}
+function reportSummary(from,to){
+  const raw=reportRawRows(from,to),feed=reportFeedRows(from,to),bags=reportBagRows(from,to),prod=reportProductionRows(from,to),premix=reportPremixRows(from,to);
+  const sum=(rows,k)=>rows.reduce((a,r)=>a+reportNum(r[k]),0);
+  return [
+    ['Raw Material Received',sum(raw,'Received'),'MT / source unit'],
+    ['Raw Material Consumption',sum(raw,'Consumption'),'MT / source unit'],
+    ['Raw Material Transfer',sum(raw,'Transfer'),'MT / source unit'],
+    ['Feed Production',sum(feed,'Production'),'MT / product unit'],
+    ['Feed Dispatch',sum(feed,'Dispatch'),'MT / product unit'],
+    ['PP Bags Received',sum(bags,'Received'),'Bags'],
+    ['PP Bags Issue',sum(bags,'Issue'),'Bags'],
+    ['PP Bags Damage',sum(bags,'Damage'),'Bags'],
+    ['Production Actual Output',sum(prod,'Actual_Output'),'Bags'],
+    ['Premix Bommakal Transfer',sum(premix,'Transfer_KG'),'KG']
+  ];
+}
+function reportMixRows(from,to){
+  const months=mixAvailableMonths().filter(m=>{
+    const start=m+'-01';
+    return (!from||m>=from.slice(0,7))&&(!to||m<=to.slice(0,7));
+  });
+  const rows=[];
+  months.forEach(m=>{
+    monthlyRMConsumption(m).forEach(r=>rows.push({Month:monthLabel(m),Type:'RM Consumption Mix',Item:r.name,Value_MT:r.value,Percent:0}));
+    monthlyFeedMix(m,'Production_Month_MT').forEach(r=>rows.push({Month:monthLabel(m),Type:'Production Mix',Item:r.name,Value_MT:r.value,Percent:0}));
+    monthlyFeedMix(m,'Dispatch_Month_MT').forEach(r=>rows.push({Month:monthLabel(m),Type:'Dispatch Mix',Item:r.name,Value_MT:r.value,Percent:0}));
+  });
+  const totals={};rows.forEach(r=>{const k=r.Month+'|'+r.Type;totals[k]=(totals[k]||0)+r.Value_MT});
+  rows.forEach(r=>{const t=totals[r.Month+'|'+r.Type]||0;r.Percent=t?r.Value_MT/t*100:0});
+  return rows;
+}
+function reportMaterialHistoryRows(material,from,to){
+  const rows=rmHistoryTransactions(material).filter(t=>inHistoryRange(dateOnly(rowDate(t)),from,to));
+  const unit=materialUnit(material,getMaterial(material)?.unit||"MT");
+  const dates=[...new Set(rows.map(t=>dateOnly(rowDate(t))).filter(Boolean))].sort();
+  return dates.map(d=>{
+    const day=rows.filter(t=>dateOnly(rowDate(t))===d);
+    return {Date:d,Material:material,Unit:unit,
+      Received:rmHistoryValue(day,"received"),Consumption:rmHistoryValue(day,"consumption"),
+      Transfer:rmHistoryValue(day,"transfer"),Closing:rmHistoryClosing(day)};
+  });
+}
+function reportProductHistoryRows(kind,product,from,to){
+  if(kind==='feed'){
+    return feedHistoryDates(product).filter(d=>inHistoryRange(d,from,to)).map(d=>{
+      const rr=feedHistoryRows(product).filter(r=>dateOnly(r.Report_Date||r.report_date||r.date)===d),r=rr[rr.length-1]||{};
+      return {Date:d,Product:product,
+        Production:feedHistoryValue(r,['Production_Day_MT','production_day_mt','Production_Day','production_day','Production','production']),
+        Dispatch:feedHistoryValue(r,['Dispatch_Day_MT','dispatch_day_mt','Dispatch_Day','dispatch_day','Dispatch','dispatch']),
+        Closing:feedHistoryValue(r,['Closing_Day_MT','closing_day_mt','Closing_Day','closing_day','Closing','closing'])};
+    });
+  }
+  return bagsHistoryDates(product).filter(d=>inHistoryRange(d,from,to)).map(d=>{
+    const rr=bagsHistoryRows(product).filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)===d),r=rr[rr.length-1]||{};
+    return {Date:d,Product:product,Received:num(r.received),Issue:num(r.issue),Damage:num(r.damage),Closing:num(r.closing)};
+  });
+}
+function reportHistorySelection(kind){
+  const material=document.getElementById('reportHistoryMaterial')?.value||rmHistoryMaterials()[0]||'';
+  const feed=document.getElementById('reportHistoryFeedProduct')?.value||feedHistoryProducts()[0]||'';
+  const bags=document.getElementById('reportHistoryBagProduct')?.value||bagsHistoryProducts()[0]||'';
+  return kind==='material'?material:(kind==='feed'?feed:bags);
+}
+function refreshReportHistorySelectors(){
+  const fill=(id,items)=>{const el=document.getElementById(id);if(!el)return;const cur=el.value;el.innerHTML=historySelectOptions(items,items.includes(cur)?cur:(items[0]||''));};
+  fill('reportHistoryMaterial',rmHistoryMaterials());
+  fill('reportHistoryFeedProduct',feedHistoryProducts());
+  fill('reportHistoryBagProduct',bagsHistoryProducts());
+}
+function reportHistoryData(kind,from,to){
+  const selected=reportHistorySelection(kind);
+  if(kind==='material')return {title:'Raw Material Material-wise History',headers:['Date','Material','Unit','Received','Consumption','Transfer','Closing'],rows:reportMaterialHistoryRows(selected,from,to).map(r=>[r.Date,r.Material,r.Unit,r.Received,r.Consumption,r.Transfer,r.Closing===null?'':r.Closing]),selected};
+  if(kind==='feed')return {title:'Feed Unit Product-wise History',headers:['Date','Product','Production','Dispatch','Closing'],rows:reportProductHistoryRows('feed',selected,from,to).map(r=>[r.Date,r.Product,r.Production??'',r.Dispatch??'',r.Closing??'']),selected};
+  return {title:'PP Bags Product-wise History',headers:['Date','Product','Received','Issue','Damage','Closing'],rows:reportProductHistoryRows('bags',selected,from,to).map(r=>[r.Date,r.Product,r.Received??'',r.Issue??'',r.Damage??'',r.Closing??'']),selected};
+}
+function generateHistoryReportPDF(kind){
+  const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
+  const sec=reportHistoryData(kind,from,to);if(!sec.rows.length){showToast('No history for selected range');return}
+  const title=sec.title+' • '+sec.selected;
+  if(!(window.jspdf&&window.jspdf.jsPDF)){reportPdfFallback(title,[sec]);return;}
+  try{
+    const {jsPDF}=window.jspdf,doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    doc.setFontSize(16);doc.text(title,14,14);doc.setFontSize(9);doc.text('Period: '+from+' → '+to+'   Generated: '+new Date().toLocaleString('en-IN'),14,20);
+    doc.autoTable({startY:25,head:[sec.headers],body:reportCleanRows(sec.rows),margin:{left:10,right:10},styles:{fontSize:7,cellPadding:2},headStyles:{fillColor:[39,58,86],textColor:255},alternateRowStyles:{fillColor:[248,250,252]},theme:'grid',didDrawPage:d=>{doc.setFontSize(7);doc.text('Feed Plant Report • '+from+' → '+to,10,202);}});
+    doc.save('Feed_Plant_'+reportSafeName(sec.title)+'_'+reportSafeName(sec.selected)+'_'+reportFileStamp()+'.pdf');showToast('History PDF generated');
+  }catch(e){console.error(e);reportPdfFallback(title,[sec])}
+}
+function exportHistoryReportExcel(kind){
+  const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
+  const sec=reportHistoryData(kind,from,to);if(!sec.rows.length){showToast('No history for selected range');return}
+  if(!(window.XLSX&&window.XLSX.utils)){showToast('Excel engine not loaded');return}
+  const wb=XLSX.utils.book_new(),aoa=[sec.headers,...sec.rows.map(r=>r.map(reportRound))],ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=sec.headers.map(h=>({wch:Math.max(12,Math.min(28,String(h).length+6))}));XLSX.utils.book_append_sheet(wb,ws,'History');
+  XLSX.writeFile(wb,'Feed_Plant_'+reportSafeName(sec.title)+'_'+reportSafeName(sec.selected)+'_'+reportFileStamp()+'.xlsx');showToast('History Excel exported');
+}
+function historyWhatsAppText(kind,from,to){
+  const sec=reportHistoryData(kind,from,to),s0=kind==='material'?'📦 RAW MATERIAL HISTORY':kind==='feed'?'🌾 FEED UNIT HISTORY':'🛍 PP BAGS HISTORY';
+  let s=s0+'\n'+sec.selected+'\n'+from+' to '+to+'\n\n';
+  sec.rows.forEach(r=>{if(kind==='material')s+=r[0]+' | Received: '+reportDisplayCell(r[3])+' '+r[2]+' | Consumption: '+reportDisplayCell(r[4])+' '+r[2]+' | Transfer: '+reportDisplayCell(r[5])+' '+r[2]+' | Closing: '+(r[6]===''?'--':reportDisplayCell(r[6]))+' '+r[2]+'\n';
+    else if(kind==='feed')s+=r[0]+' | Production: '+reportDisplayCell(r[2])+' | Dispatch: '+reportDisplayCell(r[3])+' | Closing: '+(r[4]===''?'--':reportDisplayCell(r[4]))+'\n';
+    else s+=r[0]+' | Received: '+reportDisplayCell(r[2])+' | Issue: '+reportDisplayCell(r[3])+' | Damage: '+reportDisplayCell(r[4])+' | Closing: '+reportDisplayCell(r[5])+'\n';});
+  return s.trim();
+}
+async function copyTextRobust(text){
+  try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(text);return true}}catch(e){}
+  const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.left='-9999px';ta.style.top='0';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,text.length);
+  let ok=false;try{ok=document.execCommand('copy')}catch(e){}ta.remove();return ok;
+}
+function showWhatsAppCopyModal(text){
+  showModal('📱 WhatsApp Message',`<div class="detail-section"><div class="small-note">Message ready. Tap Copy Message, then paste directly into WhatsApp.</div><textarea id="reportWhatsAppBox" readonly style="width:100%;min-height:260px;box-sizing:border-box;border:1px solid #dfe5ee;border-radius:10px;padding:10px;font:12px/1.5 inherit;resize:vertical;background:#fff">${esc(text)}</textarea><div style="display:flex;gap:8px;margin-top:9px"><button class="more-toggle" onclick="copyVisibleWhatsApp()">📋 Copy Message</button><button class="more-toggle" onclick="closeModal()">Close</button></div></div>`);
+}
+async function copyVisibleWhatsApp(){const ta=document.getElementById('reportWhatsAppBox');if(!ta)return;const ok=await copyTextRobust(ta.value);if(ok)showToast('WhatsApp message copied');else{ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);showToast('Tap and hold the message to copy');}}
+async function copyHistoryWhatsApp(kind){const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}const text=historyWhatsAppText(kind,from,to);if(!text){showToast('No history for selected range');return}const ok=await copyTextRobust(text);showToast(ok?'WhatsApp message copied':'Tap Copy Message in the message window');showWhatsAppCopyModal(text)}
+
+function reportSectionData(section,from,to){
+  switch(section){
+    case 'raw':return {title:'Raw Material',headers:['Date','Material','Unit','Received','Consumption','Transfer','Closing'],rows:reportRawRows(from,to).map(r=>[r.Date,r.Material,r.Unit,r.Received,r.Consumption,r.Transfer,r.Closing===null?'':r.Closing])};
+    case 'feed':return {title:'Feed Unit',headers:['Date','Product','Production','Dispatch','Closing'],rows:reportFeedRows(from,to).map(r=>[r.Date,r.Product,r.Production??'',r.Dispatch??'',r.Closing??''])};
+    case 'bags':return {title:'PP Bags',headers:['Date','Product','Received','Issue','Damage','Closing'],rows:reportBagRows(from,to).map(r=>[r.Date,r.Product,r.Received,r.Issue,r.Damage,r.Closing])};
+    case 'production':return {title:'Production',headers:['Date','Product','Actual Output','Standard Output','Output %','Process Loss %','Remarks'],rows:reportProductionRows(from,to).map(r=>[r.Date,r.Product,r.Actual_Output,r.Standard_Output,r.Output_Percentage,r.Process_Loss,r.Remarks])};
+    case 'premix':return {title:'Premix Transfers',headers:['Date','Premix','Transfer KG'],rows:reportPremixRows(from,to).map(r=>[r.Date,r.Premix,r.Transfer_KG])};
+    case 'mix':return {title:'Monthly Mix & Contribution',headers:['Month','Type','Item','Value MT','Contribution %'],rows:reportMixRows(from,to).map(r=>[r.Month,r.Type,r.Item,r.Value_MT,r.Percent])};
+    case 'movements':return {title:'Raw Material Movements',headers:['Date','Material','Movement','Value','For Month','For Year'],rows:reportMovementRows(from,to).map(r=>[r.Date,r.Material,r.Movement,r.Value,r.For_Month,r.For_Year])};
+    case 'spares':return {title:'Spare Parts',headers:['Category','Part Name','Size','Code','Stock','Unit','Reorder Level','Location'],rows:reportSpareRows().map(r=>[r.Category,r.Part_Name,r.Size,r.Code,r.Stock,r.Unit,r.Reorder_Level,r.Location])};
+    case 'health':return {title:'Data Health',headers:['Metric','Value'],rows:reportHealthRows(from,to).map(r=>[r.Metric,r.Value])};
+    default:return {title:'Complete Dashboard',headers:[],rows:[]};
+  }
+}
+function reportCompleteSections(from,to){
+  const sections=[];
+  sections.push({title:'Management Summary',headers:['Metric','Value','Unit / Context'],rows:reportSummary(from,to)});
+  ['raw','feed','bags','production','premix','mix','movements','spares','health'].forEach(k=>sections.push(reportSectionData(k,from,to)));
+  return sections;
+}
+function reportFileStamp(){return (document.getElementById('reportFromDate')?.value||'')+'_'+(document.getElementById('reportToDate')?.value||'')}
+function reportSafeName(s){return clean(s).replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'')}
+function reportPdfFallback(title,sections){
+  const w=window.open('','_blank');if(!w){showToast('Popup blocked — allow popups for PDF');return;}
+  const css=`<style>body{font-family:Arial,sans-serif;padding:24px;color:#202938}h1{font-size:22px}h2{font-size:16px;margin-top:24px;border-bottom:1px solid #ddd;padding-bottom:6px}table{border-collapse:collapse;width:100%;margin:8px 0 20px;font-size:10px}th,td{border:1px solid #ddd;padding:5px;text-align:left}th{background:#f1f4f8}small{color:#667085}@media print{.page{break-before:page}}</style>`;
+  w.document.write('<!doctype html><html><head><title>'+esc(title)+'</title>'+css+'</head><body><h1>'+esc(title)+'</h1><small>Generated: '+esc(new Date().toLocaleString('en-IN'))+'</small>');
+  sections.forEach((sec,i)=>{w.document.write((i?'':'')+'<div class="page"><h2>'+esc(sec.title)+'</h2><table><thead><tr>'+sec.headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+sec.rows.map(r=>'<tr>'+r.map(v=>'<td>'+esc(reportDisplayCell(v))+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>')});
+  w.document.write('</body></html>');w.document.close();setTimeout(()=>w.print(),500);
+}
+function generateReportPDF(section){
+  const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
+  const sections=section==='complete'?reportCompleteSections(from,to):[reportSectionData(section,from,to)];
+  const title=section==='complete'?'Feed Plant Complete Management Report':'Feed Plant '+(sections[0]?.title||'Report');
+  if(!(window.jspdf&&window.jspdf.jsPDF)){reportPdfFallback(title,sections);return;}
+  try{
+    const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    doc.setFontSize(16);doc.text(title,14,14);doc.setFontSize(9);doc.text('Period: '+from+' → '+to+'   Generated: '+new Date().toLocaleString('en-IN'),14,20);
+    let y=25;
+    sections.forEach((sec,i)=>{
+      if(i>0){doc.addPage();y=14;}
+      doc.setFontSize(12);doc.text(sec.title,14,y);y+=4;
+      doc.autoTable({startY:y,head:[sec.headers],body:reportCleanRows(sec.rows),margin:{left:10,right:10},styles:{fontSize:7,cellPadding:2},headStyles:{fillColor:[39,58,86],textColor:255},alternateRowStyles:{fillColor:[248,250,252]},theme:'grid',didDrawPage:data=>{doc.setFontSize(7);doc.text('Feed Plant Report • '+from+' → '+to,10,202);}});
+    });
+    doc.save('Feed_Plant_'+reportSafeName(section==='complete'?'Complete_Report':sections[0].title)+'_'+reportFileStamp()+'.pdf');showToast('PDF generated');
+  }catch(e){console.error(e);reportPdfFallback(title,sections)}
+}
+function exportReportExcel(section){
+  const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
+  const sections=section==='complete'?reportCompleteSections(from,to):[reportSectionData(section,from,to)];
+  if(!(window.XLSX&&window.XLSX.utils)){showToast('Excel engine not loaded — use PDF/CSV fallback');return}
+  const wb=XLSX.utils.book_new();
+  sections.forEach((sec,i)=>{const aoa=[sec.headers,...sec.rows.map(r=>r.map(reportRound))];const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=sec.headers.map(h=>({wch:Math.max(12,Math.min(28,String(h).length+5))}));XLSX.utils.book_append_sheet(wb,ws,clean(sec.title).slice(0,31)||('Report'+(i+1)));});
+  XLSX.writeFile(wb,'Feed_Plant_'+reportSafeName(section==='complete'?'Complete_Report':sections[0].title)+'_'+reportFileStamp()+'.xlsx');showToast('Excel exported');
+}
+function reportWhatsAppText(section,from,to){
+  const sum=reportSummary(from,to);let s='📊 FEED PLANT REPORT\n'+from+' to '+to+'\n\n';
+  if(section==='complete'){
+    s+='🌾 FEED UNIT\nProduction: '+reportFmt(sum[3][1])+' MT\nDispatch: '+reportFmt(sum[4][1])+' MT\n\n';
+    s+='📦 RAW MATERIAL\nReceived: '+reportFmt(sum[0][1])+'\nConsumption: '+reportFmt(sum[1][1])+'\nTransfer: '+reportFmt(sum[2][1])+'\n\n';
+    s+='🛍 PP BAGS\nReceived: '+reportFmt(sum[5][1])+'\nIssue: '+reportFmt(sum[6][1])+'\nDamage: '+reportFmt(sum[7][1])+'\n\n';
+    s+='🏭 PRODUCTION\nActual Output: '+reportFmt(sum[8][1])+' Bags\n\n';
+    s+='🧪 PREMIX TRANSFER\n'+reportFmt(sum[9][1])+' KG\n\n';
+    const h=reportHealthRows(from,to);s+='⚠️ DATA HEALTH\nReorder: '+h[1].Value+'\nIssues: '+h[2].Value+'\nAbnormal Consumption: '+h[3].Value;
+    return s;
+  }
+  const sec=reportSectionData(section,from,to);s+='📌 '+sec.title.toUpperCase()+'\n';
+  sec.rows.slice(-25).forEach(r=>{s+=r.join(' | ')+'\n'});
+  if(sec.rows.length>25)s+='\n… '+(sec.rows.length-25)+' more rows available in PDF/Excel.';
+  return s;
+}
+async function copyReportWhatsApp(section){
+  const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
+  const text=reportWhatsAppText(section,from,to);
+  const ok=await copyTextRobust(text);
+  showToast(ok?'WhatsApp message copied':'Tap Copy Message in the message window');
+  showWhatsAppCopyModal(text);
 }
 
 /* =====================================================
