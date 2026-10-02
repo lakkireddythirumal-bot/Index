@@ -1081,3 +1081,20 @@ select{border-color:#dfe5ee!important;box-shadow:0 2px 8px rgba(31,47,77,.04)}
 .report-view-controls label{font-size:10px;color:#667085;font-weight:800;display:flex;flex-direction:column;gap:5px;min-width:220px}
 .report-view-controls select{height:38px;border:1px solid #dfe5ee;border-radius:10px;padding:0 10px;background:#fff;color:#25324a;font-size:11px;font-weight:750}
 @media(max-width:700px){.report-card-head{align-items:flex-start}.report-view-controls label{width:100%;min-width:0}.report-view-controls{display:block}.report-view-controls select{width:100%}.report-close-btn{padding:7px 9px}}
+
+.spare-view-more-btn{display:flex;width:100%;align-items:center;justify-content:center;gap:6px;border:1px solid #dce4f0;background:linear-gradient(180deg,#f8faff,#eef3fb);color:#315fd6;border-radius:12px;padding:10px 12px;margin:4px 0 2px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 2px 7px rgba(31,47,77,.04)}
+.spare-view-more-btn:active{transform:scale(.99)}
+
+/* Compact manager Attention Required summary */
+.attention-summary-list{display:flex;flex-direction:column;gap:2px}
+.attention-summary-row{width:100%;display:grid;grid-template-columns:25px minmax(0,1fr) 14px;align-items:center;gap:6px;border:0;border-bottom:1px solid #eef1f4;background:transparent;padding:8px 3px;text-align:left;cursor:pointer;color:#202a3a}
+.attention-summary-row:last-child{border-bottom:0}
+.attention-summary-row:hover{background:#fafbfc;border-radius:9px}
+.attention-summary-icon{font-size:14px;text-align:center}
+.attention-summary-text{font-size:11px;font-weight:700;line-height:1.25}
+.attention-summary-arrow{font-size:17px;color:#9aa3af;text-align:right}
+.attention-summary-row.clear .attention-summary-text{color:#2f8a58}
+.attention-summary-row.info .attention-summary-text{color:#3569c8}
+.attention-summary-row.warning .attention-summary-text{color:#8a6700}
+.attention-summary-row.critical .attention-summary-text{color:#c33d3d}
+@media(max-width:420px){.attention-summary-row{padding:7px 2px}.attention-summary-text{font-size:10.5px}}
