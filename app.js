@@ -2,7 +2,6 @@
 /* =====================================================
    WORKING GOOGLE APPS SCRIPT URL — KEEP UNCHANGED • UI REFINEMENT
 ===================================================== */
-const API_URL="https://script.google.com/macros/s/AKfycbxhiO5LAGwqkvDHW9DjH8jynYzYlyjAvNxgYlV9J3Y1GGZJxGb_3oXCvk-Bzefp74oa/exec";
 const SPARE_PARTS_API="https://script.google.com/macros/s/AKfycbweDXm7if7XuHwAUju9WkIkNXkg0CakJJ9mmEBkQBwuQVuyYC9YkxjClVvovSSjv320/exec";
 
 /* =====================================================
@@ -27,6 +26,328 @@ function alertKey(a){return normalize((a.title||"")+"|"+(a.msg||""))}
 function saveDismissedAlerts(){try{localStorage.setItem("manager_dashboard_dismissed_alerts_v1",JSON.stringify([...DISMISSED_ALERTS]))}catch(e){}}
 function dismissAlert(key){DISMISSED_ALERTS.add(key);saveDismissedAlerts();renderAlerts();if(document.getElementById("modal").classList.contains("show"))openNotifications()}
 function clearDismissedAlerts(){DISMISSED_ALERTS.clear();saveDismissedAlerts();renderAlerts();openNotifications()}
+
+/* =====================================================
+   DATA CONTROL / REVIEW LAYER
+   Raw source is never deleted. Decisions are stored locally and applied
+   consistently to calculations and dashboard views.
+===================================================== */
+const DATA_CONTROL_KEY="plant_data_control_v1";
+let DATA_CONTROL={materials:{},products:{},records:{}};
+function loadDataControl(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(DATA_CONTROL_KEY)||"{}");
+    DATA_CONTROL={materials:raw.materials||{},products:raw.products||{},records:raw.records||{}};
+  }catch(e){DATA_CONTROL={materials:{},products:{},records:{}}}
+}
+function saveDataControl(){try{localStorage.setItem(DATA_CONTROL_KEY,JSON.stringify(DATA_CONTROL))}catch(e){}}
+loadDataControl();
+function dcKey(v){return normalize(v).replace(/[^A-Z0-9._-]+/g,"_")}
+function dcMaterialState(name){return DATA_CONTROL.materials[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
+function dcProductState(name){return DATA_CONTROL.products[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
+function dcRecordKey(material,t){
+  return dcKey([material,dateOnly(rowDate(t)),tType(t),tVal(t),clean(t.for_day),clean(t.for_month),clean(t.for_year)].join("|"));
+}
+function dcRecordState(material,t){return DATA_CONTROL.records[dcRecordKey(material,t)]||null}
+function dcRefreshUI(message, tone="success"){
+  // Render the control-center state first so the clicked button updates immediately.
+  try{renderDataControl();}catch(e){console.warn("Data control refresh failed",e)}
+  try{renderDcReviewOverlay();}catch(e){}
+  try{renderDcReportIfOpen();}catch(e){}
+  if(message) dcToast(message,tone);
+  // Dashboard calculations refresh after the control UI has visibly updated.
+  setTimeout(()=>{try{invalidatePerfCache(); renderDashboard();}catch(e){console.warn("Dashboard refresh failed",e)}},0);
+}
+function dcToast(message,tone="success"){
+  const el=document.getElementById("dcToast"); if(!el)return;
+  el.textContent=message; el.className="dc-toast show "+tone;
+  clearTimeout(dcToast._timer); dcToast._timer=setTimeout(()=>el.classList.remove("show"),2200);
+}
+function closeDcReview(){
+  const overlay=document.getElementById("dcReviewOverlay");
+  if(!overlay)return;
+  overlay.classList.remove("show"); overlay.setAttribute("aria-hidden","true");
+}
+function dcReviewOverlayOutside(e){if(e.target&&e.target.id==="dcReviewOverlay")closeDcReview()}
+
+function dcSetMaterial(name,status,reason){
+  const k=dcKey(name), now=new Date().toISOString(), base={status,reason:clean(reason),updatedAt:now};
+  if(status==="HIDDEN"){const rows=dcMaterialActivity(name);base.activityAck=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||"";}
+  DATA_CONTROL.materials[k]=base; saveDataControl(); invalidatePerfCache(); dcRefreshUI(`${name}: ${status==="HIDDEN"?"Hidden":"Active"}`);
+}
+function dcSetProduct(name,status,reason){
+  const k=dcKey(name), now=new Date().toISOString(), base={status,reason:clean(reason),updatedAt:now};
+  if(status==="HIDDEN"){const rows=[...(DATA.production||[]),...(DATA.productionHistory||[]),...(DATA.feedUnitData||[]),...(DATA.bags||[]),...(DATA.bagsHistory||[])].filter(r=>normalize(r.product||r.Product)===normalize(name));base.activityAck=rows.map(r=>dateOnly(r.Report_Date||r.report_date||r.date)).filter(Boolean).sort().pop()||"";}
+  DATA_CONTROL.products[k]=base; saveDataControl(); invalidatePerfCache(); dcRefreshUI(`${name}: ${status==="HIDDEN"?"Hidden":"Active"}`);
+}
+function dcSetRecord(material,t,status,reason){
+  const k=dcRecordKey(material,t); DATA_CONTROL.records[k]={status,reason:clean(reason),updatedAt:new Date().toISOString()}; saveDataControl(); invalidatePerfCache(); dcRefreshUI(`${material}: ${status==="EXCLUDED"?"Record excluded":"Record restored"}`);
+}
+function dcReviewExcludedRecord(material,t,keep){
+  const k=dcRecordKey(material,t), old=DATA_CONTROL.records[k]||{};
+  DATA_CONTROL.records[k]={...old,status:keep?"EXCLUDED":"KEPT",reason:keep?"Reviewed — keep excluded":"Reconciliation changed — restored",updatedAt:new Date().toISOString(),reviewAck:keep?dcLatestRawReconciliation(material).status+"|"+dcLatestRawReconciliation(material).date:""};
+  saveDataControl(); invalidatePerfCache(); dcRefreshUI();
+}
+function dcReviewHiddenMaterial(material,keep){
+  const rows=dcMaterialActivity(material), latest=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||"";
+  if(keep){const k=dcKey(material),st=dcMaterialState(material); DATA_CONTROL.materials[k]={...st,status:"HIDDEN",reason:"Activity reviewed — keep hidden",updatedAt:new Date().toISOString(),activityAck:latest}; saveDataControl(); invalidatePerfCache(); dcRefreshUI(`${material}: kept hidden`); }
+  else dcSetMaterial(material,"ACTIVE","Activity detected — reviewed");
+}
+function dcReviewHiddenProduct(product,keep){
+  const rows=[...(DATA.production||[]),...(DATA.productionHistory||[]),...(DATA.feedUnitData||[]),...(DATA.bags||[]),...(DATA.bagsHistory||[])].filter(r=>normalize(r.product||r.Product)===normalize(product));
+  const latest=rows.map(r=>dateOnly(r.Report_Date||r.report_date||r.date)).filter(Boolean).sort().pop()||"";
+  if(keep){const k=dcKey(product),st=dcProductState(product); DATA_CONTROL.products[k]={...st,status:"HIDDEN",reason:"Activity reviewed — keep hidden",updatedAt:new Date().toISOString(),activityAck:latest}; saveDataControl(); invalidatePerfCache(); dcRefreshUI(`${product}: kept hidden`); }
+  else dcSetProduct(product,"ACTIVE","Activity detected — reviewed");
+}
+function dcIsExcluded(material,t){const s=dcRecordState(material,t);return s&&s.status==="EXCLUDED"}
+function dcIsHiddenMaterial(name){return dcMaterialState(name).status==="HIDDEN"}
+function dcIsHiddenProduct(name){return dcProductState(name).status==="HIDDEN"}
+function dcRawTransactions(material){
+  const x=(()=>{const key=normalize(material); if(PERF_CACHE.rawTransactions&&PERF_CACHE.rawTransactions.has(key))return PERF_CACHE.rawTransactions.get(key); const r=(()=>{const item=(()=>{if(!PERF_CACHE.materialMap){PERF_CACHE.materialMap=new Map(viewStockRows().map(x=>[normalize(x.material),x]));} return PERF_CACHE.materialMap.get(key)||null})(); return item&&Array.isArray(item.transactions)?item.transactions:[]})(); PERF_CACHE.rawTransactions=PERF_CACHE.rawTransactions||new Map(); PERF_CACHE.rawTransactions.set(key,r); return r;})();
+  return x;
+}
+function dcApprovedTransactions(material){return dcRawTransactions(material).filter(t=>!dcIsExcluded(material,t))}
+function dcAllMaterialNames(){return [...new Set((DATA.stock||[]).map(x=>clean(x.material)).filter(Boolean))]}
+function dcAllProductNames(){
+  const rows=[...(DATA.production||[]),...(DATA.productionHistory||[]),...(DATA.feedUnitData||[]),...(DATA.bags||[]),...(DATA.bagsHistory||[])];
+  return [...new Set(rows.map(r=>clean(r.product||r.Product)).filter(Boolean))];
+}
+function dcMaterialActivity(material){
+  const rows=dcRawTransactions(material);
+  return rows.filter(t=>{
+    const ty=tType(t),v=tVal(t);
+    return v>0 && !["OPENING STOCK","CL. STOCK"].includes(ty);
+  });
+}
+function dcLatestRawReconciliation(material){
+  const rows=dcRawTransactions(material); if(!rows.length)return {status:"NO DATA",message:"No transaction history available."};
+  const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort(); const latest=dates[dates.length-1]||"";
+  const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows;
+  let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0;
+  dayRows.forEach(t=>{
+    const ty=tType(t),v=tVal(t); if(ty==="OPENING STOCK")opening=v; else if(ty==="CL. STOCK")closing=v;
+    else if(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")){cons+=v;otherActivity+=v}
+    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){add+=v;otherActivity+=v}
+    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){out+=v;otherActivity+=v}
+  });
+  if(opening===null&&closing===null)return {status:"NO DATA",date:latest};
+  const unexplained=cons>0 && opening<=0 && add<=0;
+  const calculated=(opening||0)+add-out-(closing===null?0:closing);
+  const diff=calculated-cons;
+  const match=closing!==null && Math.abs(diff)<=0.01;
+  return {status:match?"MATCH":"MISMATCH",date:latest,opening:opening||0,closing,add,out,cons,otherActivity,calculated,diff,unexplained};
+}
+function dcReviewItems(){
+  const items=[];
+  dcAllMaterialNames().forEach(m=>{
+    const st=dcMaterialState(m), rec=dcLatestRawReconciliation(m), activity=dcMaterialActivity(m);
+    if(st.status==="HIDDEN" && activity.length){
+      const hiddenDate=dateOnly(st.updatedAt);
+      const fresh=activity.filter(t=>{const d=dateOnly(rowDate(t));return (!hiddenDate||!d||d>=hiddenDate) && (!st.activityAck || !d || d>st.activityAck);});
+      if(fresh.length){const latest=fresh.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||""; items.push({id:"hidden|"+dcKey(m)+"|"+latest,type:"HIDDEN_ACTIVITY",level:"warning",item:m,reason:"Hidden material has new recorded activity",detail:`Latest activity: ${latest||"--"}`});}
+    }
+    if(rec.unexplained){
+      const sig=dcKey([m,rec.date,rec.cons,rec.opening,rec.add,rec.closing].join("|"));
+      const prior=DATA_CONTROL.materials[dcKey(m)];
+      if(!(prior&&prior.unexplainedSignature===sig&&prior.unexplainedDecision==="EXCLUDED")) items.push({id:"unexplained|"+sig,type:"UNEXPLAINED_CONSUMPTION",level:"critical",item:m,reason:"Consumption exists without opening/receipt/transfer support",detail:`Consumption ${fmt(rec.cons)} • Opening ${fmt(rec.opening)} • Additions ${fmt(rec.add)}`});
+    }
+    dcRawTransactions(m).forEach(t=>{
+      const rs=dcRecordState(m,t); if(rs&&rs.status==="EXCLUDED"){
+        const rec2=dcLatestRawReconciliation(m);
+        const ack=rs.reviewAck||""; const sig=rec2.status+"|"+rec2.date; if(rec2.status==="MATCH" && ack!==sig) items.push({id:"excluded-pass|"+dcRecordKey(m,t)+"|"+sig,type:"EXCLUDED_RECONCILIATION",level:"warning",item:m,record:t,reason:"Previously excluded record is now in a reconciled/matching activity state",detail:`Reconciliation ${rec2.date||"latest"} = MATCH`});
+      }
+    });
+  });
+  dcAllMaterialNames().forEach(m=>{
+    const rows=dcRawTransactions(m), dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort(), latest=dates[dates.length-1]||"";
+    const seen=new Map();
+    rows.forEach((t,idx)=>{
+      if(latest && dateOnly(rowDate(t))!==latest)return;
+      const key=[dateOnly(rowDate(t)),tType(t),tVal(t),clean(t.for_day),clean(t.for_month),clean(t.for_year)].join("|");
+      if(!key||key.replace(/\|/g,"")==="")return;
+      const prior=seen.get(key);
+      if(prior!==undefined){
+        const a=dcRecordState(m,t), b=dcRecordState(m,rows[prior]);
+        if(!(a&&a.status==="EXCLUDED") && !(b&&b.status==="EXCLUDED")) items.push({id:"duplicate|"+dcKey(m)+"|"+dcKey(key),type:"DUPLICATE_RECORD",level:"warning",item:m,record:t,index:idx,reason:"Identical transaction signature appears more than once",detail:`${tType(t)||"Movement"} • ${dateOnly(rowDate(t))||"--"} • Qty ${fmt(tVal(t))}`});
+      }else seen.set(key,idx);
+    });
+  });
+  dcAllProductNames().forEach(product=>{
+    if(!dcIsHiddenProduct(product))return;
+    const rows=[...(DATA.production||[]),...(DATA.productionHistory||[]),...(DATA.feedUnitData||[]),...(DATA.bags||[]),...(DATA.bagsHistory||[])].filter(r=>normalize(r.product||r.Product)===normalize(product));
+    const hiddenDate=dateOnly(dcProductState(product).updatedAt);
+    const stp=dcProductState(product); const fresh=rows.filter(r=>{const d=dateOnly(r.Report_Date||r.report_date||r.date);return (!hiddenDate||!d||d>=hiddenDate) && (!stp.activityAck || !d || d>stp.activityAck);});
+    const active=fresh.some(r=>Object.entries(r).some(([k,v])=>!/(product|report_date|date)/i.test(k)&&num(v)!==null&&num(v)!==0));
+    if(active)items.push({id:"hidden-product|"+dcKey(product)+"|"+hiddenDate,type:"HIDDEN_PRODUCT_ACTIVITY",level:"warning",item:product,reason:"Hidden product has new recorded activity",detail:`${fresh.length} new source record(s) detected`});
+  });
+  return items.filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i);
+}
+function dcApplyUnexplainedDecisionByMaterial(material,action){
+  const item={item:material};
+  dcApplyUnexplainedDecision(item,action);
+}
+function dcApplyUnexplainedDecision(item,action){
+  const m=item.item, rec=dcLatestRawReconciliation(m), sig=dcKey([m,rec.date,rec.cons,rec.opening,rec.add,rec.closing].join("|"));
+  const rows=dcRawTransactions(m);
+  if(rec.date){
+    rows.forEach(t=>{
+      if(dateOnly(rowDate(t))!==rec.date)return;
+      const ty=tType(t);
+      if(!(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI")))return;
+      const k=dcRecordKey(m,t);
+      DATA_CONTROL.records[k]={status:action==="EXCLUDED"?"EXCLUDED":"KEPT",reason:action==="EXCLUDED"?"Unexplained consumption — excluded by manager":"Unexplained consumption — reviewed and kept",updatedAt:new Date().toISOString(),reviewAck:action==="EXCLUDED"?"":""};
+    });
+  }
+  const st=dcMaterialState(m); st.unexplainedSignature=sig; st.unexplainedDecision=action; DATA_CONTROL.materials[dcKey(m)]=st; saveDataControl(); invalidatePerfCache(); dcRefreshUI(`${m}: ${action==="EXCLUDED"?"unexplained consumption excluded":"consumption kept"}`);
+}
+function dcSetRecordByIndex(material,index,status,reason){const rows=dcRawTransactions(material);const t=rows[index];if(t)dcSetRecord(material,t,status,reason);}
+function openDataControlPage(){
+  const page=document.getElementById("dataControlPage");
+  if(!page)return;
+  page.classList.add("show");
+  page.setAttribute("aria-hidden","false");
+  document.body.classList.add("dc-page-open");
+  try{renderDataControl();}catch(e){console.warn("Data control page render failed",e)}
+}
+function closeDataControlPage(){
+  const page=document.getElementById("dataControlPage");
+  if(!page)return;
+  page.classList.remove("show");
+  page.setAttribute("aria-hidden","true");
+  closeDcReview();
+  document.body.classList.remove("dc-page-open");
+}
+
+function renderDcReviewOverlay(){
+  const overlay=document.getElementById("dcReviewOverlay"), content=document.getElementById("dcReviewContent"), subtitle=document.getElementById("dcReviewSubtitle");
+  if(!overlay||!content)return;
+  const items=dcReviewItems();
+  if(subtitle) subtitle.textContent=items.length?`${items.length} item${items.length===1?"":"s"} need manager review`:"No new review items detected";
+  if(!items.length){
+    content.innerHTML=`<div class="dc-review-empty"><div class="dc-review-empty-icon">✓</div><h4>Everything is reviewed</h4><p>No new hidden-item activity, unexplained consumption, duplicate or changed reconciliation decision needs attention.</p><button type="button" class="dc-primary-action" onclick="closeDcReview()">Done</button></div>`;
+    return;
+  }
+  content.innerHTML=`<div class="dc-review-list">${items.map((x,i)=>`<article class="dc-review-item ${x.level}">
+    <div class="dc-review-top"><span class="dc-badge">${esc(x.type.replace(/_/g," "))}</span><strong>${esc(x.item)}</strong></div>
+    <div class="dc-review-reason">${esc(x.reason)}</div>
+    <div class="dc-review-detail">${esc(x.detail||"")}</div>
+    <div class="dc-actions">${x.type==="HIDDEN_ACTIVITY"?`<button type="button" onclick="dcReviewHiddenMaterial('${jsq(x.item)}',false)">Unhide</button><button type="button" onclick="dcReviewHiddenMaterial('${jsq(x.item)}',true)">Keep Hidden</button>`:x.type==="HIDDEN_PRODUCT_ACTIVITY"?`<button type="button" onclick="dcReviewHiddenProduct('${jsq(x.item)}',false)">Unhide</button><button type="button" onclick="dcReviewHiddenProduct('${jsq(x.item)}',true)">Keep Hidden</button>`:x.type==="UNEXPLAINED_CONSUMPTION"?`<button type="button" onclick="dcApplyUnexplainedDecisionByMaterial('${jsq(x.item)}','EXCLUDED')">Exclude</button><button type="button" onclick="dcApplyUnexplainedDecisionByMaterial('${jsq(x.item)}','KEPT')">Keep</button>`:x.type==="DUPLICATE_RECORD"?`<button type="button" onclick="dcSetRecordByIndex('${jsq(x.item)}',${Number(x.index)||0},'EXCLUDED','Duplicate — excluded by manager')">Exclude Duplicate</button><button type="button" onclick="dcSetRecordByIndex('${jsq(x.item)}',${Number(x.index)||0},'KEPT','Duplicate reviewed — keep')">Keep</button>`:`<button type="button" onclick="dcReviewExcludedRecord('${jsq(x.item)}',${JSON.stringify(x.record||{}).replace(/</g,"\u003c")},false)">Restore</button><button type="button" onclick="dcReviewExcludedRecord('${jsq(x.item)}',${JSON.stringify(x.record||{}).replace(/</g,"\u003c")},true)">Keep Excluded</button>`}</div>
+  </article>`).join("")}</div>`;
+}
+function dcReviewModal(){
+  const overlay=document.getElementById("dcReviewOverlay");
+  if(!overlay)return;
+  overlay.classList.add("show"); overlay.setAttribute("aria-hidden","false");
+  renderDcReviewOverlay();
+}
+
+function dcReportOverlayOutside(e){if(e.target&&e.target.id==="dcReportOverlay")closeDcReport()}
+function closeDcReport(){const o=document.getElementById("dcReportOverlay");if(!o)return;o.classList.remove("show");o.setAttribute("aria-hidden","true")}
+let DC_REPORT_STATE=null;
+function dcItemReport(kind,name){
+  DC_REPORT_STATE={kind,name};
+  renderDcReport();
+  const o=document.getElementById("dcReportOverlay"); if(!o)return;
+  o.classList.add("show");o.setAttribute("aria-hidden","false");
+}
+function renderDcReportIfOpen(){const o=document.getElementById("dcReportOverlay");if(o&&o.classList.contains("show"))renderDcReport()}
+function dcReportRow(label,value,cls=""){return `<div class="dc-report-kv ${cls}"><span>${esc(label)}</span><strong>${esc(value==null||value===""?"--":String(value))}</strong></div>`}
+function dcReportStatusBadge(status){const s=String(status||"ACTIVE");const c=s==="HIDDEN"?"hidden":s==="EXCLUDED"?"excluded":s==="MISMATCH"?"danger":s==="MATCH"?"match":"active";return `<span class="dc-report-status ${c}">${esc(s)}</span>`}
+function dcReportRecordsTable(name,raw){
+  if(!raw.length)return `<div class="dc-report-empty">No source records found.</div>`;
+  return `<div class="dc-report-table-wrap"><table class="dc-report-table"><thead><tr><th>Date</th><th>Activity</th><th>Qty</th><th>Status</th><th></th></tr></thead><tbody>${raw.map((t,i)=>{const ex=dcIsExcluded(name,t);return `<tr class="${ex?'is-excluded':''}"><td>${esc(dateOnly(rowDate(t))||"--")}</td><td>${esc(tType(t)||"Movement")}</td><td>${esc(fmt(tVal(t)))}</td><td>${ex?'<span class="mini-status excluded">EXCLUDED</span>':'<span class="mini-status approved">APPROVED</span>'}</td><td><button class="dc-mini-btn" onclick="dcSetRecordByIndex('${jsq(name)}',${i},'${ex?'KEPT':'EXCLUDED'}','Manager report action')">${ex?'Restore':'Exclude'}</button></td></tr>`}).join("")}</tbody></table></div>`
+}
+function renderDcReport(){
+  const body=document.getElementById("dcReportContent"),title=document.getElementById("dcReportTitle"),sub=document.getElementById("dcReportSubtitle");
+  if(!body||!DC_REPORT_STATE)return;
+  const {kind,name}=DC_REPORT_STATE, isMat=kind==="material", st=isMat?dcMaterialState(name):dcProductState(name);
+  if(title)title.textContent=name;
+  if(sub)sub.textContent=isMat?"Material control, reconciliation and transaction history":"Product control and activity history";
+  if(isMat){
+    const raw=dcRawTransactions(name),approved=dcApprovedTransactions(name),rec=dcLatestRawReconciliation(name);
+    const totalCons=approved.filter(t=>tType(t).includes("CONSUMPTION")||tType(t).includes("CONSUMPION")).reduce((a,t)=>a+tVal(t),0);
+    body.innerHTML=`<div class="dc-report-summary"><div class="dc-report-summary-main"><div class="dc-report-eyebrow">CONTROL STATUS</div><div>${dcReportStatusBadge(st.status)}</div><p>${esc(st.reason||"No manager decision recorded.")}</p></div><div class="dc-report-summary-actions"><button class="dc-report-action primary" onclick="dcAction('material','${jsq(name)}')">${st.status==='HIDDEN'?'Unhide Material':'Hide Material'}</button><button class="dc-report-action" onclick="closeDcReport();dcReviewModal()">🔔 Review</button></div></div>
+      <div class="dc-report-grid"><section class="dc-report-section"><div class="dc-report-section-head"><span>🔎</span><div><h4>Latest Reconciliation</h4><small>${esc(rec.date||"No date")}</small></div></div><div class="dc-report-kv-grid">${dcReportRow("Result",rec.status)}${dcReportRow("Opening",fmt(rec.opening))}${dcReportRow("Additions",fmt(rec.add))}${dcReportRow("Other Out",fmt(rec.out))}${dcReportRow("Consumption",fmt(rec.cons))}${dcReportRow("Closing",fmt(rec.closing))}${dcReportRow("Difference",fmt(rec.diff))}${dcReportRow("Unexplained",rec.unexplained?"YES":"NO",rec.unexplained?"danger":"")}</div></section><section class="dc-report-section"><div class="dc-report-section-head"><span>📊</span><div><h4>Data Summary</h4><small>Current control state</small></div></div><div class="dc-report-kv-grid">${dcReportRow("Raw records",raw.length)}${dcReportRow("Approved records",approved.length)}${dcReportRow("Excluded records",raw.length-approved.length)}${dcReportRow("Approved consumption",fmt(totalCons))}${dcReportRow("Last decision",st.updatedAt?new Date(st.updatedAt).toLocaleString("en-IN"):"--")}</div></section></div>
+      <section class="dc-report-section"><div class="dc-report-section-head"><span>📋</span><div><h4>Source Records</h4><small>Every record and its current decision</small></div></div>${dcReportRecordsTable(name,raw)}</section>`;
+  }else{
+    const rows=[...(DATA.production||[]),...(DATA.productionHistory||[]),...(DATA.feedUnitData||[]),...(DATA.bags||[]),...(DATA.bagsHistory||[])].filter(r=>normalize(r.product||r.Product)===normalize(name));
+    const activeRows=rows.filter(r=>Object.entries(r).some(([k,v])=>!/(product|report_date|date)/i.test(k)&&num(v)!==null&&num(v)!==0));
+    body.innerHTML=`<div class="dc-report-summary"><div class="dc-report-summary-main"><div class="dc-report-eyebrow">CONTROL STATUS</div><div>${dcReportStatusBadge(st.status)}</div><p>${esc(st.reason||"No manager decision recorded.")}</p></div><div class="dc-report-summary-actions"><button class="dc-report-action primary" onclick="dcAction('product','${jsq(name)}')">${st.status==='HIDDEN'?'Unhide Product':'Hide Product'}</button><button class="dc-report-action" onclick="closeDcReport();dcReviewModal()">🔔 Review</button></div></div><div class="dc-report-grid"><section class="dc-report-section"><div class="dc-report-section-head"><span>📊</span><div><h4>Activity Summary</h4><small>Detected product records</small></div></div><div class="dc-report-kv-grid">${dcReportRow("Total source records",rows.length)}${dcReportRow("Records with activity",activeRows.length)}${dcReportRow("Last decision",st.updatedAt?new Date(st.updatedAt).toLocaleString("en-IN"):"--")}${dcReportRow("Activity acknowledgement",st.activityAck||"--")}</div></section></div><section class="dc-report-section"><div class="dc-report-section-head"><span>📋</span><div><h4>Product Activity</h4><small>Latest source rows</small></div></div><div class="dc-report-table-wrap"><table class="dc-report-table"><thead><tr><th>Date</th><th>Product</th><th>Output</th><th>Dispatch</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(dateOnly(r.Report_Date||r.report_date||r.date)||"--")}</td><td>${esc(r.Product||r.product||name)}</td><td>${esc(fmt(feedField(r,"Production_Day_MT")))}</td><td>${esc(fmt(feedField(r,"Dispatch_Day_MT")))}</td></tr>`).join("")||`<tr><td colspan="4">No records found.</td></tr>`}</tbody></table></div></section>`;
+  }
+}
+
+function dcAction(kind,name){
+  const hidden=(kind==="material"?dcMaterialState(name):dcProductState(name)).status==="HIDDEN";
+  const action=hidden?"ACTIVE":"HIDDEN";
+  if(kind==="material")dcSetMaterial(name,action,hidden?"Restored to active":"Manually hidden by manager"); else dcSetProduct(name,action,hidden?"Restored to active":"Manually hidden by manager");
+}
+let DC_LIST_FILTER="ALL";
+function dcSetListFilter(filter){
+  DC_LIST_FILTER=filter||"ALL";
+  renderDataControl();
+}
+function renderDataControl(){
+  const el=document.getElementById("dataControlContent"); if(!el)return;
+  const ms=dcAllMaterialNames(), ps=dcAllProductNames(), review=dcReviewItems();
+  const hiddenM=ms.filter(m=>dcIsHiddenMaterial(m)).length, hiddenP=ps.filter(p=>dcIsHiddenProduct(p)).length;
+  const activeM=ms.length-hiddenM, activeP=ps.length-hiddenP;
+  const filter=DC_LIST_FILTER;
+  const labels={ALL:'All items',ACTIVE_MATERIALS:'Active materials',HIDDEN_MATERIALS:'Hidden materials',ACTIVE_PRODUCTS:'Active products',HIDDEN_PRODUCTS:'Hidden products'};
+  el.innerHTML=`
+    <div class="dc-shell">
+      <div class="dc-hero">
+        <div class="dc-hero-copy">
+          <div class="dc-hero-icon">🛡</div>
+          <div><div class="dc-page-kicker">DATA GOVERNANCE</div><h3>Control what the dashboard uses</h3><p>Hide inactive items, review exceptions and keep every decision reversible.</p></div>
+        </div>
+        <div class="dc-hero-actions"><button class="dc-hero-refresh" onclick="renderDataControl()">↻ Refresh</button><button class="dc-hero-review ${review.length?'has-alert':''}" onclick="dcReviewModal()">🔔 Review <b>${review.length}</b></button></div>
+      </div>
+
+      <div class="dc-health-strip">
+        <div><span class="dc-health-dot ${review.length?'alert':'ok'}"></span><div><strong>${review.length?review.length+' review item'+(review.length===1?'':'s')+' need attention':'Data control is clear'}</strong><small>${review.length?'Only changed or unexplained data is waiting for a manager decision.':'No new data-control decision is waiting.'}</small></div></div>
+        <button onclick="dcReviewModal()">Open review queue <span>›</span></button>
+      </div>
+
+      <div class="dc-section-label"><span>CONTROLLED DATA</span><small>Tap a card to filter the list</small></div>
+      <div class="dc-stats-v3">
+        <button class="dc-stat-v3 review ${review.length?'alert':''}" onclick="dcReviewModal()"><span class="dc-v3-icon">🔔</span><strong>${review.length}</strong><small>Review Required</small><i>›</i></button>
+        <button class="dc-stat-v3" onclick="dcSetListFilter('ACTIVE_MATERIALS')"><span class="dc-v3-icon green">●</span><strong>${activeM}</strong><small>Active Materials</small><i>›</i></button>
+        <button class="dc-stat-v3" onclick="dcSetListFilter('HIDDEN_MATERIALS')"><span class="dc-v3-icon gray">◉</span><strong>${hiddenM}</strong><small>Hidden Materials</small><i>›</i></button>
+        <button class="dc-stat-v3" onclick="dcSetListFilter('ACTIVE_PRODUCTS')"><span class="dc-v3-icon green">●</span><strong>${activeP}</strong><small>Active Products</small><i>›</i></button>
+        <button class="dc-stat-v3" onclick="dcSetListFilter('HIDDEN_PRODUCTS')"><span class="dc-v3-icon gray">◉</span><strong>${hiddenP}</strong><small>Hidden Products</small><i>›</i></button>
+      </div>
+
+      <div class="dc-list-toolbar-v3">
+        <div class="dc-search-wrap-v3"><span>⌕</span><input id="dcSearch" placeholder="Search materials or products" oninput="renderDataControlLists()"></div>
+        <div class="dc-filter-pills"><button class="${filter==='ALL'?'active':''}" onclick="dcSetListFilter('ALL')">All</button><button class="${filter.includes('MATERIALS')?'active':''}" onclick="dcSetListFilter('ACTIVE_MATERIALS')">Materials</button><button class="${filter.includes('PRODUCTS')?'active':''}" onclick="dcSetListFilter('ACTIVE_PRODUCTS')">Products</button></div>
+      </div>
+      <div class="dc-current-filter"><span>Showing <strong id="dcFilterLabel">${labels[filter]||labels.ALL}</strong></span><span id="dcFilterCount"></span></div>
+      <div id="dcLists"></div>
+    </div>`;
+  renderDataControlLists();
+}
+
+function renderDataControlLists(){
+  const el=document.getElementById("dcLists"); if(!el)return;
+  const q=normalize(document.getElementById("dcSearch")?.value||"");
+  let ms=dcAllMaterialNames().filter(m=>!q||normalize(m).includes(q));
+  let ps=dcAllProductNames().filter(p=>!q||normalize(p).includes(q));
+  const filter=DC_LIST_FILTER;
+  if(filter==='ACTIVE_MATERIALS') ms=ms.filter(m=>!dcIsHiddenMaterial(m)), ps=[];
+  else if(filter==='HIDDEN_MATERIALS') ms=ms.filter(m=>dcIsHiddenMaterial(m)), ps=[];
+  else if(filter==='ACTIVE_PRODUCTS') ms=[], ps=ps.filter(p=>!dcIsHiddenProduct(p));
+  else if(filter==='HIDDEN_PRODUCTS') ms=[], ps=ps.filter(p=>dcIsHiddenProduct(p));
+  const materialHtml=ms.slice(0,120).map(m=>{const s=dcMaterialState(m),hidden=s.status==='HIDDEN';return `<div class="dc-item dc-item-v2"><div class="dc-item-main"><span class="dc-status-dot ${hidden?'hidden':'active'}"></span><div><strong title="${esc(m)}">${esc(m)}</strong><small>${hidden?'HIDDEN':'ACTIVE'}${s.reason?' • '+esc(s.reason):''}</small></div></div><div class="dc-item-actions"><button class="dc-report-btn" onclick="dcItemReport('material','${jsq(m)}')">Report</button><button class="dc-toggle-btn ${hidden?'unhide':''}" onclick="dcAction('material','${jsq(m)}')">${hidden?'Unhide':'Hide'}</button></div></div>`}).join("");
+  const productHtml=ps.slice(0,120).map(p=>{const s=dcProductState(p),hidden=s.status==='HIDDEN';return `<div class="dc-item dc-item-v2"><div class="dc-item-main"><span class="dc-status-dot ${hidden?'hidden':'active'}"></span><div><strong title="${esc(p)}">${esc(p)}</strong><small>${hidden?'HIDDEN':'ACTIVE'}${s.reason?' • '+esc(s.reason):''}</small></div></div><div class="dc-item-actions"><button class="dc-report-btn" onclick="dcItemReport('product','${jsq(p)}')">Report</button><button class="dc-toggle-btn ${hidden?'unhide':''}" onclick="dcAction('product','${jsq(p)}')">${hidden?'Unhide':'Hide'}</button></div></div>`}).join("");
+  const total=ms.length+ps.length;
+  const labels={ALL:'All materials & products',ACTIVE_MATERIALS:'Active materials',HIDDEN_MATERIALS:'Hidden materials',ACTIVE_PRODUCTS:'Active products',HIDDEN_PRODUCTS:'Hidden products'};
+  const label=document.getElementById('dcFilterLabel'), count=document.getElementById('dcFilterCount');
+  if(label)label.textContent=labels[filter]||labels.ALL;
+  if(count)count.textContent=`${total} item${total===1?'':'s'}`;
+  const materialSection=ms.length?`<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">📦</span><div><h3>Materials</h3><small>${ms.length} shown</small></div></div></div>${materialHtml}</section>`:(filter.includes('MATERIALS')?`<section class="dc-list-section"><div class="dc-empty-list">No materials match this filter.</div></section>`:'');
+  const productSection=ps.length?`<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🌾</span><div><h3>Products</h3><small>${ps.length} shown</small></div></div></div>${productHtml}</section>`:(filter.includes('PRODUCTS')?`<section class="dc-list-section"><div class="dc-empty-list">No products match this filter.</div></section>`:'');
+  el.innerHTML=`<div class="dc-list-grid">${materialSection}${productSection}</div>`;
+}
 
 function clean(v){return String(v??"").trim()}
 function normalize(v){return clean(v).replace(/\s+/g," ").toUpperCase()}
@@ -177,8 +498,10 @@ function applyData(apiData,fromCache=false){
     processLoss:apiData.processLoss??null,
     report_date:apiData.report_date??null
   };
+  invalidatePerfCache();
   if(DATA.report_date)setText("reportDate",VIEW_DATE||DATA.report_date);
   renderDashboard();
+  try{renderDataControl();}catch(e){console.warn("Data control render skipped",e)}
   if(!fromCache)saveCache(apiData);
 }
 function restoreCache(){
@@ -197,75 +520,132 @@ function setConnection(ok,text){
 }
 
 /* =====================================================
-   JSONP LOAD — SAME WORKING MECHANISM
+   SUPABASE LOAD
+   Main dashboard data comes directly from Supabase.
+   Spare-parts API is intentionally left unchanged for now.
 ===================================================== */
-function loadDashboard(attempt=0){
-  return new Promise(function(resolve,reject){
-    const callbackName="managerDashboardCallback_"+Date.now()+"_"+Math.random().toString(36).slice(2);
-    const script=document.createElement("script");
-    let finished=false;
-    let timeout;
+const SUPABASE_URL="https://iqxprkmainafqjodpfdk.supabase.co";
+const SUPABASE_KEY="sb_publishable_54VfHOULYN31VknExbmdVA_mYxhtU-7";
 
-    function cleanup(){
-      if(timeout)clearTimeout(timeout);
-      if(script.parentNode)script.parentNode.removeChild(script);
-      try{delete window[callbackName]}catch(e){window[callbackName]=undefined}
+async function supabaseRows(table){
+  const rows=[];
+  const pageSize=1000;
+  for(let from=0;;from+=pageSize){
+    const url=SUPABASE_URL+"/rest/v1/"+encodeURIComponent(table)+"?select=*";
+    const res=await fetch(url,{headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY,Range:`${from}-${from+pageSize-1}`},cache:"no-store"});
+    if(!res.ok)throw new Error(`Supabase ${table}: HTTP ${res.status}`);
+    const batch=await res.json();
+    if(!Array.isArray(batch))throw new Error(`Supabase ${table}: invalid response`);
+    rows.push(...batch);
+    if(batch.length<pageSize)break;
+  }
+  return rows;
+}
+
+function normalizeStockRows(rows,master){
+  const masters=new Map((master||[]).map(x=>[normalize(x.material),x]));
+  const history=(rows||[]).map(r=>({
+    report_date:r.report_date,
+    material:r.material,
+    transaction:r.transaction,
+    for_day:r.for_day,
+    for_month:r.for_month,
+    for_year:r.for_year
+  }));
+  const dates=history.map(r=>dateOnly(r.report_date)).filter(Boolean).sort();
+  const latest=dates[dates.length-1]||"";
+  const grouped=new Map();
+  history.filter(r=>dateOnly(r.report_date)===latest).forEach(t=>{
+    const key=normalize(t.material); if(!key)return;
+    if(!grouped.has(key)){
+      const m=masters.get(key)||{};
+      grouped.set(key,{material:t.material,unit:m.unit||"MT",reorder_level:m.reorder_level??null,transactions:[]});
     }
-    function fail(message,code){
-      if(finished)return;
-      finished=true;
-      cleanup();
-      const e=new Error(message);e.code=code;reject(e);
-    }
-
-    window[callbackName]=function(apiData){
-      if(finished)return;
-      try{
-        if(!apiData || apiData.status!=="success"){
-          fail("Invalid API response","API_RESPONSE");
-          return;
-        }
-        finished=true;
-        cleanup();
-        try{
-          applyData(apiData,false);
-          resolve(apiData);
-        }catch(error){
-          const e=new Error(error&&error.message?error.message:"Dashboard processing failed");
-          e.code="DASHBOARD_PROCESSING";
-          reject(e);
-        }
-      }catch(error){
-        fail(error&&error.message?error.message:"API response handling failed","API_RESPONSE");
-      }
-    };
-
-    script.async=true;
-    script.referrerPolicy="no-referrer";
-    script.onerror=function(){
-      if(finished)return;
-      if(attempt<1){
-        cleanup();
-        setTimeout(function(){loadDashboard(attempt+1).then(resolve).catch(reject)},800);
-      }else{
-        fail("Google Apps Script connection failed","API_NETWORK");
-      }
-    };
-
-    script.src=API_URL+"?callback="+encodeURIComponent(callbackName)+"&t="+Date.now();
-    document.head.appendChild(script);
-
-    timeout=setTimeout(function(){
-      if(finished)return;
-      if(attempt<1){
-        finished=true;
-        cleanup();
-        setTimeout(function(){loadDashboard(attempt+1).then(resolve).catch(reject)},800);
-      }else{
-        fail("API timeout","API_TIMEOUT");
-      }
-    },20000);
+    grouped.get(key).transactions.push(t);
   });
+  const stock=[...grouped.values()].map(x=>{
+    const c=x.transactions.filter(t=>tType(t)==="CL. STOCK").slice(-1)[0];
+    return {...x,closing:c?tVal(c):null};
+  });
+  return {stock,stockHistory:history};
+}
+
+function latestByDate(rows,dateField="report_date"){
+  const dates=(rows||[]).map(r=>dateOnly(r[dateField])).filter(Boolean).sort();
+  return dates[dates.length-1]||"";
+}
+
+async function loadDashboard(){
+  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw,masterRaw]=await Promise.all([
+    supabaseRows("stock_data"),
+    supabaseRows("production_data"),
+    supabaseRows("pp_bags_data"),
+    supabaseRows("feed_unit_data"),
+    supabaseRows("feed_unit_totals"),
+    supabaseRows("material_master")
+  ]);
+
+  const stockNorm=normalizeStockRows(stockRaw,masterRaw);
+  const stockDate=latestByDate(stockRaw);
+  const productionDate=latestByDate(productionRaw);
+  const bagsDate=latestByDate(bagsRaw);
+  const feedDate=latestByDate(feedRaw);
+  const reportDates=[stockDate,productionDate,bagsDate,feedDate].filter(Boolean).sort();
+  const reportDate=reportDates[reportDates.length-1]||null;
+
+  const productionHistory=productionRaw.map(r=>({
+    report_date:r.report_date,product:r.product,standard_output:r.standard_output,
+    actual_output:r.actual_output,output_percentage:r.output_percentage,
+    process_loss:r.process_loss,remarks:r.remarks
+  }));
+  const production=productionHistory.filter(r=>dateOnly(r.report_date)===productionDate);
+  const productionTrendMap=new Map();
+  productionHistory.forEach(r=>{
+    const d=dateOnly(r.report_date); if(!d)return;
+    productionTrendMap.set(d,(productionTrendMap.get(d)||0)+(num(r.actual_output)||0));
+  });
+  const productionTrend=[...productionTrendMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([date,actual_output])=>({date,report_date:date,actual_output}));
+
+  const bagsHistory=bagsRaw.map(r=>({report_date:r.report_date,product:r.product,opening:r.opening,received:r.received,issue:r.issue,damage:r.damage,closing:r.closing}));
+  const bags=bagsHistory.filter(r=>dateOnly(r.report_date)===bagsDate);
+
+  const feedUnitData=feedRaw.map(r=>({
+    report_date:r.report_date,product:r.product,
+    opening_day_mt:r.opening_day_mt,opening_month_mt:r.opening_month_mt,
+    production_day_mt:r.production_day_mt,production_month_mt:r.production_month_mt,
+    dispatch_day_mt:r.dispatch_day_mt,dispatch_month_mt:r.dispatch_month_mt,
+    transfer_day_mt:r.transfer_day_mt,transfer_month_mt:r.transfer_month_mt,
+    closing_day_mt:r.closing_day_mt,closing_month_mt:r.closing_month_mt
+  }));
+  const feedUnitTotals=totalsRaw.map(r=>({report_date:r.report_date,production_day_mt:r.production_day_mt,production_month_mt:r.production_month_mt,dispatch_day_mt:r.dispatch_day_mt,dispatch_month_mt:r.dispatch_month_mt,type:r.type}));
+
+  const usage={};
+  const byMaterialDate=new Map();
+  stockRaw.forEach(r=>{
+    const m=clean(r.material),d=dateOnly(r.report_date),ty=normalize(r.transaction);
+    if(!m||!d||!ty)return;
+    if(ty.includes("CONSUMPTION")){const k=normalize(m); if(!byMaterialDate.has(k))byMaterialDate.set(k,new Map()); const dm=byMaterialDate.get(k); dm.set(d,(dm.get(d)||0)+(num(r.for_day)||0));}
+  });
+  byMaterialDate.forEach((dm,k)=>{usage[clean((stockRaw.find(r=>normalize(r.material)===k)||{}).material)||k]=[...dm.keys()].sort().slice(-30).map(d=>dm.get(d));});
+
+  return {
+    status:"success",
+    stock:stockNorm.stock,
+    stock_history:stockNorm.stockHistory,
+    production,
+    production_history:productionHistory,
+    pp_bags:bags,
+    pp_bags_history:bagsHistory,
+    feedUnitData,
+    feedUnitTotals,
+    productionTrend,
+    usage,
+    reorder_items:[],
+    consumption:null,
+    efficiency:null,
+    processLoss:null,
+    report_date:reportDate
+  };
 }
 
 let refreshing=false;
@@ -482,11 +862,13 @@ function allMixMaterialTransactions(){
   return out;
 }
 function monthlyRMConsumption(m){
-  // RM transaction rows contain cumulative MTD values in for_month.
-  // For a month, use the latest dated Consumption record for each material
-  // instead of summing daily/MTD snapshots (which would double-count).
+  // Use the same approved/active dataset as the main RM calculations.
+  // Hidden materials and explicitly excluded records must never appear in
+  // Monthly Mix & Contribution.  Keep the latest dated MTD consumption row
+  // for each visible material so cumulative monthly values are not doubled.
   const latest={};
   allMixMaterialTransactions().forEach(({material,t})=>{
+    if(dcIsHiddenMaterial(material) || dcIsExcluded(material,t))return;
     const d=rowDate(t);
     if(monthKey(d)!==m || !isConsumptionMovement(tType(t)))return;
     const day=dateOnly(d)||"";
@@ -847,16 +1229,22 @@ function renderDashboard(){
 
 
 function attentionReorderMaterials(){
-  return getMaterials().map(m=>{
+  return getMaterials().filter(m=>!isPremixMaterial(m)).map(m=>{
     const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
     return {m,c,avg,s,unit:x?.unit||"MT"};
+  }).filter(x=>x.s.status==="REORDER");
+}
+function attentionReorderPremix(){
+  return getMaterials().filter(m=>isPremixMaterial(m)).map(m=>{
+    const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
+    return {m,c,avg,s,unit:x?.unit||"KG"};
   }).filter(x=>x.s.status==="REORDER");
 }
 function attentionUnder3Materials(){
   return getMaterials().map(m=>{
     const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
     return {m,c,avg,s,unit:x?.unit||"MT"};
-  }).filter(x=>x.s.cover!==null && x.s.cover<3);
+  }).filter(x=>x.s.cover!==null && x.s.cover<3 && x.s.status!=="REORDER");
 }
 function attentionAbnormalConsumption(){
   return abnormalConsumptionItems();
@@ -902,8 +1290,13 @@ function spareOrderDisplayName(r){
 function openAttentionFiltered(kind){
   if(kind==="reorder"){
     const rows=attentionReorderMaterials();
-    const html=`<div class="detail-section"><h3>🔴 Raw Materials below reorder level • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Stock ${fmt(x.c)} ${esc(x.unit)} • Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></div></div>`).join("")||"<div class='empty'>No materials below reorder level.</div>"}</div>`;
-    showModal("🔴 Reorder Materials",html); return;
+    const html=`<div class="detail-section"><h3>🔴 Raw Materials below reorder level • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Stock ${fmt(x.c)} ${esc(x.unit)} • Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></div></div>`).join("")||"<div class='empty'>No raw materials below reorder level.</div>"}</div>`;
+    showModal("🔴 Raw Material Reorder",html); return;
+  }
+  if(kind==="premixReorder"){
+    const rows=attentionReorderPremix();
+    const html=`<div class="detail-section"><h3>🧪 Premix below reorder level • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Stock ${fmt(x.c)} ${esc(x.unit)} • Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></div></div>`).join("")||"<div class='empty'>No premix below reorder level.</div>"}</div>`;
+    showModal("🧪 Premix Reorder",html); return;
   }
   if(kind==="under3"){
     const rows=attentionUnder3Materials().sort((a,b)=>a.s.cover-b.s.cover);
@@ -933,41 +1326,69 @@ function openAttentionFiltered(kind){
 }
 function attentionSummaryItems(){
   const reorderRows=attentionReorderMaterials();
+  const premixReorderRows=attentionReorderPremix();
   const under3Rows=attentionUnder3Materials();
   const abnormalRows=attentionAbnormalConsumption();
   const bagRows=attentionIncreasedBagDamage();
   const spareRows=attentionPendingSpareOrders();
   const productionRows=attentionProductionIssues();
   const items=[];
-  items.push({icon:reorderRows.length?'🔴':'🟢',level:reorderRows.length?'critical':'clear',text:`${reorderRows.length} Raw Materials below reorder level`,action:"openAttentionFiltered('reorder')"});
-  items.push({icon:under3Rows.length?'🟡':'🟢',level:under3Rows.length?'warning':'clear',text:`${under3Rows.length} materials stock < 3 days`,action:"openAttentionFiltered('under3')"});
-  items.push({icon:abnormalRows.length?'🔴':'🟢',level:abnormalRows.length?'critical':'clear',text:`${abnormalRows.length} abnormal consumption`,action:"openAttentionFiltered('abnormal')"});
-  items.push({icon:bagRows.length?'🟡':'🟢',level:bagRows.length?'warning':'clear',text:`${bagRows.length} PP bag damages increased`,action:"openAttentionFiltered('bags')"});
-  items.push({icon:spareRows.length?'🔵':'🟢',level:spareRows.length?'info':'clear',text:`${spareRows.length} spare parts pending order`,action:"openAttentionFiltered('spares')"});
-  items.push({icon:productionRows.length?'🟡':'🟢',level:productionRows.length?'warning':'clear',text:productionRows.length?`${productionRows.length} production output below 95%`:'Production normal',action:"openAttentionFiltered('production')"});
+  items.push({icon:reorderRows.length?'🔴':'🟢',level:reorderRows.length?'critical':'clear',count:reorderRows.length,text:`${reorderRows.length} Raw Materials below reorder level`,reason:reorderRows.length?"Immediate replenishment recommended":"No raw material is below its reorder level",action:"openAttentionFiltered('reorder')"});
+  items.push({icon:premixReorderRows.length?'🧪':'🟢',level:premixReorderRows.length?'critical':'clear',count:premixReorderRows.length,text:`${premixReorderRows.length} Premix below reorder level`,reason:premixReorderRows.length?"Premix replenishment recommended":"No premix is below its reorder level",action:"openAttentionFiltered('premixReorder')"});
+  items.push({icon:under3Rows.length?'🟡':'🟢',level:under3Rows.length?'warning':'clear',count:under3Rows.length,text:`${under3Rows.length} materials with < 3 days cover`,reason:under3Rows.length?"Coverage is low but not yet at reorder level":"No additional low-coverage materials",action:"openAttentionFiltered('under3')"});
+  items.push({icon:abnormalRows.length?'🔴':'🟢',level:abnormalRows.length?'critical':'clear',count:abnormalRows.length,text:`${abnormalRows.length} abnormal consumption`,reason:abnormalRows.length?"Consumption is outside the normal pattern":"Consumption is within the monitored range",action:"openAttentionFiltered('abnormal')"});
+  items.push({icon:bagRows.length?'🟡':'🟢',level:bagRows.length?'warning':'clear',count:bagRows.length,text:`${bagRows.length} PP bag damage increases`,reason:bagRows.length?"Damage is higher than the previous available day":"No increase in recorded damage",action:"openAttentionFiltered('bags')"});
+  items.push({icon:spareRows.length?'🔵':'🟢',level:spareRows.length?'info':'clear',count:spareRows.length,text:`${spareRows.length} spare orders pending`,reason:spareRows.length?"Open / pending spare orders need follow-up":"No pending spare orders",action:"openAttentionFiltered('spares')"});
+  items.push({icon:productionRows.length?'🟡':'🟢',level:productionRows.length?'warning':'clear',count:productionRows.length,text:productionRows.length?`${productionRows.length} production outputs below 95%`:'Production output normal',reason:productionRows.length?"Output percentage is below the 95% threshold":"All selected production records are ≥ 95%",action:"openAttentionFiltered('production')"});
+  const dcReviews=dcReviewItems();
+  items.push({icon:dcReviews.length?'🔴':'🟢',level:dcReviews.length?'critical':'clear',count:dcReviews.length,text:dcReviews.length?`${dcReviews.length} data review item${dcReviews.length===1?"":"s"}: hidden / unexplained / changed`:"Data control clear",reason:dcReviews.length?"Manager review is required before accepting the affected data":"No new data-control review required",action:"closeModal();openDataControlPage();dcReviewModal()"});
   return items;
 }
 
+function attentionTotalCount(items){
+  return items.reduce((sum,x)=>sum+(Number(x.count)||0),0);
+}
+function openAttentionOverview(){
+  const items=attentionSummaryItems().filter(x=>x.level!=="clear");
+  if(!items.length){
+    showModal("✓ Attention Required",`<div class="attention-overview-clear"><div class="attention-clear-mark">✓</div><h3>Everything is under control</h3><p>No active attention items were detected for the selected date.</p></div>`);
+    return;
+  }
+  const total=attentionTotalCount(items);
+  const critical=items.filter(x=>x.level==="critical").reduce((n,x)=>n+(Number(x.count)||0),0);
+  const warning=items.filter(x=>x.level==="warning").reduce((n,x)=>n+(Number(x.count)||0),0);
+  const html=`<div class="attention-overview">
+    <div class="attention-overview-stats"><div><strong>${total}</strong><small>Total items</small></div><div class="critical"><strong>${critical}</strong><small>Critical</small></div><div class="warning"><strong>${warning}</strong><small>Warning</small></div></div>
+    <div class="attention-overview-list">${items.map(x=>{const cls=x.level;return `<button type="button" class="attention-overview-row ${cls}" onclick="${x.action}"><span class="attention-overview-icon">${x.icon}</span><span><strong>${esc(x.text)}</strong><small>${esc(x.reason||"Open affected items")}</small></span><b>›</b></button>`}).join("")}</div>
+  </div>`;
+  showModal("⚠️ Attention Required",html);
+}
 function renderAttentionRequired(){
   const card=document.getElementById("attentionRequiredCard");
   const list=document.getElementById("attentionList");
   const count=document.getElementById("attentionCount");
+  const status=document.getElementById("attentionStatus");
+  const meta=document.getElementById("attentionMeta");
   if(!card||!list)return;
   const items=attentionSummaryItems();
   const active=items.filter(x=>x.level!=="clear");
-  const critical=active.filter(x=>x.level==="critical").length;
-  if(count){count.textContent=String(active.length);count.className="attention-count"+(critical?" critical":active.length?" warning":" clear")}
+  const total=attentionTotalCount(active);
+  const critical=active.filter(x=>x.level==="critical").reduce((n,x)=>n+(Number(x.count)||0),0);
+  const warning=active.filter(x=>x.level==="warning").reduce((n,x)=>n+(Number(x.count)||0),0);
+  if(count){count.textContent=String(total);count.className="attention-count"+(critical?" critical":total?" warning":" clear")}
+  if(status){status.textContent=critical?"ACTION NEEDED":total?"CHECK":"ALL CLEAR";status.className="attention-status"+(critical?" critical":total?" warning":" clear")}
+  if(meta){meta.textContent=total?`${critical} critical • ${warning} warning`:`No active issues for ${selectedDateForIntelligence()||"latest data"}`}
   card.classList.toggle("has-critical",critical>0);
-  card.classList.toggle("has-warning",critical===0&&active.length>0);
-  card.classList.toggle("is-clear",active.length===0);
-  list.innerHTML=items.map(x=>{
-    const cls=x.level==="critical"?"critical":x.level==="warning"?"warning":x.level==="info"?"info":"clear";
+  card.classList.toggle("has-warning",critical===0&&total>0);
+  card.classList.toggle("is-clear",total===0);
+  list.innerHTML=active.length?active.map(x=>{
+    const cls=x.level==="critical"?"critical":x.level==="warning"?"warning":"info";
     return `<button type="button" class="attention-summary-row ${cls}" onclick="${x.action}">
       <span class="attention-summary-icon">${x.icon}</span>
-      <span class="attention-summary-text">${esc(x.text)}</span>
+      <span class="attention-summary-copy"><strong>${esc(x.text)}</strong><small>${esc(x.reason||"Click to view affected items")}</small></span>
       <span class="attention-summary-arrow">›</span>
     </button>`;
-  }).join("");
+  }).join(""): `<div class="attention-inline-clear"><span>✓</span><div><strong>No action required</strong><small>All monitored areas are currently within limits.</small></div></div>`;
 }
 
 function renderSmartHeader(){
@@ -1011,15 +1432,19 @@ function stockStatus(closing,avg){
 function renderAlerts(){
   const items=[];
   const reorder=Array.isArray(DATA.reorder_items)?DATA.reorder_items:[];
+  const rawReorderNames=new Set(), premixReorderNames=new Set();
   reorder.forEach(r=>{
     const title=clean(r.material||r.Material||r.name||r.product);
-    if(title)items.push({title,msg:"Stock is at/below reorder level",type:"critical",icon:"🔴"});
+    if(!title)return;
+    (isPremixMaterial(title)?premixReorderNames:rawReorderNames).add(title);
   });
+  rawReorderNames.forEach(title=>items.push({title,msg:"Raw material stock is at/below reorder level",type:"critical",icon:"🔴",group:"rawReorder"}));
+  premixReorderNames.forEach(title=>items.push({title,msg:"Premix stock is at/below reorder level",type:"critical",icon:"🧪",group:"premixReorder"}));
   if(!reorder.length){
     getMaterials().forEach(m=>{
       const x=getMaterial(m),s=stockStatus(num(x?.closing)||0,avgConsumption(m));
-      if(s.status==="REORDER")items.push({title:m,msg:"Stock is at/below reorder level",type:"critical",icon:"🔴"});
-      else if(s.status==="WATCH")items.push({title:m,msg:"Stock coverage is getting low",type:"warning",icon:"🟠"});
+      if(s.status==="REORDER")items.push({title:m,msg:isPremixMaterial(m)?"Premix stock is at/below reorder level":"Raw material stock is at/below reorder level",type:"critical",icon:isPremixMaterial(m)?"🧪":"🔴",group:isPremixMaterial(m)?"premixReorder":"rawReorder"});
+      else if(s.status==="WATCH")items.push({title:m,msg:isPremixMaterial(m)?"Premix stock coverage is getting low":"Raw material stock coverage is getting low",type:"warning",icon:"🟠",group:isPremixMaterial(m)?"premixCoverage":"rawCoverage"});
     });
   }
   DATA.production.forEach(r=>{
@@ -1049,13 +1474,14 @@ function openNotifications(){
     showModal("🔔 Alerts",`<div class="detail-section"><h3>All clear</h3><div class="empty">No active alerts right now.</div></div>`);
     return;
   }
-  const critical=ALERTS.filter(a=>a.type==="critical"),warning=ALERTS.filter(a=>a.type==="warning");
-  let html=`<div class="detail-section"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3>🔔 Active Alerts (${ALERTS.length})</h3><button class="clear-alerts" onclick="clearDismissedAlerts()">Reset dismissed</button></div>`;
-  [...critical,...warning].forEach(a=>{
-    const k=alertKey(a);
-    html+=`<div class="transaction notification-item"><button class="notification-dismiss" onclick="dismissAlert('${jsq(k)}')" aria-label="Dismiss alert">×</button><div class="transaction-title"><strong>${a.icon} ${esc(a.title)}</strong><span>${a.type==="critical"?"Critical":"Warning"}</span></div><div style="font-size:11px;color:#666">${esc(a.msg)}</div></div>`;
-  });
-  html+=`</div>`;
+  const rawReorderAlerts=ALERTS.filter(a=>a.group==="rawReorder");
+  const premixReorderAlerts=ALERTS.filter(a=>a.group==="premixReorder");
+  const otherAlerts=ALERTS.filter(a=>a.group!=="rawReorder"&&a.group!=="premixReorder");
+  const renderAlertGroup=(title,rows)=>rows.length?`<div class="detail-section"><h3>${title} • ${rows.length}</h3>${rows.map(a=>{const k=alertKey(a);return `<div class="transaction notification-item"><button class="notification-dismiss" onclick="dismissAlert('${jsq(k)}')" aria-label="Dismiss alert">×</button><div class="transaction-title"><strong>${a.icon} ${esc(a.title)}</strong><span>${a.type==="critical"?"Critical":"Warning"}</span></div><div style="font-size:11px;color:#666">${esc(a.msg)}</div></div>`}).join("")}</div>`:"";
+  let html=`<div class="detail-section"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3>🔔 Active Alerts (${ALERTS.length})</h3><button class="clear-alerts" onclick="clearDismissedAlerts()">Reset dismissed</button></div></div>`;
+  html+=renderAlertGroup("🔴 Raw Material Reorder",rawReorderAlerts);
+  html+=renderAlertGroup("🧪 Premix Reorder",premixReorderAlerts);
+  html+=renderAlertGroup("Other Alerts",otherAlerts);
   showModal("🔔 Alerts",html);
 }
 
@@ -1236,9 +1662,32 @@ function goTrend(){document.getElementById("trendsSection").scrollIntoView({beha
    DATE VIEW — COMPLETE DASHBOARD DATE FILTER
 ===================================================== */
 let VIEW_DATE=null;
+
+/* =====================================================
+   PERFORMANCE MEMOIZATION — invalidated when data/date changes
+===================================================== */
+const PERF_CACHE={
+  viewStock:null, historyStock:new Map(), materials:null, materialMap:null,
+  transactions:new Map(), production:null, bags:null, feedRows:null, latestFeed:null,
+  avgConsumption:new Map(), availableDates:null
+};
+function invalidatePerfCache(){
+  PERF_CACHE.viewStock=null;
+  PERF_CACHE.historyStock.clear();
+  PERF_CACHE.materials=null;
+  PERF_CACHE.materialMap=null;
+  PERF_CACHE.transactions.clear();
+  PERF_CACHE.production=null;
+  PERF_CACHE.bags=null;
+  PERF_CACHE.feedRows=null;
+  PERF_CACHE.latestFeed=null;
+  PERF_CACHE.avgConsumption.clear();
+  PERF_CACHE.availableDates=null;
+}
 function historyStockRowsForDate(date){
   const d=dateOnly(date);
   if(!d)return [];
+  if(PERF_CACHE.historyStock.has(d))return PERF_CACHE.historyStock.get(d);
   const grouped=new Map();
   (DATA.stockHistory||[]).forEach(t=>{
     if(dateOnly(rowDate(t))!==d)return;
@@ -1249,57 +1698,80 @@ function historyStockRowsForDate(date){
     grouped.get(key).transactions.push(t);
   });
   const current=new Map((DATA.stock||[]).map(x=>[normalize(x.material),x]));
-  return [...grouped.values()].map(g=>{
+  const result=[...grouped.values()].map(g=>{
     const base=current.get(normalize(g.material))||{};
     const closingRows=g.transactions.filter(t=>tType(t)==="CL. STOCK");
     const latestClosing=closingRows.length?closingRows[closingRows.length-1]:null;
     return {...base,material:g.material,transactions:g.transactions,closing:latestClosing?tVal(latestClosing):null};
   });
+  PERF_CACHE.historyStock.set(d,result);
+  return result;
 }
 function viewStockRows(){
+  if(PERF_CACHE.viewStock)return PERF_CACHE.viewStock;
   if(VIEW_DATE){
-    return historyStockRowsForDate(VIEW_DATE);
+    PERF_CACHE.viewStock=historyStockRowsForDate(VIEW_DATE);
+    return PERF_CACHE.viewStock;
   }
-  return (DATA.stock||[]).map(x=>{
+  PERF_CACHE.viewStock=(DATA.stock||[]).map(x=>{
     const tx=Array.isArray(x.transactions)?x.transactions:[];
     const closingRows=tx.filter(t=>tType(t)==="CL. STOCK");
     const latestClosing=closingRows.length?closingRows[closingRows.length-1]:null;
     return {...x,transactions:tx,closing:latestClosing?tVal(latestClosing):num(x.closing)};
   }).filter(x=>x.material);
+  return PERF_CACHE.viewStock;
 }
 function getMaterials(){
-  return [...new Set(viewStockRows().map(x=>clean(x.material)).filter(Boolean))];
+  if(PERF_CACHE.materials)return PERF_CACHE.materials;
+  PERF_CACHE.materials=[...new Set(viewStockRows().map(x=>clean(x.material)).filter(Boolean))].filter(m=>!dcIsHiddenMaterial(m));
+  return PERF_CACHE.materials;
 }
 function getMaterial(material){
-  return viewStockRows().find(x=>normalize(x.material)===normalize(material))||null;
+  if(!PERF_CACHE.materialMap){
+    PERF_CACHE.materialMap=new Map(viewStockRows().map(x=>[normalize(x.material),x]));
+  }
+  return PERF_CACHE.materialMap.get(normalize(material))||null;
 }
 function transactions(material){
+  const key=normalize(material);
+  if(PERF_CACHE.transactions.has(key))return PERF_CACHE.transactions.get(key);
   const x=getMaterial(material);
-  return x&&Array.isArray(x.transactions)?x.transactions:[];
+  const raw=x&&Array.isArray(x.transactions)?x.transactions:[];
+  const result=raw.filter(t=>!dcIsExcluded(material,t));
+  PERF_CACHE.transactions.set(key,result);
+  return result;
 }
 function selectedProduction(){
-  if(!VIEW_DATE)return Array.isArray(DATA.production)?DATA.production:[];
+  if(PERF_CACHE.production)return PERF_CACHE.production;
+  if(!VIEW_DATE){PERF_CACHE.production=(Array.isArray(DATA.production)?DATA.production:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));return PERF_CACHE.production;}
   const d=dateOnly(VIEW_DATE);
   const history=Array.isArray(DATA.productionHistory)?DATA.productionHistory:[];
-  return history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d);
+  PERF_CACHE.production=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product||r.Product));
+  return PERF_CACHE.production;
 }
 function selectedBags(){
-  if(!VIEW_DATE)return Array.isArray(DATA.bags)?DATA.bags:[];
+  if(PERF_CACHE.bags)return PERF_CACHE.bags;
+  if(!VIEW_DATE){PERF_CACHE.bags=(Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product));return PERF_CACHE.bags;}
   const d=dateOnly(VIEW_DATE);
   const history=Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[];
-  return history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d);
+  PERF_CACHE.bags=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product));
+  return PERF_CACHE.bags;
 }
 function selectedFeedRows(){
+  if(PERF_CACHE.feedRows)return PERF_CACHE.feedRows;
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
-  return VIEW_DATE?rows.filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(VIEW_DATE)):rows;
+  PERF_CACHE.feedRows=(VIEW_DATE?rows.filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(VIEW_DATE)):rows).filter(r=>!dcIsHiddenProduct(r.Product||r.product));
+  return PERF_CACHE.feedRows;
 }
 function latestFeedRows(){
-  const rows=selectedFeedRows(), latest={};
+  if(PERF_CACHE.latestFeed)return PERF_CACHE.latestFeed;
+  const rows=selectedFeedRows(),latest={};
   rows.forEach(r=>{
     const p=clean(r.Product||r.product);
     if(p)latest[normalize(p)]=r;
   });
-  return Object.values(latest);
+  PERF_CACHE.latestFeed=Object.values(latest);
+  return PERF_CACHE.latestFeed;
 }
 function latestTotal(key){
   return latestFeedRows().reduce((sum,r)=>{
@@ -1315,29 +1787,31 @@ function latestFeedClosingTotal(){
   },0);
 }
 function avgConsumption(material){
+  const key=normalize(material);
+  if(PERF_CACHE.avgConsumption.has(key))return PERF_CACHE.avgConsumption.get(key);
   const history=Array.isArray(DATA.stockHistory)?DATA.stockHistory:[];
-  const target=normalize(material);
   const dated=new Map();
   history.forEach(t=>{
-    if(normalize(t.material)!==target || !tType(t).includes("CONSUMPTION"))return;
+    if(normalize(t.material)!==key || !tType(t).includes("CONSUMPTION"))return;
     const d=dateOnly(rowDate(t));
     const v=num(t.for_day);
     if(!d || v===null || v<=0)return;
     dated.set(d,(dated.get(d)||0)+v);
   });
-  if(!dated.size)return 0;
-
+  if(!dated.size){PERF_CACHE.avgConsumption.set(key,0);return 0;}
   const availableDates=[...dated.keys()].sort();
   let anchor=dateOnly(VIEW_DATE);
   if(!anchor)anchor=availableDates[availableDates.length-1];
   const anchorTime=new Date(anchor+"T00:00:00").getTime();
   const startTime=anchorTime-29*86400000;
-  const values=[...dated.entries()]
-    .filter(([d])=>{const tm=new Date(d+"T00:00:00").getTime();return tm>=startTime && tm<=anchorTime;})
-    .map(([,v])=>v)
-    .filter(v=>v>0);
-  if(!values.length)return 0;
-  return values.reduce((a,b)=>a+b,0)/values.length;
+  let total=0,count=0;
+  dated.forEach((v,d)=>{
+    const tm=new Date(d+"T00:00:00").getTime();
+    if(tm>=startTime&&tm<=anchorTime&&v>0){total+=v;count++;}
+  });
+  const result=count?total/count:0;
+  PERF_CACHE.avgConsumption.set(key,result);
+  return result;
 }
 function renderQuick(){
   const pd=latestTotal("Production_Day_MT"),pm=latestTotal("Production_Month_MT");
@@ -1507,20 +1981,23 @@ function deleteManagerNote(key){localStorage.removeItem("manager_note_"+key);clo
 
 function setViewDate(date){
   VIEW_DATE=date?dateOnly(date):null;
+  invalidatePerfCache();
   closeModal();
   renderDashboard();
   renderTrends();
   showToast(VIEW_DATE?`Dashboard set to ${VIEW_DATE}`:"Dashboard set to latest");
 }
 function getAvailableDates(){
+  if(PERF_CACHE.availableDates)return PERF_CACHE.availableDates;
   const s=new Set();
   (DATA.stockHistory||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)s.add(d)});
   (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)s.add(d)}));
   (DATA.production||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)s.add(d)});
   (DATA.bags||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)s.add(d)});
-  (DATA.feedUnitData||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)s.add(d)});
+  (DATA.feedUnitData||[]).forEach(r=>{const d=dateOnly(r.Report_Date||r.report_date);if(d)s.add(d)});
   if(DATA.report_date)s.add(dateOnly(DATA.report_date));
-  return [...s].filter(Boolean).sort().reverse();
+  PERF_CACHE.availableDates=[...s].filter(Boolean).sort().reverse();
+  return PERF_CACHE.availableDates;
 }
 function openDateSelector(){
   const dates=getAvailableDates();
@@ -2225,6 +2702,170 @@ async function copyReportWhatsApp(section){
   const ok=await copyTextRobust(text);
   showToast(ok?'WhatsApp message copied':'Tap Copy Message in the message window');
   showWhatsAppCopyModal(text);
+}
+
+
+/* =====================================================
+   PLANT AI — DATA INTELLIGENCE LAYER
+   Uses the dashboard data already loaded in the browser.
+   No API/source changes and no external credentials required.
+===================================================== */
+function plantAIJSON(){
+  const m=plantAIMetrics();
+  const safe=(v)=>v==null?null:Number.isFinite(Number(v))?Number(v):v;
+  const materials=m.stockRows.slice(0,200).map(x=>({
+    name:x.material||x.name||'', closing:safe(x.closing), unit:x.unit||'MT', avgDay:safe(x.avg), coverDays:safe(x.cover), status:x.status||'OK'
+  }));
+  const attention=m.attention.slice(0,100).map(x=>({level:x.level||'info',text:x.text||'',reason:x.reason||'',count:safe(x.count)||0}));
+  const productionRows=m.prodRows.slice(0,100).map(r=>({
+    product:r.product||r.Product||r.name||'', output:safe(r.output_percentage??r.outputPercent??r.output_percentage_value),
+    actual:safe(r.actual??r.actualOutput??r.output), target:safe(r.target??r.targetOutput)
+  }));
+  const productionAvg=m.avgOutput==null?null:Number(m.avgOutput);
+  return {
+    date:m.date,
+    summary:{productionMT:safe(m.production),dispatchMT:safe(m.dispatch),dispatchProductionPct:m.production>0?safe(m.dispatch/m.production*100):null,averageOutputPct:productionAvg},
+    attention,
+    rawMaterials:{totalStock:safe(m.stockTotal),items:materials},
+    production:{records:productionRows,count:m.products||0},
+    flags:{critical:m.critical,warning:m.warning,lowStock:materials.filter(x=>x.status!=='OK').length},
+    generatedAt:new Date().toISOString()
+  };
+}
+function plantAIContext(intent){
+  const d=plantAIJSON();
+  if(intent==='materials')return {date:d.date,rawMaterials:d.rawMaterials,attention:d.attention.filter(x=>/stock|reorder|material|premix/i.test(x.text+' '+x.reason))};
+  if(intent==='production')return {date:d.date,summary:d.summary,production:d.production,attention:d.attention.filter(x=>/production|output|pellet|downtime|machine/i.test(x.text+' '+x.reason)),rawMaterials:{items:d.rawMaterials.items.filter(x=>x.status!=='OK')}};
+  if(intent==='consumption')return {date:d.date,rawMaterials:d.rawMaterials,attention:d.attention.filter(x=>/consumption|usage|variance/i.test(x.text+' '+x.reason)),summary:d.summary};
+  if(intent==='dispatch')return {date:d.date,summary:d.summary,attention:d.attention.filter(x=>/dispatch|stock/i.test(x.text+' '+x.reason))};
+  return d;
+}
+function plantAIMetrics(){
+  const date=selectedDateForIntelligence()||dateOnly(DATA.report_date)||"Latest";
+  const attention=attentionSummaryItems().filter(x=>x.level!=="clear");
+  const critical=attention.filter(x=>x.level==="critical").reduce((n,x)=>n+(Number(x.count)||0),0);
+  const warning=attention.filter(x=>x.level==="warning").reduce((n,x)=>n+(Number(x.count)||0),0);
+  const stockRows=viewStockRows();
+  const stockTotal=stockRows.reduce((n,x)=>n+(num(x.closing)||0),0);
+  const lowStock=stockRows.filter(x=>x.status&&x.status!=='OK').sort((a,b)=>(Number(a.cover??999)-Number(b.cover??999)));
+  const prodRows=selectedProduction();
+  const outputs=prodRows.map(r=>num(r.output_percentage??r.outputPercent??r.output_percentage_value)).filter(v=>v!==null);
+  const avgOutput=outputs.length?outputs.reduce((a,b)=>a+b,0)/outputs.length:null;
+  const feedRows=selectedFeedRows();
+  const production=feedRows.reduce((n,r)=>n+(feedField(r,"Production_Day_MT")||0),0);
+  const dispatch=feedRows.reduce((n,r)=>n+(feedField(r,"Dispatch_Day_MT")||0),0);
+  const products=feedRows.length;
+  return {date,attention,critical,warning,stockRows,stockTotal,lowStock,prodRows,avgOutput,feedRows,production,dispatch,products};
+}
+function plantAIIntent(q){
+  const s=plantAINormalizeQuestion(q);
+  if(!s)return {intent:'status',confidence:0.5};
+  const rules=[
+    ['materials',/(raw material|\brm\b|stock|inventory|maize|rice|soy|premix|material|reorder|cover|shortage|closing stock)/],
+    ['production',/(production|output|pellet|tonnage|tph|produce|manufactur|yield|efficiency|machine output)/],
+    ['consumption',/(consumption|consume|usage|used|variance|abnormal consumption|actual vs standard)/],
+    ['dispatch',/(dispatch|sale|sales|delivery|outward|despatch)/],
+    ['maintenance',/(maintenance|breakdown|motor|vfd|equipment|repair|downtime|trip|machine fault)/],
+    ['quality',/(quality|qms|rejection|bag damage|damage|complaint)/],
+    ['status',/(attention|alert|warning|critical|problem|issue|today|risk|urgent|health|condition|status|overall|plant|what should i|what needs)/]
+  ];
+  let best={intent:'status',score:0};
+  rules.forEach(([intent,re])=>{const hits=(s.match(re)||[]).length;if(hits>best.score)best={intent,score:hits};});
+  return {intent:best.intent,confidence:Math.min(.99,.55+best.score*.14)};
+}
+function plantAIAnswer(kind){
+  const m=plantAIMetrics();
+  let title="Plant status", intro="", findings=[], actions=[];
+  if(kind==="status"){
+    title="What needs my attention today?";
+    intro=m.critical?`There are ${m.critical} critical item${m.critical===1?"":"s"} requiring attention.`:m.warning?`There are ${m.warning} warning item${m.warning===1?"":"s"} to review.`:"No active critical or warning conditions were detected in the monitored dashboard data.";
+    m.attention.slice(0,7).forEach(x=>findings.push({level:x.level,title:x.text,body:x.reason}));
+    if(m.lowStock.length)actions.push("Review the lowest stock-cover materials first.");
+    if(m.critical)actions.push("Open Attention Required and clear critical items before lower-priority checks.");
+  }else if(kind==="production"){
+    title="Production analysis";
+    if(m.production>0)findings.push({level:"info",title:`Current production: ${fmt(m.production)} MT`,body:`${m.products||0} feed product record(s) are available for ${m.date}.`});
+    if(m.avgOutput!==null)findings.push({level:m.avgOutput<95?"warning":"good",title:`Average recorded output: ${fmt(m.avgOutput)}%`,body:m.avgOutput<95?"Output is below the 95% monitoring threshold used by Attention Required.":"Average output is at or above the monitored 95% threshold."});
+    const prodAlert=m.attention.find(x=>/production output/i.test(x.text));
+    if(prodAlert)findings.push({level:prodAlert.level,title:prodAlert.text,body:prodAlert.reason});
+    if(m.dispatch>0&&m.production>0){const ratio=m.dispatch/m.production*100;findings.push({level:ratio>100?"warning":"info",title:`Dispatch / production: ${fmt(ratio)}%`,body:ratio>100?"Dispatch exceeds today's recorded production; verify dates and opening/previous stock movement.":"Dispatch is within today's recorded production volume."});}
+    actions=["Check affected production records and Attention Required alerts.","If output is low, review machine load, downtime, steam/feed rate and raw-material availability before changing settings."];
+  }else if(kind==="materials"){
+    title="Raw-material analysis";
+    if(!m.lowStock.length)findings.push({level:"good",title:"No low-stock materials found",body:"Current stock coverage does not show a material requiring attention."});
+    m.lowStock.slice(0,8).forEach(x=>findings.push({level:x.status==="REORDER"?"critical":"warning",title:x.material,body:`Closing ${fmt(x.closing)} ${x.unit||"MT"} • Cover ${x.cover==null?"--":fmt(x.cover)+" days"} • Avg ${fmt(x.avg||0)} ${x.unit||"MT"}/day`}));
+    actions=["Review the lowest-cover material first.","Confirm purchase/transfer timing before stock reaches the reorder level."];
+  }else if(kind==="consumption"){
+    title="Consumption analysis";
+    const abnormal=m.attention.find(x=>/abnormal consumption/i.test(x.text));
+    if(abnormal)findings.push({level:"critical",title:abnormal.text,body:abnormal.reason});
+    else findings.push({level:"good",title:"No abnormal-consumption alert",body:"Current monitored consumption is within the configured alert range."});
+    const rmTotal=monthlyRMConsumption(MIX_MONTH||mixDefaultMonth()).reduce((a,r)=>a+r.value,0);
+    findings.push({level:"info",title:`Monthly RM consumption: ${fmt(rmTotal)} MT`,body:`Based on the currently selected month (${monthLabel(MIX_MONTH||mixDefaultMonth())}).`});
+    actions=["Compare affected material consumption with production output and transaction history for the same dates."];
+  }else if(kind==="dispatch"){
+    title="Dispatch analysis";
+    if(m.dispatch>0)findings.push({level:m.production>0&&m.dispatch>m.production?"warning":"info",title:`Current dispatch: ${fmt(m.dispatch)} MT`,body:`${m.products||0} feed product record(s) are available for ${m.date}.`});
+    if(m.production>0){const ratio=m.dispatch/m.production*100;findings.push({level:ratio>100?"warning":"good",title:`Dispatch / production: ${fmt(ratio)}%`,body:ratio>100?"Dispatch exceeds today's recorded production; verify opening stock, previous stock and date alignment.":"Dispatch is within today's recorded production volume."});}
+    actions=["Review dispatch and feed closing details if the quantity looks unusual."];
+  }else if(kind==="maintenance"){
+    title="Maintenance signals";
+    const items=m.attention.filter(x=>/maintenance|breakdown|motor|vfd|equipment|downtime|machine/i.test(x.text+' '+x.reason));
+    if(items.length)items.slice(0,6).forEach(x=>findings.push({level:x.level,title:x.text,body:x.reason}));
+    else findings.push({level:"good",title:"No maintenance alert detected",body:"The current Attention Required data has no matching maintenance/equipment alert."});
+    actions=["Verify machine condition, downtime and recent trips for any output-related anomaly."];
+  }else if(kind==="quality"){
+    title="Quality signals";
+    const items=m.attention.filter(x=>/quality|damage|rejection|complaint/i.test(x.text+' '+x.reason));
+    if(items.length)items.slice(0,6).forEach(x=>findings.push({level:x.level,title:x.text,body:x.reason}));
+    else findings.push({level:"good",title:"No quality alert detected",body:"No matching quality-related alert is present in the loaded dashboard data."});
+    actions=["Review the underlying quality record before taking corrective action."];
+  }
+  if(!findings.length)findings.push({level:"info",title:"Not enough matching data",body:"The dashboard has no matching records for this question and selected date."});
+  return {title,intro,findings,actions,date:m.date,context:plantAIContext(kind)};
+}
+function plantAIExplain(question,a){
+  const q=plantAINormalizeQuestion(question);
+  if(/why|reason|cause|because|problem|issue/.test(q)){
+    const negatives=a.findings.filter(f=>['critical','warning'].includes(f.level));
+    if(negatives.length)return `Main signal: ${negatives.slice(0,3).map(f=>f.title).join('; ')}. These are indicators, not proof of root cause; verify the underlying operational records.`;
+    return 'No strong negative signal was detected in the currently loaded data, so a specific root cause cannot be established from the dashboard alone.';
+  }
+  if(/compare|vs|versus|trend|yesterday|average/.test(q))return 'Comparison is based only on the periods/records currently loaded in the dashboard; verify the selected date range before using it for a management decision.';
+  return '';
+}
+function plantAIAnswerNatural(question){
+  const q=String(question||'').trim();
+  const route=plantAIIntent(q);
+  const base=plantAIAnswer(route.intent);
+  const explanation=plantAIExplain(q,base);
+  base.intro=(q?`I analysed the loaded plant data for: “${q}”. `:'')+base.intro+(explanation?' '+explanation:'');
+  base.confidence=route.confidence;
+  base.intent=route.intent;
+  base.context=plantAIContext(route.intent);
+  return base;
+}
+function plantAIConfidenceLabel(c){return c>=.82?'High':c>=.68?'Medium':'Low';}
+function renderPlantAI(kind="status"){
+  const box=document.getElementById("plantAIAnswer");if(!box)return;
+  const a=plantAIAnswer(kind);
+  box.innerHTML=`<div class="plant-ai-answer"><div class="plant-ai-meta"><span>Confidence: ${plantAIConfidenceLabel(.9)}</span><span>Source: dashboard data</span></div><h4>${esc(a.title)}</h4><p>${esc(a.intro)}</p>${a.findings.map(f=>`<div class="plant-ai-finding"><span class="ai-dot ${f.level}"></span><div><strong>${esc(f.title)}</strong><p>${esc(f.body)}</p></div></div>`).join("")}${a.actions.length?`<div class="plant-ai-answer" style="background:#f7f9fc;margin-top:10px"><strong style="font-size:11px">Suggested checks</strong>${a.actions.map(x=>`<p>• ${esc(x)}</p>`).join("")}</div>`:""}<div class="plant-ai-note">Analysis date: ${esc(a.date)} • Verify operational conditions before taking plant action.</div></div>`;
+}
+function plantAINormalizeQuestion(q){return String(q||'').toLowerCase().replace(/[^a-z0-9%\.\s-]/g,' ').replace(/\s+/g,' ').trim();}
+function askPlantAI(){const input=document.getElementById('plantAIQuestion');const q=input?input.value.trim():'';if(!q){showToast('Type a question first');if(input)input.focus();return;}renderPlantAIQuestion(q);}
+function renderPlantAIQuestion(question){
+  const box=document.getElementById('plantAIAnswer');if(!box)return;
+  box.innerHTML='<div class="plant-ai-thinking"><span class="plant-ai-spinner"></span> Analysing plant data…</div>';
+  setTimeout(()=>{
+    const a=plantAIAnswerNatural(question);
+    const contextSize=JSON.stringify(a.context||{}).length;
+    box.innerHTML=`<div class="plant-ai-answer"><div class="plant-ai-meta"><span>Confidence: ${plantAIConfidenceLabel(a.confidence)}</span><span>Focus: ${esc(a.intent)}</span><span>Data used: ${contextSize>0?Math.round(contextSize/1024)+' KB':'--'}</span></div><h4>${esc(a.title)}</h4><p>${esc(a.intro)}</p>${a.findings.map(f=>`<div class="plant-ai-finding"><span class="ai-dot ${f.level}"></span><div><strong>${esc(f.title)}</strong><p>${esc(f.body)}</p></div></div>`).join('')}${a.actions.length?`<div class="plant-ai-answer" style="background:#f7f9fc;margin-top:10px"><strong style="font-size:11px">Suggested checks</strong>${a.actions.map(x=>`<p>• ${esc(x)}</p>`).join('')}</div>`:''}<details class="plant-ai-data"><summary>View AI data context</summary><pre>${esc(JSON.stringify(a.context,null,2))}</pre></details><div class="plant-ai-note">Analysis date: ${esc(a.date)} • Uses only relevant data already loaded in this dashboard. Verify operational conditions before taking plant action.</div></div>`;
+  },80);
+}
+function setPlantAIQuestion(q){const input=document.getElementById('plantAIQuestion');if(input){input.value=q;input.focus();}}
+function openPlantAI(){
+  const html=`<div class="plant-ai-hero"><div class="plant-ai-status"><span></span>Plant Intelligence Engine</div><h3>🤖 Plant AI</h3><p>Ask about production, raw materials, consumption, dispatch, maintenance, quality or plant status. The engine builds a focused JSON context and analyses only relevant loaded data.</p><div class="plant-ai-ask"><input id="plantAIQuestion" type="text" autocomplete="off" placeholder="Ask anything… e.g. Why is production low today?" onkeydown="if(event.key==='Enter')askPlantAI()"><button onclick="askPlantAI()">Ask</button></div><div class="plant-ai-suggestions"><span>Try:</span><button onclick="setPlantAIQuestion('Why is production low today?')">Why is production low?</button><button onclick="setPlantAIQuestion('Which raw material needs attention?')">Which RM needs attention?</button><button onclick="setPlantAIQuestion('Is consumption normal?')">Is consumption normal?</button><button onclick="setPlantAIQuestion('What maintenance issues need attention?')">Maintenance issues?</button></div><div class="plant-ai-actions"><button class="plant-ai-action" onclick="renderPlantAI('status')">What needs attention today?<small>Critical & warning conditions</small></button><button class="plant-ai-action" onclick="renderPlantAI('production')">Analyse production<small>Output, dispatch & signals</small></button><button class="plant-ai-action" onclick="renderPlantAI('materials')">Analyse raw materials<small>Stock cover & reorder</small></button><button class="plant-ai-action" onclick="renderPlantAI('consumption')">Analyse consumption<small>Usage & anomaly signals</small></button><button class="plant-ai-action" onclick="renderPlantAI('maintenance')">Analyse maintenance<small>Equipment & downtime alerts</small></button><button class="plant-ai-action" onclick="renderPlantAI('quality')">Analyse quality<small>Damage & quality alerts</small></button></div></div><div id="plantAIAnswer"></div>`;
+  showModal("🤖 Plant AI",html);renderPlantAI("status");
 }
 
 /* =====================================================

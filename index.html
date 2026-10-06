@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="./manifest.json">
 <title>Manager Dashboard</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,6 +17,8 @@
     <div><div class="smart-greeting" id="smartGreeting">GOOD MORNING, SIR</div><div class="smart-title"><h1>Feed Plant Control Center</h1></div><p><span id="reportDate">Latest</span></p><span class="selected-date-chip" id="selectedDateChip">Latest</span></div>
     <div class="header-actions">
       <button class="header-tool" onclick="openGlobalSearch()" aria-label="Search">🔎</button>
+      <button class="header-tool" onclick="openDataControlPage()" aria-label="Data settings">⚙️</button>
+      <button class="header-tool plant-ai-btn" onclick="openPlantAI()" aria-label="Plant AI">🤖</button>
       <button class="header-tool" onclick="openDateSelector()" aria-label="Date selector">📅</button>
       <button class="notify-btn" onclick="openNotifications()" aria-label="Notifications">🔔<span id="notifyBadge" class="notify-badge hidden">0</span></button>
       <div class="plant">🏭</div>
@@ -44,10 +47,12 @@
         <h2>⚠️ Attention Required</h2>
       </div>
       <div class="attention-head-actions">
+        <span id="attentionStatus" class="attention-status clear">ALL CLEAR</span>
         <span id="attentionCount" class="attention-count">0</span>
-        <button type="button" class="attention-view-all" onclick="openNotifications()">View all</button>
+        <button type="button" class="attention-view-all" onclick="openAttentionOverview()">View all</button>
       </div>
     </div>
+    <div id="attentionMeta" class="attention-meta">Checking current plant status...</div>
     <div id="attentionList" class="attention-summary-list"></div>
   </section>
 
@@ -321,6 +326,42 @@
   </div>
 </div>
 
+
+<!-- DATA CONTROL / SETTINGS PAGE -->
+<div class="dc-page" id="dataControlPage" aria-hidden="true">
+  <div class="dc-page-head">
+    <div>
+      <div class="dc-page-kicker">SITE SETTINGS</div>
+      <h2>🛡 Data Control Center</h2>
+      <p>Hide • Review • Exclude • Reconcile • Restore</p>
+    </div>
+    <div class="dc-page-actions">
+      <button class="report-view-btn" onclick="dcReviewModal()">🔔 Review</button>
+      <button class="report-close-btn" onclick="closeDataControlPage()">✕ Close</button>
+    </div>
+  </div>
+  <div id="dataControlContent"><div class="empty">Loading data controls...</div></div>
+  <div class="dc-toast" id="dcToast" role="status" aria-live="polite"></div>
+  <div class="dc-report-overlay" id="dcReportOverlay" aria-hidden="true" onclick="dcReportOverlayOutside(event)">
+    <div class="dc-report-dialog" role="dialog" aria-modal="true" aria-labelledby="dcReportTitle">
+      <div class="dc-report-head">
+        <div><div class="dc-page-kicker">ITEM REPORT</div><h3 id="dcReportTitle">Detailed Report</h3><p id="dcReportSubtitle">Complete control and activity history</p></div>
+        <button type="button" class="dc-dialog-close" onclick="closeDcReport()" aria-label="Close report">×</button>
+      </div>
+      <div class="dc-report-body" id="dcReportContent"></div>
+    </div>
+  </div>
+  <div class="dc-review-overlay" id="dcReviewOverlay" aria-hidden="true" onclick="dcReviewOverlayOutside(event)">
+    <div class="dc-review-dialog" role="dialog" aria-modal="true" aria-labelledby="dcReviewTitle">
+      <div class="dc-review-dialog-head">
+        <div><div class="dc-page-kicker">MANAGER ACTION</div><h3 id="dcReviewTitle">🔔 Review Required</h3><p id="dcReviewSubtitle">Review only the items that need a decision.</p></div>
+        <button type="button" class="dc-dialog-close" onclick="closeDcReview()" aria-label="Close review">×</button>
+      </div>
+      <div id="dcReviewContent"></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="modal" onclick="outsideClose(event)">
   <div class="modal-box">
     <div class="modal-head"><h2 id="modalTitle">Details</h2><button class="close" onclick="closeModal()">×</button></div>
@@ -328,9 +369,30 @@
   </div>
 </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script id="uiLoadingObserver" defer>
+  (function(){
+    function markLoading(root){
+      (root||document).querySelectorAll('.empty').forEach(function(el){
+        var t=(el.textContent||'').trim().toLowerCase();
+        if(t === 'loading...' || t === 'loading spare parts...') el.classList.add('loading-state');
+        else el.classList.remove('loading-state');
+      });
+    }
+    document.addEventListener('DOMContentLoaded',function(){
+      markLoading(document);
+      new MutationObserver(function(m){
+        m.forEach(function(x){
+          x.addedNodes && x.addedNodes.forEach(function(n){
+            if(n.nodeType===1) markLoading(n.parentNode||n);
+          });
+        });
+      }).observe(document.body,{subtree:true,childList:true});
+    });
+  })();
+  </script>
+  <script defer src="app.js"></script>
 </body>
 </html>
