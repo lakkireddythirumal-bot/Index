@@ -60,14 +60,14 @@
   <div class="card">
     <div class="card-title"><h2>⚡ Management Quick View</h2><span id="dateQuickView">Data: --</span></div>
     <div class="quick-grid manager-quick-grid">
-      <div class="quick quick-kpi" onclick="openFeedTotals('production_day')"><p>Day Production</p><strong id="qProdDay">-- MT</strong><div class="spark" id="sparkProd"></div></div>
+      <div class="quick quick-kpi" onclick="openFeedTotals('production_day')"><p>Day Production</p><strong id="qProdDay">-- MT</strong><div class="quick-context" id="ctxProdDay" onclick="event.stopPropagation();openComparison('production')">Compare</div><div class="spark" id="sparkProd"></div></div>
       <div class="quick" onclick="openFeedTotals('production_month')"><p>Month Production</p><strong id="qProdMonth">-- MT</strong></div>
-      <div class="quick quick-kpi" onclick="openFeedTotals('dispatch_day')"><p>Day Dispatch</p><strong id="qDispDay">-- MT</strong><div class="spark" id="sparkDisp"></div></div>
+      <div class="quick quick-kpi" onclick="openFeedTotals('dispatch_day')"><p>Day Dispatch</p><strong id="qDispDay">-- MT</strong><div class="quick-context" id="ctxDispDay" onclick="event.stopPropagation();openComparison('dispatch')">Compare</div><div class="spark" id="sparkDisp"></div></div>
       <div class="quick" onclick="openFeedTotals('dispatch_month')"><p>Month Dispatch</p><strong id="qDispMonth">-- MT</strong></div>
-      <div class="quick" onclick="openRawCategory('PURCHASE')"><p>RM Received</p><strong id="qReceived">--</strong></div>
-      <div class="quick" onclick="openRawCategory('CONSUMPTION')"><p>RM Consumption</p><strong id="qConsumption">--</strong></div>
-      <div class="quick" onclick="openStockDetails()"><p>RM Closing</p><strong id="qClosing">--</strong></div>
-      <div class="quick" onclick="openFeedClosingDetails()"><p>Feed Closing</p><strong id="qFeedClosing">-- MT</strong><small id="qFeedClosingBagsMini" style="display:block;margin-top:3px;color:#64748b;font-weight:600">-- Bags</small></div>
+      <div class="quick" onclick="openRawCategory('PURCHASE')"><p>RM Received</p><strong id="qReceived">--</strong><div class="quick-context" id="ctxReceived" onclick="event.stopPropagation();openComparison('received')">Compare</div></div>
+      <div class="quick" onclick="openRawCategory('CONSUMPTION')"><p>RM Consumption</p><strong id="qConsumption">--</strong><div class="quick-context" id="ctxConsumption" onclick="event.stopPropagation();openComparison('consumption')">Compare</div></div>
+      <div class="quick" onclick="openStockDetails()"><p>RM Closing</p><strong id="qClosing">--</strong><div class="quick-context" id="ctxClosing" onclick="event.stopPropagation();openComparison('rmClosing')">Compare</div></div>
+      <div class="quick" onclick="openFeedClosingDetails()"><p>Feed Closing</p><strong id="qFeedClosing">-- MT</strong><div class="quick-context" id="ctxFeedClosing" onclick="event.stopPropagation();openComparison('feedClosing')">Compare</div><small id="qFeedClosingBagsMini" style="display:block;margin-top:3px;color:#64748b;font-weight:600">-- Bags</small></div>
       <div class="quick" onclick="openStockForecast()"><p>RM Reorder</p><strong id="mergedReorder">--</strong></div>
     </div>
   </div>
@@ -99,7 +99,7 @@
     <div class="card">
       <div class="card-title"><h2>🏭 Production</h2><span id="dateProduction">Data: --</span></div>
       <div class="production-total" id="productionTotalMain">-- Bags</div>
-      <div class="production-label">Actual Production</div>
+      <div class="production-label">Actual Production <span class="section-context" id="ctxProductionMain" onclick="event.stopPropagation();openComparison('productionBags')">Compare</span></div>
       <div id="productionList"><div class="empty">Loading...</div></div>
     </div>
 
@@ -393,6 +393,6 @@
     });
   })();
   </script>
-  <script defer src="app.js?v=20261007-wa1"></script>
+  <script defer src="app.js?v=20261007-context1"></script>
 </body>
 </html>

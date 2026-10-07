@@ -1823,6 +1823,132 @@ function avgConsumption(material){
   PERF_CACHE.avgConsumption.set(key,result);
   return result;
 }
+
+/* =====================================================
+   KPI CONTEXT — TODAY / YESTERDAY / 7-DAY AVG / LAST MONTH
+   Uses only the small date slices needed for comparison and
+   reuses the historical data already loaded by the dashboard.
+===================================================== */
+function cmpAnchorDate(){return dateOnly(effectiveViewDate()||DATA.report_date||"");}
+function cmpDateShift(d,days){const x=new Date(d+"T00:00:00");x.setDate(x.getDate()+days);return x.toISOString().slice(0,10);}
+function cmpMonthStart(d){return d.slice(0,7)+"-01";}
+function cmpPrevMonth(d){const x=new Date(d+"T00:00:00");x.setDate(1);x.setMonth(x.getMonth()-1);return x.toISOString().slice(0,7);}
+function cmpPrevMonthLastDate(rows,d){
+  const pm=cmpPrevMonth(d); const dates=rows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)).filter(x=>x&&x.slice(0,7)===pm).sort();
+  return dates.length?dates[dates.length-1]:"";
+}
+function cmpPct(a,b){return a===null||b===null||b===0?null:((a-b)/Math.abs(b))*100;}
+function cmpLine(value,avg){
+  const pct=cmpPct(value,avg);
+  if(pct===null)return {text:"Compare",cls:"neutral"};
+  const arrow=pct>0.05?"↑":pct<-0.05?"↓":"•";
+  const cls=pct>0.05?"up":pct<-0.05?"down":"neutral";
+  return {text:`${arrow} ${Math.abs(pct)<0.05?"0.0":fmt(Math.abs(pct))}% vs 7-day avg`,cls};
+}
+function cmpDailyFromMap(map,anchor){
+  const vals=[];
+  for(let i=1;i<=7;i++){
+    const d=cmpDateShift(anchor,-i),v=map.get(d);
+    if(v!==undefined&&v!==null&&Number.isFinite(v))vals.push(v);
+  }
+  const avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+  return {yesterday:map.get(cmpDateShift(anchor,-1))??null,avg};
+}
+function cmpFeedDailyMap(key){
+  const map=new Map();
+  (DATA.feedUnitData||[]).forEach(r=>{
+    const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
+    const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
+    const v=feedValueInMT(feedField(r,key),p);
+    if(v!==null&&v>=0)map.set(d,(map.get(d)||0)+v);
+  });
+  return map;
+}
+function cmpFeedClosingMap(){
+  const map=new Map();
+  (DATA.feedUnitData||[]).forEach(r=>{
+    const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
+    const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
+    const v=num(r.Closing_Day_MT??r.closing_day_mt??r.Closing_Day??r.closing_day??r.Closing??r.closing);
+    if(v!==null&&v>=0)map.set(d,(map.get(d)||0)+feedValueInMT(v,p));
+  });
+  return map;
+}
+function cmpStockMovementMap(types){
+  const set=new Set(types.map(normalize)),map=new Map();
+  (DATA.stockHistory||[]).forEach(t=>{
+    const m=clean(t.material);if(!m||dcIsHiddenMaterial(m))return;
+    const ty=tType(t);if(![...set].some(x=>ty===x||ty.includes(x)))return;
+    const d=dateOnly(rowDate(t));if(!d)return;
+    const v=materialValueInMT(tVal(t),m);if(v===null||v<0)return;
+    map.set(d,(map.get(d)||0)+v);
+  });
+  return map;
+}
+function cmpStockClosingMap(){
+  const map=new Map();
+  (DATA.stockHistory||[]).forEach(t=>{
+    const m=clean(t.material);if(!m||dcIsHiddenMaterial(m)||tType(t)!=="CL. STOCK")return;
+    const d=dateOnly(rowDate(t));if(!d)return;
+    const v=materialValueInMT(tVal(t),m);if(v===null||v<0)return;
+    map.set(d,(map.get(d)||0)+v);
+  });
+  return map;
+}
+function cmpLastMonthFromFeedTotals(field,anchor){
+  const rows=(DATA.feedUnitTotals||[]).filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE));
+  const d=cmpPrevMonthLastDate(rows,anchor);if(!d)return null;
+  const row=rows.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)===d).sort((a,b)=>String(a.imported_at||"").localeCompare(String(b.imported_at||""))).pop();
+  const v=num(row?.[field]);return v!==null&&v>=0?v:null;
+}
+function cmpLastMonthFromStock(fieldTypes,field,anchor){
+  const rows=(DATA.stockHistory||[]).filter(t=>fieldTypes.includes(tType(t)));
+  const d=cmpPrevMonthLastDate(rows,anchor);if(!d)return null;
+  let total=0,found=false;
+  rows.filter(t=>dateOnly(rowDate(t))===d).forEach(t=>{
+    const m=clean(t.material);if(!m||dcIsHiddenMaterial(m))return;
+    const raw=num(t[field]);if(raw!==null&&raw>=0){total+=materialValueInMT(raw,m);found=true;}
+  });
+  return found?total:null;
+}
+function cmpLastMonthClosing(map,anchor){
+  const rows=[...map.entries()].filter(([d])=>d.slice(0,7)===cmpPrevMonth(anchor)).sort((a,b)=>a[0].localeCompare(b[0]));
+  return rows.length?rows[rows.length-1][1]:null;
+}
+function cmpPayload(kind){
+  const anchor=cmpAnchorDate(); if(!anchor)return null;
+  let today=null,lastMonth=null,map=null,unit="";
+  if(kind==="production"){
+    map=cmpFeedDailyMap("Production_Day_MT"); today=map.get(anchor)??null;lastMonth=cmpLastMonthFromFeedTotals("production_month_mt",anchor);unit="MT";
+  }else if(kind==="dispatch"){
+    map=cmpFeedDailyMap("Dispatch_Day_MT"); today=map.get(anchor)??null;lastMonth=cmpLastMonthFromFeedTotals("dispatch_month_mt",anchor);unit="MT";
+  }else if(kind==="received"){
+    map=cmpStockMovementMap(["PURCHASE","RECEIVED","TRANSFER FROM"]);today=map.get(anchor)??null;lastMonth=cmpLastMonthFromStock(["PURCHASE","RECEIVED","TRANSFER FROM"],"for_month",anchor);unit="MT";
+  }else if(kind==="consumption"){
+    map=cmpStockMovementMap(["CONSUMPTION"]);today=map.get(anchor)??null;lastMonth=cmpLastMonthFromStock(["CONSUMPTION"],"for_month",anchor);unit="MT";
+  }else if(kind==="rmClosing"){
+    map=cmpStockClosingMap();today=map.get(anchor)??null;lastMonth=cmpLastMonthClosing(map,anchor);unit="MT";
+  }else if(kind==="feedClosing"){
+    map=cmpFeedClosingMap();today=map.get(anchor)??null;lastMonth=cmpLastMonthClosing(map,anchor);unit="MT";
+  }else if(kind==="productionBags"){
+    map=new Map();(DATA.productionHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);const v=num(r.actual_output);if(d&&v!==null&&v>=0)map.set(d,(map.get(d)||0)+v)});today=map.get(anchor)??null;lastMonth=cmpLastMonthClosing(map,anchor);unit="Bags";
+  }
+  if(!map||today===null)return {today,lastMonth,unit,yesterday:null,avg:null,pct:null};
+  const d=cmpDailyFromMap(map,anchor);return {today,lastMonth,unit,yesterday:d.yesterday,avg:d.avg,pct:cmpPct(today,d.avg)};
+}
+function fmtCmp(v,unit){return v===null||v===undefined?"—":unit==="MT"?fmtMT(v):fmtBags(v);}
+function openComparison(kind){
+  const c=cmpPayload(kind);if(!c)return;
+  const labels={production:"🏭 Production",dispatch:"🚚 Dispatch",received:"📥 RM Received",consumption:"📤 RM Consumption",rmClosing:"📦 RM Closing",feedClosing:"🌾 Feed Closing",productionBags:"🏭 Production Output"};
+  const delta=c.pct===null?"—":`${c.pct>=0?"↑":"↓"} ${fmt(Math.abs(c.pct))}% vs 7-day avg`;
+  showModal(labels[kind]||"Comparison",`<div class="compare-summary"><strong>${fmtCmp(c.today,c.unit)}</strong><span>${esc(delta)}</span></div><div class="compare-grid"><div><small>Today</small><b>${fmtCmp(c.today,c.unit)}</b></div><div><small>Yesterday</small><b>${fmtCmp(c.yesterday,c.unit)}</b></div><div><small>7-Day Avg</small><b>${fmtCmp(c.avg,c.unit)}</b></div><div><small>Last Month</small><b>${fmtCmp(c.lastMonth,c.unit)}</b></div></div><div class="compare-note">Last Month uses the previous calendar month's direct total/end value; no daily month average is calculated.</div>`);
+}
+function renderComparisonLine(id,kind){
+  const el=document.getElementById(id);if(!el)return;
+  const c=cmpPayload(kind);if(!c||c.today===null||c.avg===null){el.textContent="Compare";el.className="quick-context neutral";return;}
+  const line=cmpLine(c.today,c.avg);el.textContent=line.text;el.className=`quick-context ${line.cls}`;
+}
+
 function renderQuick(){
   const pd=latestTotal("Production_Day_MT"),pm=latestTotal("Production_Month_MT");
   const dd=latestTotal("Dispatch_Day_MT"),dm=latestTotal("Dispatch_Month_MT");
@@ -1846,6 +1972,13 @@ function renderQuick(){
   const premixKg=premixBommakalTransfers().reduce((a,r)=>a+r.value,0);
   const damage=selectedBags().reduce((a,r)=>a+(num(r.damage)||0),0);
   setText("mergedReorder",String(reorderCount));setText("mergedIssues",String(issueCount));setText("mergedPremix",fmt(premixKg)+" KG");setText("mergedDamage",fmt(damage));
+  renderComparisonLine("ctxProdDay","production");
+  renderComparisonLine("ctxDispDay","dispatch");
+  renderComparisonLine("ctxReceived","received");
+  renderComparisonLine("ctxConsumption","consumption");
+  renderComparisonLine("ctxClosing","rmClosing");
+  renderComparisonLine("ctxFeedClosing","feedClosing");
+  renderComparisonLine("ctxProductionMain","productionBags");
 
 }
 let feedUnitExpanded=false;
