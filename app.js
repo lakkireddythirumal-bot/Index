@@ -1707,10 +1707,9 @@ function selectedBags(){
   return PERF_CACHE.bags;
 }
 function selectedFeedRows(){
-  if(PERF_CACHE.feedRows)return PERF_CACHE.feedRows;
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
-  PERF_CACHE.feedRows=(VIEW_DATE?rows.filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(VIEW_DATE)):rows).filter(r=>!dcIsHiddenProduct(r.Product||r.product));
-  return PERF_CACHE.feedRows;
+  const d=effectiveViewDate();
+  return d?rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
 }
 function latestFeedRows(){
   if(PERF_CACHE.latestFeed)return PERF_CACHE.latestFeed;
