@@ -1770,7 +1770,8 @@ function selectedBags(){
 function selectedFeedRows(){
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
   const d=effectiveViewDate();
-  return d?rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
+  const dateRows=d?rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
+  return dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
 }
 function latestFeedRows(){
   if(PERF_CACHE.latestFeed)return PERF_CACHE.latestFeed;
