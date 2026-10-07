@@ -1771,10 +1771,11 @@ function renderQuick(){
   const dd=latestTotal("Dispatch_Day_MT"),dm=latestTotal("Dispatch_Month_MT");
   setText("qProdDay",fmtMT(pd));setText("qProdMonth",fmtMT(pm));setText("qDispDay",fmtMT(dd));setText("qDispMonth",fmtMT(dm));
   let received=0,cons=0,closing=0;
+  const quickDate=effectiveViewDate()||latestStockDataDate();
   viewStockRows().forEach(x=>{
     const material=x.material||"";
     if(x.closing!==null)closing+=materialValueInMT(x.closing,material);
-    (x.transactions||[]).forEach(t=>{
+    (x.transactions||[]).filter(t=>!quickDate || dateOnly(rowDate(t))===quickDate).forEach(t=>{
       const ty=tType(t),v=materialValueInMT(tVal(t),material);
       if(ty==="PURCHASE"||ty==="RECEIVED"||ty.includes("TRANSFER FROM"))received+=v;
       if(ty.includes("CONSUMPTION"))cons+=v;
