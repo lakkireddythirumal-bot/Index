@@ -525,48 +525,210 @@ function setConnection(ok,text){
    Spare-parts API is intentionally left unchanged for now.
 ===================================================== */
 const SUPABASE_URL="https://iqxprkmainafqjodpfdk.supabase.co";
+// Browser-safe legacy anon key. RLS controls what the browser can read.
 const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxeHBya21haW5hZnFqb2RwZmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMDQ4MTgsImV4cCI6MjEwNjc4MDgxOH0.RMYxXCnpdsz25SC6uzN6yjykUf1InbmxE9s2wXJDHc8";
+
+function sourceText(v){
+  // The imported MIS contains formula text such as "=DORB" / "=CONSUMPTION".
+  // Google Apps Script previously returned these without the leading "=".
+  return String(v??"").trim().replace(/^=+\s*/,"").trim();
+}
+function cleanStockRow(r){
+  if(!r)return r;
+  return {
+    ...r,
+    report_date:r.report_date,
+    material:sourceText(r.material),
+    transaction:sourceText(r.transaction),
+    for_day:r.for_day,
+    for_month:r.for_month,
+    for_year:r.for_year
+  };
+}
+function cleanProductionRow(r){
+  if(!r)return r;
+  return {...r,report_date:r.report_date,product:sourceText(r.product),remarks:r.remarks};
+}
+function cleanBagRow(r){
+  if(!r)return r;
+  return {...r,report_date:r.report_date,product:sourceText(r.product)};
+}
+function cleanFeedRow(r){
+  if(!r)return r;
+  return {...r,report_date:r.report_date,product:sourceText(r.product)};
+}
+function cleanTotalRow(r){
+  if(!r)return r;
+  return {...r,report_date:r.report_date,type:sourceText(r.type)};
+}
 
 async function supabaseRows(table){
   const rows=[];
   const pageSize=1000;
+  const maxRetries=2;
   for(let offset=0;;offset+=pageSize){
-    const qs=new URLSearchParams({select:"*",order:"id.asc",limit:String(pageSize),offset:String(offset),apikey:SUPABASE_KEY});
+    const qs=new URLSearchParams({
+      select:"*",
+      order:"id.asc",
+      limit:String(pageSize),
+      offset:String(offset),
+      apikey:SUPABASE_KEY
+    });
     const url=SUPABASE_URL+"/rest/v1/"+encodeURIComponent(table)+"?"+qs.toString();
-    const res=await fetch(url,{method:"GET",cache:"no-store",credentials:"omit"});
-    const body=await res.text();
-    if(!res.ok)throw new Error(`Supabase ${table}: HTTP ${res.status} • ${body.slice(0,180)}`);
-    let batch;
-    try{batch=JSON.parse(body)}catch(e){throw new Error(`Supabase ${table}: invalid JSON`)}
+    let res=null,lastError=null;
+    for(let attempt=0;attempt<=maxRetries;attempt++){
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),15000);
+      try{
+        res=await fetch(url,{method:"GET",cache:"no-store",credentials:"omit",signal:controller.signal});
+        if(res.ok)break;
+        const body=await res.text().catch(()=>"");
+        lastError=new Error(`Supabase ${table}: HTTP ${res.status}${body?" • "+body.slice(0,180):""}`);
+      }catch(e){
+        lastError=e&&e.name==="AbortError"?new Error(`Supabase ${table}: request timeout`):e;
+      }finally{clearTimeout(timer)}
+      if(attempt<maxRetries)await new Promise(r=>setTimeout(r,500*(attempt+1)));
+    }
+    if(!res||!res.ok)throw lastError||new Error(`Supabase ${table}: request failed`);
+    const batch=await res.json();
     if(!Array.isArray(batch))throw new Error(`Supabase ${table}: invalid response`);
     rows.push(...batch);
-    console.info(`[Supabase] ${table}: ${batch.length} rows (offset ${offset})`);
     if(batch.length<pageSize)break;
   }
+  console.info(`[Supabase] ${table}: ${rows.length} rows`, rows.length?`latest=${rows.map(r=>r.report_date).filter(Boolean).sort().pop()||"--"}`:"empty");
   return rows;
+}
+
+async function loadDashboard(){
+  const [stock0,production0,bags0,feed0,totals0]=await Promise.all([
+    supabaseRows("stock_data"),
+    supabaseRows("production_data"),
+    supabaseRows("pp_bags_data"),
+    supabaseRows("feed_unit_data"),
+    supabaseRows("feed_unit_totals")
+  ]);
+
+  // Match the shape/logic of the proven working Sheets version.
+  const stockRaw=stock0.map(cleanStockRow);
+  const productionRaw=production0.map(cleanProductionRow);
+  const bagsRaw=bags0.map(cleanBagRow);
+  const feedRaw=feed0.map(cleanFeedRow);
+  const totalsRaw=totals0.map(cleanTotalRow);
+
+  const stockNorm=normalizeStockRows(stockRaw,[]);
+  const stockDate=latestByDate(stockRaw);
+  const productionDate=latestByDate(productionRaw);
+  const bagsDate=latestByDate(bagsRaw);
+  const feedDate=latestByDate(feedRaw);
+  const reportDates=[stockDate,productionDate,bagsDate,feedDate].filter(Boolean).sort();
+  const reportDate=reportDates[reportDates.length-1]||null;
+
+  const productionHistory=productionRaw.map(r=>({
+    report_date:r.report_date,product:r.product,standard_output:r.standard_output,
+    actual_output:r.actual_output,output_percentage:r.output_percentage,
+    process_loss:r.process_loss,remarks:r.remarks
+  }));
+  const production=productionHistory.filter(r=>dateOnly(r.report_date)===productionDate);
+
+  const productionTrendMap=new Map();
+  productionHistory.forEach(r=>{
+    const d=dateOnly(r.report_date); if(!d)return;
+    productionTrendMap.set(d,(productionTrendMap.get(d)||0)+(num(r.actual_output)||0));
+  });
+  const productionTrend=[...productionTrendMap.entries()]
+    .sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([date,actual_output])=>({date,report_date:date,actual_output}));
+
+  const bagsHistory=bagsRaw.map(r=>({
+    report_date:r.report_date,product:r.product,opening:r.opening,
+    received:r.received,issue:r.issue,damage:r.damage,closing:r.closing
+  }));
+  const bags=bagsHistory.filter(r=>dateOnly(r.report_date)===bagsDate);
+
+  const feedUnitData=feedRaw.map(r=>({
+    report_date:r.report_date,product:r.product,
+    opening_day_mt:r.opening_day_mt,opening_month_mt:r.opening_month_mt,
+    production_day_mt:r.production_day_mt,production_month_mt:r.production_month_mt,
+    dispatch_day_mt:r.dispatch_day_mt,dispatch_month_mt:r.dispatch_month_mt,
+    transfer_day_mt:r.transfer_day_mt,transfer_month_mt:r.transfer_month_mt,
+    closing_day_mt:r.closing_day_mt,closing_month_mt:r.closing_month_mt
+  }));
+  const feedUnitTotals=totalsRaw.map(r=>({
+    report_date:r.report_date,production_day_mt:r.production_day_mt,
+    production_month_mt:r.production_month_mt,dispatch_day_mt:r.dispatch_day_mt,
+    dispatch_month_mt:r.dispatch_month_mt,type:r.type
+  }));
+
+  const usage={};
+  const byMaterialDate=new Map();
+  stockRaw.forEach(r=>{
+    const m=clean(r.material),d=dateOnly(r.report_date),ty=normalize(r.transaction);
+    if(!m||!d||!ty)return;
+    if(ty.includes("CONSUMPTION")){
+      const k=normalize(m);
+      if(!byMaterialDate.has(k))byMaterialDate.set(k,new Map());
+      const dm=byMaterialDate.get(k);
+      dm.set(d,(dm.get(d)||0)+(num(r.for_day)||0));
+    }
+  });
+  byMaterialDate.forEach((dm,k)=>{
+    const original=stockRaw.find(r=>normalize(r.material)===k);
+    usage[clean(original?.material)||k]=[...dm.keys()].sort().slice(-30).map(d=>dm.get(d));
+  });
+
+  const apiData={
+    status:"success",
+    stock:stockNorm.stock,
+    stock_history:stockNorm.stockHistory,
+    production,
+    production_history:productionHistory,
+    pp_bags:bags,
+    pp_bags_history:bagsHistory,
+    feedUnitData,
+    feedUnitTotals,
+    productionTrend,
+    usage,
+    reorder_items:[],
+    consumption:null,
+    efficiency:null,
+    processLoss:null,
+    report_date:reportDate
+  };
+
+  console.info("[Supabase] dashboard payload",{
+    stock:apiData.stock.length,stockHistory:apiData.stock_history.length,
+    production:apiData.production.length,productionHistory:apiData.production_history.length,
+    bags:apiData.pp_bags.length,bagsHistory:apiData.pp_bags_history.length,
+    feed:apiData.feedUnitData.length,totals:apiData.feedUnitTotals.length,
+    reportDate:apiData.report_date
+  });
+
+  // IMPORTANT: the Sheets API applied this internally. Supabase must do it here.
+  applyData(apiData,false);
+  return apiData;
 }
 
 function normalizeStockRows(rows,master){
   const masters=new Map((master||[]).map(x=>[normalize(x.material),x]));
-  const history=(rows||[]).map(r=>({
-    report_date:r.report_date,
-    material:r.material,
-    transaction:r.transaction,
-    for_day:r.for_day,
-    for_month:r.for_month,
-    for_year:r.for_year
-  }));
+  const history=(rows||[]).map(cleanStockRow);
   const dates=history.map(r=>dateOnly(r.report_date)).filter(Boolean).sort();
   const latest=dates[dates.length-1]||"";
   const grouped=new Map();
+
   history.filter(r=>dateOnly(r.report_date)===latest).forEach(t=>{
     const key=normalize(t.material); if(!key)return;
     if(!grouped.has(key)){
       const m=masters.get(key)||{};
-      grouped.set(key,{material:t.material,unit:m.unit||"MT",reorder_level:m.reorder_level??null,transactions:[]});
+      grouped.set(key,{
+        material:t.material,
+        unit:m.unit||"MT",
+        reorder_level:m.reorder_level??null,
+        transactions:[]
+      });
     }
     grouped.get(key).transactions.push(t);
   });
+
   const stock=[...grouped.values()].map(x=>{
     const c=x.transactions.filter(t=>tType(t)==="CL. STOCK").slice(-1)[0];
     return {...x,closing:c?tVal(c):null};
@@ -580,22 +742,16 @@ function latestByDate(rows,dateField="report_date"){
 }
 
 async function loadDashboard(){
-  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw]=await Promise.all([
+  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw,masterRaw]=await Promise.all([
     supabaseRows("stock_data"),
     supabaseRows("production_data"),
     supabaseRows("pp_bags_data"),
     supabaseRows("feed_unit_data"),
-    supabaseRows("feed_unit_totals")
+    supabaseRows("feed_unit_totals"),
+    supabaseRows("material_master")
   ]);
 
-  const stockNorm=normalizeStockRows(stockRaw,[]);
-  console.info("[Supabase] SUMMARY", {
-    stock_data:{rows:stockRaw.length,latest:latestByDate(stockRaw)},
-    production_data:{rows:productionRaw.length,latest:latestByDate(productionRaw)},
-    pp_bags_data:{rows:bagsRaw.length,latest:latestByDate(bagsRaw)},
-    feed_unit_data:{rows:feedRaw.length,latest:latestByDate(feedRaw)},
-    feed_unit_totals:{rows:totalsRaw.length,latest:latestByDate(totalsRaw)}
-  });
+  const stockNorm=normalizeStockRows(stockRaw,masterRaw);
   const stockDate=latestByDate(stockRaw);
   const productionDate=latestByDate(productionRaw);
   const bagsDate=latestByDate(bagsRaw);
@@ -664,9 +820,8 @@ async function refreshData(){
   refreshing=true;
   setConnection(true,"Connecting...");
   try{
-    const apiData=await loadDashboard();
-    applyData(apiData,false);
-    setConnection(true,"Live • Supabase data loaded");
+    await loadDashboard();
+    setConnection(true,"Live");
     const tm=Date.now();setText("lastUpdated","Updated "+new Date(tm).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}));
   }catch(e){
     console.error(e);
