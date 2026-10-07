@@ -527,15 +527,52 @@ function setConnection(ok,text){
 const SUPABASE_URL="https://iqxprkmainafqjodpfdk.supabase.co";
 const SUPABASE_KEY="sb_publishable_54VfHOULYN31VknExbmdVA_mYxhtU-7";
 
+/*
+   Browser-safe Supabase REST loader.
+   IMPORTANT: publishable keys are sent in the `apikey` header only.
+   Do not send sb_publishable_* as `Authorization: Bearer ...`.
+*/
 async function supabaseRows(table){
   const rows=[];
   const pageSize=1000;
+  const maxRetries=2;
   for(let from=0;;from+=pageSize){
-    const url=SUPABASE_URL+"/rest/v1/"+encodeURIComponent(table)+"?select=*";
-    const res=await fetch(url,{headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY,Range:`${from}-${from+pageSize-1}`},cache:"no-store"});
-    if(!res.ok)throw new Error(`Supabase ${table}: HTTP ${res.status}`);
-    const batch=await res.json();
-    if(!Array.isArray(batch))throw new Error(`Supabase ${table}: invalid response`);
+    const url=SUPABASE_URL+"/rest/v1/"+encodeURIComponent(table)+"?select=*&order=id.asc";
+    let batch=null,lastError=null;
+    for(let attempt=0;attempt<=maxRetries;attempt++){
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),20000);
+      try{
+        const res=await fetch(url,{
+          method:"GET",
+          headers:{apikey:SUPABASE_KEY,Range:`${from}-${from+pageSize-1}`,Accept:"application/json"},
+          cache:"no-store",
+          signal:controller.signal
+        });
+        if(!res.ok){
+          const body=await res.text().catch(()=>"");
+          const err=new Error(`Supabase ${table}: HTTP ${res.status}${body?" • "+body.slice(0,160):""}`);
+          err.status=res.status;
+          if((res.status===408||res.status===429||res.status>=500) && attempt<maxRetries){
+            lastError=err;
+            await new Promise(r=>setTimeout(r,500*(attempt+1)));
+            continue;
+          }
+          throw err;
+        }
+        batch=await res.json();
+        if(!Array.isArray(batch))throw new Error(`Supabase ${table}: invalid response`);
+        lastError=null;
+        break;
+      }catch(err){
+        lastError=err;
+        if(attempt>=maxRetries)break;
+        const retryable=err?.name==="AbortError" || err?.name==="TypeError" || (Number(err?.status)>=500);
+        if(!retryable)break;
+        await new Promise(r=>setTimeout(r,500*(attempt+1)));
+      }finally{clearTimeout(timer)}
+    }
+    if(lastError)throw lastError;
     rows.push(...batch);
     if(batch.length<pageSize)break;
   }
@@ -579,13 +616,33 @@ async function loadDashboard(){
   // material_master is intentionally not required. Material/unit information is
   // derived from stock_data so the dashboard works on any device with only the
   // five active MIS tables.
-  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw]=await Promise.all([
-    supabaseRows("stock_data"),
-    supabaseRows("production_data"),
-    supabaseRows("pp_bags_data"),
-    supabaseRows("feed_unit_data"),
-    supabaseRows("feed_unit_totals")
-  ]);
+  //
+  // Each table is isolated so one temporary API failure cannot blank the entire
+  // dashboard. Successful tables still render; failed table names are surfaced
+  // through DASHBOARD_LOAD_ERRORS for the status line/debugging.
+  const tableSpecs=[
+    ["stock","stock_data"],
+    ["production","production_data"],
+    ["bags","pp_bags_data"],
+    ["feed","feed_unit_data"],
+    ["totals","feed_unit_totals"]
+  ];
+  const settled=await Promise.allSettled(tableSpecs.map(([,table])=>supabaseRows(table)));
+  const failed=[];
+  const valueAt=i=>{
+    const r=settled[i];
+    if(r.status==="fulfilled")return r.value;
+    failed.push({table:tableSpecs[i][1],error:r.reason?.message||String(r.reason||"Unknown error")});
+    return [];
+  };
+  const stockRaw=valueAt(0),productionRaw=valueAt(1),bagsRaw=valueAt(2),feedRaw=valueAt(3),totalsRaw=valueAt(4);
+  window.DASHBOARD_LOAD_ERRORS=failed;
+  if(failed.length===tableSpecs.length){
+    const msg=failed.map(x=>`${x.table}: ${x.error}`).join(" | ");
+    const err=new Error("All Supabase tables failed to load • "+msg);
+    err.code="SUPABASE_ALL_TABLES_FAILED";
+    throw err;
+  }
 
   const stockNorm=normalizeStockRows(stockRaw,[]);
   const stockDate=latestByDate(stockRaw);
@@ -657,18 +714,28 @@ async function refreshData(){
   setConnection(true,"Connecting...");
   try{
     await loadDashboard();
-    setConnection(true,"Live");
+    const loadErrors=Array.isArray(window.DASHBOARD_LOAD_ERRORS)?window.DASHBOARD_LOAD_ERRORS:[];
+    setConnection(true,loadErrors.length?`Live • ${loadErrors.length} source${loadErrors.length===1?"":"s"} unavailable`:"Live");
     const tm=Date.now();setText("lastUpdated","Updated "+new Date(tm).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}));
+    if(loadErrors.length){
+      const detail=loadErrors.map(x=>x.table+": "+x.error).join(" | ");
+      console.warn("Supabase partial load:",detail);
+    }
   }catch(e){
     console.error(e);
     const has=!!cachedData();
     let msg="Unable to refresh";
-    if(e&&e.code==="DASHBOARD_PROCESSING")msg="Data received • dashboard processing error";
+    if(e&&e.code==="SUPABASE_ALL_TABLES_FAILED")msg="Supabase connection failed";
+    else if(e&&e.code==="DASHBOARD_PROCESSING")msg="Data received • dashboard processing error";
     else if(e&&e.code==="API_TIMEOUT")msg="API timeout • showing saved data";
     else if(e&&e.code==="API_NETWORK")msg="API connection issue • showing saved data";
     else if(e&&e.code==="API_RESPONSE")msg="API response error • showing saved data";
+    else if(e&&e.message)msg=e.message;
     setConnection(false,has?msg:"Unable to load dashboard");
-    if(!has)document.getElementById("stockList").innerHTML="<div class='error-box'>❌ Unable to load dashboard data.</div>";
+    if(!has){
+      const box=document.getElementById("stockList");
+      if(box)box.innerHTML=`<div class='error-box'>❌ ${esc(msg)}<br><small>Check Supabase connection and refresh.</small></div>`;
+    }
   }finally{refreshing=false}
 }
 
