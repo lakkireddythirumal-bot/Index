@@ -976,7 +976,7 @@ function latestSpareDataDate(tab=spareTab){
   return dates.sort().pop()||"";
 }
 function updateSectionDates(){
-  const selected=VIEW_DATE?dateOnly(VIEW_DATE):"";
+  const selected=effectiveViewDate();
   const stockDate=selected||latestStockDataDate()||dateOnly(DATA.report_date);
   const prodDate=selected||latestProductionDataDate()||dateOnly(DATA.report_date);
   const feedDate=selected||latestFeedUnitDataDate()||dateOnly(DATA.report_date);
@@ -1608,6 +1608,9 @@ function goTrend(){document.getElementById("trendsSection").scrollIntoView({beha
    DATE VIEW — COMPLETE DASHBOARD DATE FILTER
 ===================================================== */
 let VIEW_DATE=null;
+function effectiveViewDate(){
+  return dateOnly(VIEW_DATE || DATA.report_date || "");
+}
 
 /* =====================================================
    PERFORMANCE MEMOIZATION — invalidated when data/date changes
@@ -1689,7 +1692,7 @@ function transactions(material){
 }
 function selectedProduction(){
   if(PERF_CACHE.production)return PERF_CACHE.production;
-  if(!VIEW_DATE){PERF_CACHE.production=(Array.isArray(DATA.production)?DATA.production:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));return PERF_CACHE.production;}
+  if(!effectiveViewDate()){PERF_CACHE.production=(Array.isArray(DATA.production)?DATA.production:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));return PERF_CACHE.production;}
   const d=dateOnly(VIEW_DATE);
   const history=Array.isArray(DATA.productionHistory)?DATA.productionHistory:[];
   PERF_CACHE.production=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product||r.Product));
@@ -1697,7 +1700,7 @@ function selectedProduction(){
 }
 function selectedBags(){
   if(PERF_CACHE.bags)return PERF_CACHE.bags;
-  if(!VIEW_DATE){PERF_CACHE.bags=(Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product));return PERF_CACHE.bags;}
+  if(!effectiveViewDate()){PERF_CACHE.bags=(Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product));return PERF_CACHE.bags;}
   const d=dateOnly(VIEW_DATE);
   const history=Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[];
   PERF_CACHE.bags=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product));
