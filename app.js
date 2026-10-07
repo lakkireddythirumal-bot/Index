@@ -13,7 +13,6 @@ const SPARE_PARTS_API="https://script.google.com/macros/s/AKfycbweDXm7if7XuHwAUj
 const CACHE_KEY="manager_dashboard_last_success_v2";
 const CACHE_TIME_KEY="manager_dashboard_last_success_time_v2";
 const DEFAULT_SAFETY_DAYS=7;
-const PP_BAG_REORDER_DAYS=10;
 
 /* =====================================================
    DATA
@@ -1195,44 +1194,6 @@ function renderDashboard(){
 }
 
 
-function ppBagAvgDailyIssue(product){
-  const key=normalize(product), history=Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[];
-  const dated=new Map();
-  history.forEach(r=>{
-    if(normalize(r.product||"PP Bags")!==key)return;
-    const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);
-    const v=num(r.issue);
-    if(!d||v===null||v<=0)return;
-    dated.set(d,(dated.get(d)||0)+v);
-  });
-  if(!dated.size)return 0;
-  let anchor=effectiveViewDate();
-  const dates=[...dated.keys()].sort();
-  if(!anchor)anchor=dates[dates.length-1];
-  const anchorTime=new Date(anchor+"T00:00:00").getTime();
-  const startTime=anchorTime-29*86400000;
-  let total=0,count=0;
-  dated.forEach((v,d)=>{
-    const tm=new Date(d+"T00:00:00").getTime();
-    if(tm>=startTime&&tm<=anchorTime&&v>0){total+=v;count++;}
-  });
-  return count?total/count:0;
-}
-function ppBagReorderStatus(product,row){
-  const closing=num(row?.closing)||0, avg=ppBagAvgDailyIssue(product);
-  if(!avg)return {closing,avg,cover:null,reorderLevel:0,status:"NO HISTORY",cls:"warn"};
-  const cover=closing/avg, reorderLevel=avg*PP_BAG_REORDER_DAYS;
-  if(cover<PP_BAG_REORDER_DAYS)return {closing,avg,cover,reorderLevel,status:"REORDER",cls:"bad"};
-  if(cover<=PP_BAG_REORDER_DAYS*1.5)return {closing,avg,cover,reorderLevel,status:"WATCH",cls:"warn"};
-  return {closing,avg,cover,reorderLevel,status:"OK",cls:"good"};
-}
-function attentionReorderBags(){
-  return selectedBags().map(r=>{
-    const product=clean(r.product||"PP Bags"),s=ppBagReorderStatus(product,r);
-    return {product,r,s};
-  }).filter(x=>x.product&&x.s.status==="REORDER");
-}
-
 function attentionReorderMaterials(){
   return getMaterials().map(m=>{
     const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
@@ -1330,24 +1291,6 @@ function openAttentionFiltered(kind){
     const html=`<div class="detail-section"><h3>🔴 Abnormal consumption • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.material)}')"><div><div class="row-name">${esc(x.material)}</div><div class="prod-meta">${esc(x.direction==="LOW"?"Below":"Above")} average • ${fmt(x.current)} vs ${fmt(x.avg)}</div></div><div class="row-right"><strong>${fmt(Math.abs(x.ratio*100-100))}%</strong><small>${esc(x.date||"Latest")}</small></div></div>`).join("")||"<div class='empty'>No abnormal consumption found.</div>"}</div>`;
     showModal("🔴 Abnormal Consumption",html); return;
   }
-  if(kind==="bagsReorder"){
-    const rows=attentionReorderBags();
-    const html=`<div class="detail-section">
-      <h3>🔴 PP Bags below ${PP_BAG_REORDER_DAYS} days stock • ${rows.length}</h3>
-      ${rows.length?`<div style="display:flex;gap:8px;margin:10px 0;align-items:center">
-        <button type="button" class="secondary-btn" onclick="toggleAllReorderBags(true)">Select All</button>
-        <button type="button" class="secondary-btn" onclick="toggleAllReorderBags(false)">Clear</button>
-        <span id="reorderBagSelectedCount" style="margin-left:auto;font-size:12px;opacity:.75">0 selected</span>
-      </div>
-      <div id="reorderBagSelectList">${rows.map(x=>`<label style="display:flex;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid rgba(127,127,127,.16);cursor:pointer">
-        <input type="checkbox" class="reorder-bag-check" value="${esc(x.product)}" onchange="updateReorderBagSelectedCount()">
-        <span style="flex:1"><span class="row-name">${esc(x.product)}</span><span class="prod-meta">Stock ${fmt(x.s.closing)} Bags • Avg issue ${fmt(x.s.avg)}/day • Reorder ${fmt(x.s.reorderLevel)} Bags</span></span>
-        <span class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></span>
-      </label>`).join("")}</div>
-      <button type="button" class="primary-btn" style="width:100%;margin-top:14px" onclick="sendPPBagRequirementWhatsApp()">📲 Send</button>`:`<div class='empty'>No PP Bags are below ${PP_BAG_REORDER_DAYS} days stock.</div>`}
-    </div>`;
-    showModal("🔴 PP Bags Reorder",html); return;
-  }
   if(kind==="bags"){
     const rows=attentionIncreasedBagDamage();
     const html=`<div class="detail-section"><h3>🟡 PP bag damages increased • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openBagProduct('${jsq(x.product)}')"><div><div class="row-name">${esc(x.product)}</div><div class="prod-meta">Previous damage ${fmt(x.previous)} • Current ${fmt(x.damage)}</div></div><div class="row-right"><strong>+${fmt(x.damage-x.previous)}</strong><small>Damage increase</small></div></div>`).join("")||"<div class='empty'>No PP bag damage increase found.</div>"}</div>`;
@@ -1385,23 +1328,6 @@ function sendRawMaterialRequirementWhatsApp(){
   window.open(url,'_blank');
 }
 
-function updateReorderBagSelectedCount(){
-  const checks=[...document.querySelectorAll('.reorder-bag-check')],n=checks.filter(c=>c.checked).length;
-  const el=document.getElementById('reorderBagSelectedCount');
-  if(el)el.textContent=`${n} selected`;
-}
-function toggleAllReorderBags(state){
-  document.querySelectorAll('.reorder-bag-check').forEach(c=>c.checked=!!state);
-  updateReorderBagSelectedCount();
-}
-function sendPPBagRequirementWhatsApp(){
-  const names=[...document.querySelectorAll('.reorder-bag-check:checked')].map(c=>c.value).filter(Boolean);
-  if(!names.length){alert('Please select at least one PP bag product.');return;}
-  const message=['Dear Sir','PP bag requirement up to now',...names].join('\n');
-  const url='https://wa.me/?text='+encodeURIComponent(message);
-  window.open(url,'_blank');
-}
-
 function attentionSummaryItems(){
   const reorderRows=attentionReorderMaterials();
   const reorderRawRows=attentionReorderRawMaterials();
@@ -1414,8 +1340,6 @@ function attentionSummaryItems(){
   const items=[];
   items.push({icon:reorderRawRows.length?'🔴':'🟢',level:reorderRawRows.length?'critical':'clear',count:reorderRawRows.length,text:`${reorderRawRows.length} Raw Materials below reorder level`,reason:reorderRawRows.length?"Immediate replenishment recommended":"No raw material is below its reorder level",action:"openAttentionFiltered('reorderRaw')"});
   items.push({icon:reorderPremixRows.length?'🔴':'🟢',level:reorderPremixRows.length?'critical':'clear',count:reorderPremixRows.length,text:`${reorderPremixRows.length} Premixes below reorder level`,reason:reorderPremixRows.length?"Immediate premix replenishment recommended":"No premix is below its reorder level",action:"openAttentionFiltered('reorderPremix')"});
-  const reorderBagRows=attentionReorderBags();
-  items.push({icon:reorderBagRows.length?'🔴':'🟢',level:reorderBagRows.length?'critical':'clear',count:reorderBagRows.length,text:`${reorderBagRows.length} PP Bags below ${PP_BAG_REORDER_DAYS} days stock`,reason:reorderBagRows.length?"PP bag stock needs replenishment":"All PP bag products have sufficient stock",action:"openAttentionFiltered('bagsReorder')"});
   items.push({icon:under3Rows.length?'🟡':'🟢',level:under3Rows.length?'warning':'clear',count:under3Rows.length,text:`${under3Rows.length} materials with < 3 days cover`,reason:under3Rows.length?"Coverage is low but not yet at reorder level":"No additional low-coverage materials",action:"openAttentionFiltered('under3')"});
   items.push({icon:abnormalRows.length?'🔴':'🟢',level:abnormalRows.length?'critical':'clear',count:abnormalRows.length,text:`${abnormalRows.length} abnormal consumption`,reason:abnormalRows.length?"Consumption is outside the normal pattern":"Consumption is within the monitored range",action:"openAttentionFiltered('abnormal')"});
   items.push({icon:bagRows.length?'🟡':'🟢',level:bagRows.length?'warning':'clear',count:bagRows.length,text:`${bagRows.length} PP bag damage increases`,reason:bagRows.length?"Damage is higher than the previous available day":"No increase in recorded damage",action:"openAttentionFiltered('bags')"});
@@ -1945,29 +1869,29 @@ function renderPPBags(){
   const seen=new Set();
   const uniqueRows=rows.filter(r=>{
     const key=normalize(r.product||"PP Bags");
-    if(seen.has(key))return false;
-    seen.add(key);return true;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
-  const detailed=uniqueRows.map(r=>{
+  const sorted=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0)).slice(0,10);
+  el.innerHTML=sorted.map(r=>{
     const p=r.product||"PP Bags";
-    const opening=num(r.opening)||0,received=num(r.received)||0,issue=num(r.issue)||0,damage=num(r.damage)||0,closing=num(r.closing)||0;
-    const rec=ppBagReconciliation(p),st=ppBagReorderStatus(p,r);
-    const status=rec.status==="MISMATCH"?"CHECK":(st.status==="REORDER"?"REORDER":(damage>0?"DAMAGE":st.status==="WATCH"?"WATCH":"OK"));
+    const opening=num(r.opening)||0, received=num(r.received)||0, issue=num(r.issue)||0, damage=num(r.damage)||0, closing=num(r.closing)||0;
+    const rec=ppBagReconciliation(p);
+    const status=rec.status==="MISMATCH"?"CHECK":(damage>0?"DAMAGE":"OK");
     const statusCls=status.toLowerCase();
-    const statusIcon=status==="CHECK"?"⚠":status==="REORDER"?"🔴":status==="DAMAGE"?"🟠":status==="WATCH"?"🟡":"✓";
-    return {r,p,opening,received,issue,damage,closing,st,status,statusCls,statusIcon};
-  }).sort((a,b)=>{
-    const ar=a.status==="REORDER"?0:a.status==="WATCH"?1:2,br=b.status==="REORDER"?0:b.status==="WATCH"?1:2;
-    return ar-br||(b.closing-a.closing);
-  }).slice(0,10);
-  el.innerHTML=detailed.map(x=>`<div class="pp-item pp-status-${x.statusCls}" role="button" tabindex="0" onclick="openBagProduct('${jsq(x.p)}')" onkeydown="if(event.key==='Enter'||event.key===' ')openBagProduct('${jsq(x.p)}')">
-    <div class="pp-card-head"><p title="${esc(x.p)}">${esc(x.p)}</p><span class="pp-status ${x.statusCls}" title="${x.status}" aria-label="${x.status}">${x.statusIcon}</span></div>
-    <div class="pp-simple-details">
-      <div><span>STOCK</span><strong>${fmt(x.closing)}</strong></div>
-      <div><span>AVG / DAY</span><strong>${x.st.avg?fmt(x.st.avg):"--"}</strong></div>
-      <div><span>REORDER LEVEL</span><strong>${x.st.reorderLevel?fmt(x.st.reorderLevel):"--"}</strong></div>
-    </div>
-  </div>`).join("")||"<div class='empty'>No PP Bag data for this date</div>";
+    const statusIcon=status==="CHECK"?"⚠":(status==="DAMAGE"?"🟠":"✓");
+    return `<div class="pp-item pp-status-${statusCls}" role="button" tabindex="0" onclick="openBagProduct('${jsq(p)}')" onkeydown="if(event.key==='Enter'||event.key===' ')openBagProduct('${jsq(p)}')">
+      <div class="pp-card-head"><p title="${esc(p)}">${esc(p)}</p><span class="pp-status ${statusCls}" title="${status}">${statusIcon}</span></div>
+      <div class="pp-metrics">
+        <span><b>Open</b><strong>${fmt(opening)}</strong></span>
+        <span><b>Recv</b><strong>${fmt(received)}</strong></span>
+        <span><b>Issue</b><strong>${fmt(issue)}</strong></span>
+        <span><b>Damage</b><strong>${fmt(damage)}</strong></span>
+        <span class="pp-closing"><b>Close</b><strong>${fmt(closing)}</strong></span>
+      </div>
+    </div>`;
+  }).join("")||"<div class='empty'>No PP Bag data for this date</div>";
 }
 function renderStock(){
   const list=document.getElementById("stockList"),premixList=document.getElementById("premixStockList"),mats=getMaterials();
