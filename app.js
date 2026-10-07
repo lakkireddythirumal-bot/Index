@@ -464,10 +464,10 @@ function setText(id,v){const e=document.getElementById(id);if(e)e.textContent=v}
    CACHE
 ===================================================== */
 function saveCache(payload){
-  try{localStorage.setItem(CACHE_KEY,JSON.stringify(payload));localStorage.setItem(CACHE_TIME_KEY,String(Date.now()))}catch(e){}
+  return;
 }
 function cachedData(){
-  try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null}catch(e){return null}
+  return null;
 }
 function applyData(apiData,fromCache=false){
   DATA={
@@ -494,13 +494,7 @@ function applyData(apiData,fromCache=false){
   if(!fromCache)saveCache(apiData);
 }
 function restoreCache(){
-  const c=cachedData();
-  if(!c||c.status!=="success")return false;
-  applyData(c,true);
-  const tm=Number(localStorage.getItem(CACHE_TIME_KEY)||0);
-  setText("lastUpdated",tm?"Cached "+new Date(tm).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}):"Cached");
-  setConnection(false,"Showing saved data • refreshing...");
-  return true;
+  return false;
 }
 function setConnection(ok,text){
   const dot=document.getElementById("statusDot");
@@ -629,7 +623,7 @@ async function refreshData(){
     const tm=Date.now();setText("lastUpdated","Updated "+new Date(tm).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}));
   }catch(e){
     console.error(e);
-    const has=!!cachedData();
+    const has=false;
     let msg="Unable to refresh";
     if(e&&e.code==="DASHBOARD_PROCESSING")msg="Data received • dashboard processing error";
     else if(e&&e.code==="API_TIMEOUT")msg="API timeout • showing saved data";
