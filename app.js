@@ -530,40 +530,30 @@ const SUPABASE_KEY="sb_publishable_54VfHOULYN31VknExbmdVA_mYxhtU-7";
 async function supabaseRows(table){
   const rows=[];
   const pageSize=1000;
-  const maxRetries=2;
   for(let offset=0;;offset+=pageSize){
-    const qs=new URLSearchParams({
-      select:"*",
-      order:"id.asc",
-      limit:String(pageSize),
-      offset:String(offset),
-      apikey:SUPABASE_KEY
-    });
+    const qs=new URLSearchParams({select:"*",order:"id.asc",limit:String(pageSize),offset:String(offset),apikey:SUPABASE_KEY});
     const url=SUPABASE_URL+"/rest/v1/"+encodeURIComponent(table)+"?"+qs.toString();
-    let lastError=null;
-    let res=null;
-    for(let attempt=0;attempt<=maxRetries;attempt++){
+    let res=null,lastError=null;
+    for(let attempt=0;attempt<3;attempt++){
       const controller=new AbortController();
       const timer=setTimeout(()=>controller.abort(),15000);
       try{
-        // Keep this request deliberately header-light. The publishable key is
-        // carried as the supported `apikey` query parameter, avoiding browser
-        // CORS preflight problems on some phones/hosts.
         res=await fetch(url,{method:"GET",cache:"no-store",credentials:"omit",signal:controller.signal});
         if(res.ok)break;
         const body=await res.text().catch(()=>"");
         lastError=new Error(`Supabase ${table}: HTTP ${res.status}${body?" • "+body.slice(0,180):""}`);
-      }catch(e){
-        lastError=e&&e.name==="AbortError"?new Error(`Supabase ${table}: request timeout`):e;
-      }finally{clearTimeout(timer)}
-      if(attempt<maxRetries)await new Promise(r=>setTimeout(r,500*(attempt+1)));
+      }catch(e){lastError=e&&e.name==="AbortError"?new Error(`Supabase ${table}: timeout`):e}
+      finally{clearTimeout(timer)}
+      if(attempt<2)await new Promise(r=>setTimeout(r,500*(attempt+1)));
     }
     if(!res||!res.ok)throw lastError||new Error(`Supabase ${table}: request failed`);
     const batch=await res.json();
     if(!Array.isArray(batch))throw new Error(`Supabase ${table}: invalid response`);
+    console.info(`[MIS] ${table}: ${batch.length} rows (offset ${offset})`);
     rows.push(...batch);
     if(batch.length<pageSize)break;
   }
+  console.info(`[MIS] ${table}: TOTAL ${rows.length}, latest ${latestByDate(rows)}`);
   return rows;
 }
 
@@ -601,16 +591,22 @@ function latestByDate(rows,dateField="report_date"){
 }
 
 async function loadDashboard(){
-  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw,masterRaw]=await Promise.all([
+  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw]=await Promise.all([
     supabaseRows("stock_data"),
     supabaseRows("production_data"),
     supabaseRows("pp_bags_data"),
     supabaseRows("feed_unit_data"),
-    supabaseRows("feed_unit_totals"),
-    supabaseRows("material_master")
+    supabaseRows("feed_unit_totals")
   ]);
 
-  const stockNorm=normalizeStockRows(stockRaw,masterRaw);
+  console.info("[MIS] ALL TABLES LOADED",{
+    stock:stockRaw.length,production:productionRaw.length,
+    pp_bags:bagsRaw.length,feed_unit:feedRaw.length,feed_totals:totalsRaw.length,
+    stockDate:latestByDate(stockRaw),productionDate:latestByDate(productionRaw),
+    bagsDate:latestByDate(bagsRaw),feedDate:latestByDate(feedRaw)
+  });
+
+  const stockNorm=normalizeStockRows(stockRaw,[]);
   const stockDate=latestByDate(stockRaw);
   const productionDate=latestByDate(productionRaw);
   const bagsDate=latestByDate(bagsRaw);
@@ -679,7 +675,14 @@ async function refreshData(){
   refreshing=true;
   setConnection(true,"Connecting...");
   try{
-    await loadDashboard();
+    const apiData=await loadDashboard();
+    applyData(apiData,false);
+    console.info("[MIS] DASHBOARD APPLIED",{
+      report_date:apiData.report_date,
+      stock:apiData.stock.length,production:apiData.production.length,
+      pp_bags:apiData.pp_bags.length,feedUnitData:apiData.feedUnitData.length,
+      feedUnitTotals:apiData.feedUnitTotals.length
+    });
     setConnection(true,"Live");
     const tm=Date.now();setText("lastUpdated","Updated "+new Date(tm).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}));
   }catch(e){
