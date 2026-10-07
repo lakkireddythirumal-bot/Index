@@ -1256,8 +1256,28 @@ function spareOrderDisplayName(r){
 function openAttentionFiltered(kind){
   if(kind==="reorderRaw" || kind==="reorderPremix" || kind==="reorder"){
     const rows=kind==="reorderPremix"?attentionReorderPremixes():kind==="reorderRaw"?attentionReorderRawMaterials():attentionReorderMaterials();
+    const isRaw=kind!=="reorderPremix";
     const title=kind==="reorderPremix"?"🔴 Premixes below reorder level":"🔴 Raw Materials below reorder level";
     const empty=kind==="reorderPremix"?"No premixes below reorder level.":"No raw materials below reorder level.";
+    if(isRaw){
+      const html=`<div class="detail-section">
+        <h3>${title} • ${rows.length}</h3>
+        <div style="display:flex;gap:8px;margin:10px 0;align-items:center">
+          <button type="button" class="secondary-btn" onclick="toggleAllReorderMaterials(true)">Select All</button>
+          <button type="button" class="secondary-btn" onclick="toggleAllReorderMaterials(false)">Clear</button>
+          <span id="reorderSelectedCount" style="margin-left:auto;font-size:12px;opacity:.75">0 selected</span>
+        </div>
+        <div id="reorderMaterialSelectList">
+          ${rows.map((x,i)=>`<label style="display:flex;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid rgba(127,127,127,.16);cursor:pointer">
+            <input type="checkbox" class="reorder-material-check" value="${esc(x.m)}" onchange="updateReorderSelectedCount()">
+            <span style="flex:1"><span class="row-name">${esc(x.m)}</span><span class="prod-meta">Stock ${fmt(x.c)} ${esc(x.unit)} • Avg ${fmt(x.avg)} ${esc(x.unit)}/day</span></span>
+            <span class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></span>
+          </label>`).join("")||`<div class='empty'>${empty}</div>`}
+        </div>
+        ${rows.length?`<button type="button" class="primary-btn" style="width:100%;margin-top:14px" onclick="sendRawMaterialRequirementWhatsApp()">📲 Send</button>`:""}
+      </div>`;
+      showModal(title,html); return;
+    }
     const html=`<div class="detail-section"><h3>${title} • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Stock ${fmt(x.c)} ${esc(x.unit)} • Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></div></div>`).join("")||`<div class='empty'>${empty}</div>`}</div>`;
     showModal(title,html); return;
   }
@@ -1287,6 +1307,27 @@ function openAttentionFiltered(kind){
     showModal("🟡 Production Output",html); return;
   }
 }
+function updateReorderSelectedCount(){
+  const checks=[...document.querySelectorAll('.reorder-material-check')];
+  const n=checks.filter(c=>c.checked).length;
+  const el=document.getElementById('reorderSelectedCount');
+  if(el)el.textContent=`${n} selected`;
+}
+function toggleAllReorderMaterials(state){
+  document.querySelectorAll('.reorder-material-check').forEach(c=>c.checked=!!state);
+  updateReorderSelectedCount();
+}
+function sendRawMaterialRequirementWhatsApp(){
+  const names=[...document.querySelectorAll('.reorder-material-check:checked')].map(c=>c.value).filter(Boolean);
+  if(!names.length){
+    alert('Please select at least one raw material.');
+    return;
+  }
+  const message=['Dear Sir','Raw material requirement up to now',...names].join('\n');
+  const url='https://wa.me/?text='+encodeURIComponent(message);
+  window.open(url,'_blank');
+}
+
 function attentionSummaryItems(){
   const reorderRows=attentionReorderMaterials();
   const reorderRawRows=attentionReorderRawMaterials();
