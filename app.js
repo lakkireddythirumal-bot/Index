@@ -1200,6 +1200,12 @@ function attentionReorderMaterials(){
     return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
   }).filter(x=>x.s.status==="REORDER");
 }
+function attentionReorderRawMaterials(){
+  return attentionReorderMaterials().filter(x=>!isPremixMaterial(x.m));
+}
+function attentionReorderPremixes(){
+  return attentionReorderMaterials().filter(x=>isPremixMaterial(x.m));
+}
 function attentionUnder3Materials(){
   return getMaterials().map(m=>{
     const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
@@ -1248,10 +1254,12 @@ function spareOrderDisplayName(r){
   return clean(spareVal(r,['PART_NAME','Part_Name','PART','Part','ITEM','Item','MATERIAL','Material','NAME','Name','DESCRIPTION','Description']))||"Spare Part";
 }
 function openAttentionFiltered(kind){
-  if(kind==="reorder"){
-    const rows=attentionReorderMaterials();
-    const html=`<div class="detail-section"><h3>🔴 Raw Materials below reorder level • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Stock ${fmt(x.c)} ${esc(x.unit)} • Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></div></div>`).join("")||"<div class='empty'>No materials below reorder level.</div>"}</div>`;
-    showModal("🔴 Reorder Materials",html); return;
+  if(kind==="reorderRaw" || kind==="reorderPremix" || kind==="reorder"){
+    const rows=kind==="reorderPremix"?attentionReorderPremixes():kind==="reorderRaw"?attentionReorderRawMaterials():attentionReorderMaterials();
+    const title=kind==="reorderPremix"?"🔴 Premixes below reorder level":"🔴 Raw Materials below reorder level";
+    const empty=kind==="reorderPremix"?"No premixes below reorder level.":"No raw materials below reorder level.";
+    const html=`<div class="detail-section"><h3>${title} • ${rows.length}</h3>${rows.map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Stock ${fmt(x.c)} ${esc(x.unit)} • Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${x.s.cover===null?"--":fmt(x.s.cover)+" d"}</strong><small>Reorder</small></div></div>`).join("")||`<div class='empty'>${empty}</div>`}</div>`;
+    showModal(title,html); return;
   }
   if(kind==="under3"){
     const rows=attentionUnder3Materials().sort((a,b)=>a.s.cover-b.s.cover);
@@ -1281,13 +1289,16 @@ function openAttentionFiltered(kind){
 }
 function attentionSummaryItems(){
   const reorderRows=attentionReorderMaterials();
+  const reorderRawRows=attentionReorderRawMaterials();
+  const reorderPremixRows=attentionReorderPremixes();
   const under3Rows=attentionUnder3Materials();
   const abnormalRows=attentionAbnormalConsumption();
   const bagRows=attentionIncreasedBagDamage();
   const spareRows=attentionPendingSpareOrders();
   const productionRows=attentionProductionIssues();
   const items=[];
-  items.push({icon:reorderRows.length?'🔴':'🟢',level:reorderRows.length?'critical':'clear',count:reorderRows.length,text:`${reorderRows.length} Raw Materials below reorder level`,reason:reorderRows.length?"Immediate replenishment recommended":"No material is below its reorder level",action:"openAttentionFiltered('reorder')"});
+  items.push({icon:reorderRawRows.length?'🔴':'🟢',level:reorderRawRows.length?'critical':'clear',count:reorderRawRows.length,text:`${reorderRawRows.length} Raw Materials below reorder level`,reason:reorderRawRows.length?"Immediate replenishment recommended":"No raw material is below its reorder level",action:"openAttentionFiltered('reorderRaw')"});
+  items.push({icon:reorderPremixRows.length?'🔴':'🟢',level:reorderPremixRows.length?'critical':'clear',count:reorderPremixRows.length,text:`${reorderPremixRows.length} Premixes below reorder level`,reason:reorderPremixRows.length?"Immediate premix replenishment recommended":"No premix is below its reorder level",action:"openAttentionFiltered('reorderPremix')"});
   items.push({icon:under3Rows.length?'🟡':'🟢',level:under3Rows.length?'warning':'clear',count:under3Rows.length,text:`${under3Rows.length} materials with < 3 days cover`,reason:under3Rows.length?"Coverage is low but not yet at reorder level":"No additional low-coverage materials",action:"openAttentionFiltered('under3')"});
   items.push({icon:abnormalRows.length?'🔴':'🟢',level:abnormalRows.length?'critical':'clear',count:abnormalRows.length,text:`${abnormalRows.length} abnormal consumption`,reason:abnormalRows.length?"Consumption is outside the normal pattern":"Consumption is within the monitored range",action:"openAttentionFiltered('abnormal')"});
   items.push({icon:bagRows.length?'🟡':'🟢',level:bagRows.length?'warning':'clear',count:bagRows.length,text:`${bagRows.length} PP bag damage increases`,reason:bagRows.length?"Damage is higher than the previous available day":"No increase in recorded damage",action:"openAttentionFiltered('bags')"});
