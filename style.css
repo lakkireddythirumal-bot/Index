@@ -1352,3 +1352,21 @@ body.dc-page-open{overflow:hidden}
 .dc-report-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}.dc-report-section{border:1px solid #e4e9ef;border-radius:14px;background:#fff;overflow:hidden;margin-bottom:12px}.dc-report-section-head{display:flex;align-items:center;gap:9px;padding:11px 12px;background:#fafbfc;border-bottom:1px solid #edf0f3}.dc-report-section-head>span{width:29px;height:29px;border-radius:8px;background:#f0f3f7;display:flex;align-items:center;justify-content:center}.dc-report-section-head h4{margin:0;font-size:12px;color:#344055}.dc-report-section-head small{font-size:9px;color:#7b8490}.dc-report-kv-grid{display:grid;grid-template-columns:1fr 1fr;padding:4px 12px 9px}.dc-report-kv{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f0f2f5}.dc-report-kv:nth-last-child(-n+2){border-bottom:0}.dc-report-kv span{font-size:10px;color:#737c88}.dc-report-kv strong{font-size:10px;color:#263348;text-align:right}.dc-report-kv.danger strong{color:#b33d3d}.dc-report-table-wrap{overflow:auto;max-height:330px}.dc-report-table{width:100%;border-collapse:collapse;min-width:620px}.dc-report-table th{position:sticky;top:0;z-index:1;background:#f5f7fa;color:#667386;font-size:9px;text-transform:uppercase;letter-spacing:.04em;padding:8px;text-align:left;border-bottom:1px solid #e3e8ee}.dc-report-table td{padding:8px;font-size:10px;color:#394456;border-bottom:1px solid #edf0f3;white-space:nowrap}.dc-report-table tr.is-excluded{opacity:.5}.mini-status{font-size:8px;font-weight:850;padding:3px 5px;border-radius:5px}.mini-status.approved{background:#eaf8ef;color:#197647}.mini-status.excluded{background:#fff0f0;color:#ad3b3b}.dc-mini-btn{border:1px solid #dfe4ea;background:#fff;border-radius:6px;padding:5px 7px;font-size:9px;font-weight:750;cursor:pointer}.dc-report-empty{text-align:center;padding:24px;color:#7b8490;font-size:11px}
 .dc-report-dialog .dc-dialog-close{transition:transform .15s ease,background .15s ease}.dc-report-dialog .dc-dialog-close:hover{background:#edf1f5}.dc-report-dialog .dc-dialog-close:active{transform:scale(.9)}
 @media(max-width:720px){.dc-toast{right:10px;left:10px;bottom:16px;max-width:none;text-align:center}.dc-report-overlay{padding:8px}.dc-report-dialog{max-height:94vh;border-radius:16px}.dc-report-head{padding:13px}.dc-report-body{padding:10px}.dc-report-summary{align-items:flex-start;flex-direction:column}.dc-report-summary-actions{width:100%;justify-content:stretch}.dc-report-action{flex:1}.dc-report-grid{grid-template-columns:1fr}.dc-report-kv-grid{grid-template-columns:1fr 1fr}.dc-report-table-wrap{max-height:45vh}}
+
+
+/* PP Bags clean compact cards: product + status + stock/avg/reorder only */
+#bagGrid .pp-item{min-height:104px!important;padding:9px!important}
+#bagGrid .pp-card-head{margin-bottom:8px!important}
+#bagGrid .pp-simple-details{display:grid;grid-template-columns:1fr 1fr;gap:7px 8px;margin-top:auto}
+#bagGrid .pp-simple-details div{min-width:0;display:flex;flex-direction:column;gap:2px}
+#bagGrid .pp-simple-details div:last-child{grid-column:1/-1;padding-top:6px;border-top:1px solid rgba(100,115,140,.14)}
+#bagGrid .pp-simple-details span{font-size:7px;line-height:1.1;text-transform:uppercase;letter-spacing:.35px;color:#7f8a9b;font-weight:800}
+#bagGrid .pp-simple-details strong{font-size:12px;line-height:1.15;color:#26344b;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:600px){
+  #bagGrid .pp-item{min-height:96px!important;padding:6px!important}
+  #bagGrid .pp-card-head{margin-bottom:6px!important}
+  #bagGrid .pp-simple-details{gap:5px 5px}
+  #bagGrid .pp-simple-details span{font-size:5.5px;letter-spacing:0}
+  #bagGrid .pp-simple-details strong{font-size:8.5px}
+  #bagGrid .pp-simple-details div:last-child{padding-top:4px}
+}

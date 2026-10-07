@@ -1397,7 +1397,7 @@ function toggleAllReorderBags(state){
 function sendPPBagRequirementWhatsApp(){
   const names=[...document.querySelectorAll('.reorder-bag-check:checked')].map(c=>c.value).filter(Boolean);
   if(!names.length){alert('Please select at least one PP bag product.');return;}
-  const message=['Dear Sir','PP bag requirement up to now',...names].join('\\n');
+  const message=['Dear Sir','PP bag requirement up to now',...names].join('\n');
   const url='https://wa.me/?text='+encodeURIComponent(message);
   window.open(url,'_blank');
 }
@@ -1962,13 +1962,10 @@ function renderPPBags(){
   }).slice(0,10);
   el.innerHTML=detailed.map(x=>`<div class="pp-item pp-status-${x.statusCls}" role="button" tabindex="0" onclick="openBagProduct('${jsq(x.p)}')" onkeydown="if(event.key==='Enter'||event.key===' ')openBagProduct('${jsq(x.p)}')">
     <div class="pp-card-head"><p title="${esc(x.p)}">${esc(x.p)}</p><span class="pp-status ${x.statusCls}" title="${x.status}" aria-label="${x.status}">${x.statusIcon}</span></div>
-    <div class="pp-metrics">
-      <span><b>Open</b><strong>${fmt(x.opening)}</strong></span><span><b>Recv</b><strong>${fmt(x.received)}</strong></span><span><b>Issue</b><strong>${fmt(x.issue)}</strong></span><span><b>Damage</b><strong>${fmt(x.damage)}</strong></span><span class="pp-closing"><b>Close</b><strong>${fmt(x.closing)}</strong></span>
-    </div>
-    <div class="pp-reorder-details">
-      <span><b>Avg Issue/day</b><strong>${x.st.avg?fmt(x.st.avg):"--"}</strong></span>
-      <span><b>Cover</b><strong>${x.st.cover===null?"--":fmt(x.st.cover)+" d"}</strong></span>
-      <span><b>10-Day Reorder</b><strong>${x.st.reorderLevel?fmt(x.st.reorderLevel):"--"}</strong></span>
+    <div class="pp-simple-details">
+      <div><span>STOCK</span><strong>${fmt(x.closing)}</strong></div>
+      <div><span>AVG / DAY</span><strong>${x.st.avg?fmt(x.st.avg):"--"}</strong></div>
+      <div><span>REORDER LEVEL</span><strong>${x.st.reorderLevel?fmt(x.st.reorderLevel):"--"}</strong></div>
     </div>
   </div>`).join("")||"<div class='empty'>No PP Bag data for this date</div>";
 }
