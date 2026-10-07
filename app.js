@@ -1662,9 +1662,12 @@ function viewStockRows(){
     PERF_CACHE.viewStock=historyStockRowsForDate(VIEW_DATE);
     return PERF_CACHE.viewStock;
   }
+  const latestDate=latestStockDataDate();
   PERF_CACHE.viewStock=(DATA.stock||[]).map(x=>{
     const tx=Array.isArray(x.transactions)?x.transactions:[];
-    const closingRows=tx.filter(t=>tType(t)==="CL. STOCK");
+    // Supabase rows are ordered by id, not report date. Never use the last
+    // transaction as the latest closing; explicitly select the latest report date.
+    const closingRows=tx.filter(t=>tType(t)==="CL. STOCK" && (!latestDate || dateOnly(rowDate(t))===latestDate));
     const latestClosing=closingRows.length?closingRows[closingRows.length-1]:null;
     return {...x,transactions:tx,closing:latestClosing?tVal(latestClosing):num(x.closing)};
   }).filter(x=>x.material);
