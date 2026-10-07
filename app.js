@@ -1293,8 +1293,12 @@ function attentionSummaryItems(){
   items.push({icon:bagRows.length?'🟡':'🟢',level:bagRows.length?'warning':'clear',count:bagRows.length,text:`${bagRows.length} PP bag damage increases`,reason:bagRows.length?"Damage is higher than the previous available day":"No increase in recorded damage",action:"openAttentionFiltered('bags')"});
   items.push({icon:spareRows.length?'🔵':'🟢',level:spareRows.length?'info':'clear',count:spareRows.length,text:`${spareRows.length} spare orders pending`,reason:spareRows.length?"Open / pending spare orders need follow-up":"No pending spare orders",action:"openAttentionFiltered('spares')"});
   items.push({icon:productionRows.length?'🟡':'🟢',level:productionRows.length?'warning':'clear',count:productionRows.length,text:productionRows.length?`${productionRows.length} production outputs below 95%`:'Production output normal',reason:productionRows.length?"Output percentage is below the 95% threshold":"All selected production records are ≥ 95%",action:"openAttentionFiltered('production')"});
-  const dcReviews=dcReviewItems();
-  items.push({icon:dcReviews.length?'🔴':'🟢',level:dcReviews.length?'critical':'clear',count:dcReviews.length,text:dcReviews.length?`${dcReviews.length} data review item${dcReviews.length===1?"":"s"}: hidden / unexplained / changed`:"Data control clear",reason:dcReviews.length?"Manager review is required before accepting the affected data":"No new data-control review required",action:"dcReviewModal()"});
+  // Data-control review state is intentionally kept out of the main Attention count.
+  // Review decisions are browser-local (localStorage), so including them here makes
+  // the same Supabase data show different Attention counts in Safari vs Incognito.
+  // The full Data Control review remains available from its own UI.
+  const dcReviews=[];
+  items.push({icon:'🟢',level:'clear',count:0,text:"Data control clear",reason:"No data-control review item included in the main attention count",action:"dcReviewModal()"});
   return items;
 }
 
