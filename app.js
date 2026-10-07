@@ -380,7 +380,9 @@ function renderPremixTransfers(){
 }
 function rawTotal(material,tab){
   if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
+  const selectedDay=effectiveViewDate();
   return transactions(material).filter(t=>{
+    if(selectedDay && dateOnly(rowDate(t))!==selectedDay)return false;
     const ty=tType(t);
     if(tab==="CONSUMPTION")return ty.includes("CONSUMPTION") || ty.includes("CONSUMPION");
     if(tab==="PURCHASE")return ty==="PURCHASE" || ty==="RECEIVED";
