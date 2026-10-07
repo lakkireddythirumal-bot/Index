@@ -1197,13 +1197,13 @@ function renderDashboard(){
 function attentionReorderMaterials(){
   return getMaterials().map(m=>{
     const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
-    return {m,c,avg,s,unit:x?.unit||"MT"};
+    return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
   }).filter(x=>x.s.status==="REORDER");
 }
 function attentionUnder3Materials(){
   return getMaterials().map(m=>{
     const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
-    return {m,c,avg,s,unit:x?.unit||"MT"};
+    return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
   }).filter(x=>x.s.cover!==null && x.s.cover<3 && x.s.status!=="REORDER");
 }
 function attentionAbnormalConsumption(){
@@ -1706,7 +1706,7 @@ function selectedProduction(){
 function selectedBags(){
   if(PERF_CACHE.bags)return PERF_CACHE.bags;
   if(!effectiveViewDate()){PERF_CACHE.bags=(Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product));return PERF_CACHE.bags;}
-  const d=dateOnly(VIEW_DATE);
+  const d=effectiveViewDate();
   const history=Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[];
   PERF_CACHE.bags=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product));
   return PERF_CACHE.bags;
