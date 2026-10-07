@@ -525,7 +525,7 @@ function setConnection(ok,text){
    Spare-parts API is intentionally left unchanged for now.
 ===================================================== */
 const SUPABASE_URL="https://iqxprkmainafqjodpfdk.supabase.co";
-const SUPABASE_KEY="sb_publishable_54VfHOULYN31VknExbmdVA_mYxhtU-7";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxeHBya21haW5hZnFqb2RwZmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMDQ4MTgsImV4cCI6MjEwNjc4MDgxOH0.RMYxXCnpdsz25SC6uzN6yjykUf1InbmxE9s2wXJDHc8";
 
 async function supabaseRows(table){
   const rows=[];
@@ -533,27 +533,16 @@ async function supabaseRows(table){
   for(let offset=0;;offset+=pageSize){
     const qs=new URLSearchParams({select:"*",order:"id.asc",limit:String(pageSize),offset:String(offset),apikey:SUPABASE_KEY});
     const url=SUPABASE_URL+"/rest/v1/"+encodeURIComponent(table)+"?"+qs.toString();
-    let res=null,lastError=null;
-    for(let attempt=0;attempt<3;attempt++){
-      const controller=new AbortController();
-      const timer=setTimeout(()=>controller.abort(),15000);
-      try{
-        res=await fetch(url,{method:"GET",cache:"no-store",credentials:"omit",signal:controller.signal});
-        if(res.ok)break;
-        const body=await res.text().catch(()=>"");
-        lastError=new Error(`Supabase ${table}: HTTP ${res.status}${body?" • "+body.slice(0,180):""}`);
-      }catch(e){lastError=e&&e.name==="AbortError"?new Error(`Supabase ${table}: timeout`):e}
-      finally{clearTimeout(timer)}
-      if(attempt<2)await new Promise(r=>setTimeout(r,500*(attempt+1)));
-    }
-    if(!res||!res.ok)throw lastError||new Error(`Supabase ${table}: request failed`);
-    const batch=await res.json();
+    const res=await fetch(url,{method:"GET",cache:"no-store",credentials:"omit"});
+    const body=await res.text();
+    if(!res.ok)throw new Error(`Supabase ${table}: HTTP ${res.status} • ${body.slice(0,180)}`);
+    let batch;
+    try{batch=JSON.parse(body)}catch(e){throw new Error(`Supabase ${table}: invalid JSON`)}
     if(!Array.isArray(batch))throw new Error(`Supabase ${table}: invalid response`);
-    console.info(`[MIS] ${table}: ${batch.length} rows (offset ${offset})`);
     rows.push(...batch);
+    console.info(`[Supabase] ${table}: ${batch.length} rows (offset ${offset})`);
     if(batch.length<pageSize)break;
   }
-  console.info(`[MIS] ${table}: TOTAL ${rows.length}, latest ${latestByDate(rows)}`);
   return rows;
 }
 
@@ -599,14 +588,14 @@ async function loadDashboard(){
     supabaseRows("feed_unit_totals")
   ]);
 
-  console.info("[MIS] ALL TABLES LOADED",{
-    stock:stockRaw.length,production:productionRaw.length,
-    pp_bags:bagsRaw.length,feed_unit:feedRaw.length,feed_totals:totalsRaw.length,
-    stockDate:latestByDate(stockRaw),productionDate:latestByDate(productionRaw),
-    bagsDate:latestByDate(bagsRaw),feedDate:latestByDate(feedRaw)
-  });
-
   const stockNorm=normalizeStockRows(stockRaw,[]);
+  console.info("[Supabase] SUMMARY", {
+    stock_data:{rows:stockRaw.length,latest:latestByDate(stockRaw)},
+    production_data:{rows:productionRaw.length,latest:latestByDate(productionRaw)},
+    pp_bags_data:{rows:bagsRaw.length,latest:latestByDate(bagsRaw)},
+    feed_unit_data:{rows:feedRaw.length,latest:latestByDate(feedRaw)},
+    feed_unit_totals:{rows:totalsRaw.length,latest:latestByDate(totalsRaw)}
+  });
   const stockDate=latestByDate(stockRaw);
   const productionDate=latestByDate(productionRaw);
   const bagsDate=latestByDate(bagsRaw);
@@ -677,13 +666,7 @@ async function refreshData(){
   try{
     const apiData=await loadDashboard();
     applyData(apiData,false);
-    console.info("[MIS] DASHBOARD APPLIED",{
-      report_date:apiData.report_date,
-      stock:apiData.stock.length,production:apiData.production.length,
-      pp_bags:apiData.pp_bags.length,feedUnitData:apiData.feedUnitData.length,
-      feedUnitTotals:apiData.feedUnitTotals.length
-    });
-    setConnection(true,"Live");
+    setConnection(true,"Live • Supabase data loaded");
     const tm=Date.now();setText("lastUpdated","Updated "+new Date(tm).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}));
   }catch(e){
     console.error(e);
