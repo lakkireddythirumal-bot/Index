@@ -576,16 +576,18 @@ function latestByDate(rows,dateField="report_date"){
 }
 
 async function loadDashboard(){
-  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw,masterRaw]=await Promise.all([
+  // material_master is intentionally not required. Material/unit information is
+  // derived from stock_data so the dashboard works on any device with only the
+  // five active MIS tables.
+  const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw]=await Promise.all([
     supabaseRows("stock_data"),
     supabaseRows("production_data"),
     supabaseRows("pp_bags_data"),
     supabaseRows("feed_unit_data"),
-    supabaseRows("feed_unit_totals"),
-    supabaseRows("material_master")
+    supabaseRows("feed_unit_totals")
   ]);
 
-  const stockNorm=normalizeStockRows(stockRaw,masterRaw);
+  const stockNorm=normalizeStockRows(stockRaw,[]);
   const stockDate=latestByDate(stockRaw);
   const productionDate=latestByDate(productionRaw);
   const bagsDate=latestByDate(bagsRaw);
