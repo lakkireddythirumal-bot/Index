@@ -322,38 +322,57 @@
 
   </div>
 
-  <!-- TRENDS -->
-  <div class="card" id="trendsSection">
-    <div class="card-title"><h2>📊 Trends</h2><span id="dateTrends">Data through: --</span></div>
-    <div class="trend-filters" aria-label="Trend date range">
-      <label for="trendRangeSelect">Period</label>
-      <select id="trendRangeSelect" onchange="setTrendRange(this.value)">
-        <option value="7">Last 7 days</option>
-        <option value="30" selected>Last 30 days</option>
-        <option value="90">Last 3 months</option>
-        <option value="month">Calendar month</option>
-        <option value="custom">Custom range</option>
-      </select>
-      <div id="trendCustomDates" class="trend-custom-dates" hidden>
-        <input type="date" id="trendFromDate" aria-label="Trend start date" onchange="setTrendCustomDates()">
-        <span>to</span>
-        <input type="date" id="trendToDate" aria-label="Trend end date" onchange="setTrendCustomDates()">
+  <!-- TRENDS — refreshed analytics workspace -->
+  <section class="card trends-workspace" id="trendsSection">
+    <div class="trends-hero">
+      <div class="trends-hero-copy">
+        <div class="trends-eyebrow"><span class="trends-live-dot"></span> PLANT PERFORMANCE ANALYTICS</div>
+        <h2>Trends <span>&amp; Insights</span></h2>
+        <p>Spot changes early. Compare performance, investigate movement, and act on verified plant data.</p>
       </div>
-      <small id="trendRangeLabel">Showing last 30 days</small>
+      <div class="trends-hero-meta"><span class="trends-meta-label">DATA WINDOW</span><strong id="dateTrends">Data through: --</strong><small id="trendRangeLabel">Showing last 30 days</small></div>
     </div>
+    <div class="trend-toolbar">
+      <div class="trend-toolbar-title"><strong>Analysis period</strong><span>Choose the time window for all trend charts</span></div>
+      <div class="trend-toolbar-controls">
+        <label class="trend-period-control" for="trendRangeSelect"><span>Period</span>
+          <select id="trendRangeSelect" onchange="setTrendRange(this.value)">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 3 months</option>
+            <option value="month">Calendar month</option>
+            <option value="custom">Custom range</option>
+          </select>
+        </label>
+        <div id="trendCustomDates" class="trend-custom-dates" hidden>
+          <input type="date" id="trendFromDate" aria-label="Trend start date" onchange="setTrendCustomDates()">
+          <span>to</span>
+          <input type="date" id="trendToDate" aria-label="Trend end date" onchange="setTrendCustomDates()">
+        </div>
+      </div>
+    </div>
+    <div class="trend-summary-grid" id="trendSummaryGrid" aria-live="polite">
+      <article class="trend-summary-card"><span class="trend-summary-label">Production in range</span><strong id="trendKpiProduction">--</strong><small id="trendKpiProductionNote">Waiting for data</small></article>
+      <article class="trend-summary-card"><span class="trend-summary-label">Average output</span><strong id="trendKpiOutput">--</strong><small id="trendKpiOutputNote">Waiting for data</small></article>
+      <article class="trend-summary-card"><span class="trend-summary-label">Average process loss</span><strong id="trendKpiLoss">--</strong><small id="trendKpiLossNote">Waiting for data</small></article>
+      <article class="trend-summary-card trend-summary-compare"><span class="trend-summary-label">Month-on-month</span><strong id="trendKpiCompare">--</strong><small id="trendKpiCompareNote">Requires comparable history</small></article>
+    </div>
+    <div class="trend-section-heading"><div><span class="trend-section-kicker">EARLY WARNING</span><h3>Signals to review</h3></div><span class="trend-section-caption">Alerts are indicators, not proof of a fault</span></div>
     <div id="trendAlerts" class="trend-alerts" aria-live="polite"></div>
+    <div class="trend-section-heading trend-charts-heading"><div><span class="trend-section-kicker">HISTORICAL PERFORMANCE</span><h3>Trend explorer</h3></div><span class="trend-section-caption">Swipe charts on mobile</span></div>
     <div class="trend-wrapper" id="trendWrapper">
-      <div class="trend-card"><div class="trend-header"><div><h3>📦 Raw Material Consumption</h3><small id="trendDateMaterial">Data: --</small></div><select id="materialSelect" onchange="drawMaterialChart(this.value)"></select></div><canvas id="materialChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>📥 Purchase / Received Trend</h3><small id="trendDatePurchase">Data: --</small></div></div><canvas id="purchaseChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>📦 Closing Stock Trend</h3><small id="trendDateClosing">Data: --</small></div></div><canvas id="closingChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>🏭 Production Trend</h3><small id="trendDateProduction">Data through: --</small></div></div><canvas id="productionChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>📈 Output % Trend</h3><small id="trendDateOutput">Data through: --</small></div></div><canvas id="outputChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>⚙ Process Loss Trend</h3><small id="trendDateLoss">Data through: --</small></div></div><canvas id="lossChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>🌾 Feed Unit Production / Dispatch</h3><small id="trendDateFeed">Data through: --</small></div></div><canvas id="feedChart"></canvas></div>
-      <div class="trend-card"><div class="trend-header"><div><h3>🛍 PP Bags Issue / Damage</h3><small id="trendDateBags">Data through: --</small></div></div><canvas id="bagChart"></canvas></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>Raw material consumption</h3><small id="trendDateMaterial">Data: --</small></div><select id="materialSelect" aria-label="Select material" onchange="drawMaterialChart(this.value)"></select></div><canvas id="materialChart"></canvas><div class="trend-chart-foot">Daily consumption for the selected material</div></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>Purchase / received</h3><small id="trendDatePurchase">Data: --</small></div></div><canvas id="purchaseChart"></canvas><div class="trend-chart-foot">Daily inward quantity recorded in MIS</div></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>Closing stock</h3><small id="trendDateClosing">Data: --</small></div></div><canvas id="closingChart"></canvas><div class="trend-chart-foot">Recorded closing stock across materials</div></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>Production output</h3><small id="trendDateProduction">Data through: --</small></div></div><canvas id="productionChart"></canvas><div class="trend-chart-foot">Total reported production by date</div></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>Output percentage</h3><small id="trendDateOutput">Data through: --</small></div></div><canvas id="outputChart"></canvas><div class="trend-chart-foot">Average reported output percentage per date</div></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>Process loss</h3><small id="trendDateLoss">Data through: --</small></div></div><canvas id="lossChart"></canvas><div class="trend-chart-foot">Average reported process loss per date</div></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>Feed unit movement</h3><small id="trendDateFeed">Data through: --</small></div></div><canvas id="feedChart"></canvas><div class="trend-chart-foot">Production minus dispatch, by date</div></div>
+      <div class="trend-card"><div class="trend-header"><div><h3>PP bags issue / damage</h3><small id="trendDateBags">Data through: --</small></div></div><canvas id="bagChart"></canvas><div class="trend-chart-foot">Daily issue and damage totals</div></div>
     </div>
-    <div class="dots" id="trendDots"></div>
-  </div>
+    <div class="dots trend-dots" id="trendDots" aria-label="Trend chart position"></div>
+    <p class="trend-data-note"><strong>Data note:</strong> Comparisons use available dated records. If the previous period is incomplete or unavailable, the dashboard will say so rather than inventing a percentage.</p>
+  </section>
 
   <div class="bottom-nav">
     <div class="nav-item active" onclick="goHome()"><div>⌂</div>Home</div>
@@ -432,6 +451,6 @@
     });
   })();
   </script>
-  <script defer src="app.js?v=20261013-monthscore1"></script>
+  <script defer src="app.js?v=20261013-trendsui2"></script>
 </body>
 </html>
