@@ -9,7 +9,7 @@
 <link rel="manifest" href="./manifest.json">
 <title>Manager Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261013-ppgrid4x4">
+  <link rel="stylesheet" href="style.css?v=20261013-tabs1">
 </head>
 <body>
 <div class="container">
@@ -374,13 +374,13 @@
     <p class="trend-data-note"><strong>Data note:</strong> Comparisons use available dated records. If the previous period is incomplete or unavailable, the dashboard will say so rather than inventing a percentage.</p>
   </section>
 
-  <div class="bottom-nav">
-    <div class="nav-item active" onclick="goHome()"><div>⌂</div>Home</div>
-    <div class="nav-item" onclick="openStockDetails()"><div>📦</div>Stock</div>
-    <div class="nav-item" onclick="openProductionDetails()"><div>🏭</div>Production</div>
-    <div class="nav-item" onclick="openPPBagDetails()"><div>🛍</div>PP Bags</div>
-    <div class="nav-item" onclick="goSpareParts()"><div>🔧</div>Spares</div>
-    <div class="nav-item" onclick="goTrend()"><div>📊</div>Reports</div>
+  <div class="bottom-nav" role="navigation" aria-label="Dashboard sections">
+    <div class="nav-item active" data-view="home" onclick="switchDashboardView('home')"><div>⌂</div>Home</div>
+    <div class="nav-item" data-view="stock" onclick="switchDashboardView('stock')"><div>📦</div>Stock</div>
+    <div class="nav-item" data-view="production" onclick="switchDashboardView('production')"><div>🏭</div>Production</div>
+    <div class="nav-item" data-view="bags" onclick="switchDashboardView('bags')"><div>🛍</div>PP Bags</div>
+    <div class="nav-item" data-view="spares" onclick="switchDashboardView('spares')"><div>🔧</div>Spares</div>
+    <div class="nav-item" data-view="reports" onclick="switchDashboardView('reports')"><div>📊</div>Reports</div>
   </div>
 </div>
 
@@ -451,6 +451,6 @@
     });
   })();
   </script>
-  <script defer src="app.js?v=20261013-ppgrid4x4"></script>
+  <script defer src="app.js?v=20261013-tabs1"></script>
 </body>
 </html>
