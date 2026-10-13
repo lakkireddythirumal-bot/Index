@@ -114,15 +114,18 @@ async function sha(text){const data=new TextEncoder().encode(text.trim().toLower
 $("saveMaintenanceBtn").addEventListener("click",async()=>{if(!user)return notice("maintenanceNotice","Sign in first.","error");if(!previewRows.length)return notice("maintenanceNotice","No records to save.","error");const b=$("saveMaintenanceBtn");b.disabled=true;b.textContent="Saving...";try{const payload=[];for(const r of previewRows){if(!r.work_description.trim())continue;const identity=[r.activity_date,r.machine,r.line,r.work_description,r.maintenance_type].join("|");payload.push({...r,user_id:user.id,source_hash:await sha(identity)});}if(!payload.length)throw new Error("Every row needs a work description.");const {data,error}=await client.from("maintenance_log").upsert(payload,{onConflict:"user_id,source_hash",ignoreDuplicates:true}).select("id");if(error)throw error;notice("maintenanceNotice",(data||[]).length+" record(s) saved. Duplicate rows were skipped.","success");previewRows=[];$("maintenancePreview").classList.add("hidden");$("maintenancePaste").value="";$("maintenanceFile").value="";await loadHistory();}catch(err){notice("maintenanceNotice",err.message||"Save failed. Check the table and permissions.","error");}finally{b.disabled=false;b.textContent="Save maintenance records";}});
 let parsedOrderItems=[];
 function parseOrderMessage(message){
- const lines=message.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ const lines=message.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
  const out=[];
  for(const original of lines){
-  const line=original.replace(/^\s*(?:\d+[.)]|[-•])\s*/,"").trim();
-  if(/^line\s*[-:#]?\s*\d+\s*$/i.test(line))continue;
-  const m=line.match(/^(.*?)\s*[-–—:]\s*(\d+(?:\.\d+)?\s*(?:sets?|nos?\.?|pcs?\.?|pieces?|kg|kgs|g|grams?|litres?|liters?|ltr|boxes?|rolls?|pairs?|units?|bags?|tonnes?|tons?)?)(?:\s*\((.*?)\))?\s*$/i);
+  let line=original.replace(/^\\s*(?:\\d+[.)]|[-•])\\s*/,"").trim();
+  if(!line||/^line\\s*[-:#]?\\s*\\d+\\s*$/i.test(line))continue;
+  // Match quantities at the end so item codes containing numbers/hyphens stay in the item name.
+  const m=line.match(/^(.*?)\\s*(?:[-–—:]\\s*|\\b(each)\\s+)(\\d+(?:\\.\\d+)?\\s*(?:sets?|nos?\\.?|pcs?\\.?|pieces?|kg|kgs|g|grams?|met(?:er|re)s?|m(?:et(?:er|re)s?)?|litres?|liters?|ltr|boxes?|rolls?|pairs?|units?|bags?|tonnes?|tons?|qty)?)[.\\s]*$/i);
   if(!m||!m[1].trim())continue;
-  const extra=(m[3]||"").trim();
-  out.push({item:m[1].trim(),quantity:m[2].trim(),notes:extra?extra.replace(/^make\s*[:=-]?\s*/i,"Make: "):""});
+  let item=m[1].trim().replace(/\\s*[-–—:]\\s*$/,"");
+  if(!item)continue;
+  const quantity=(m[2]?"each ":"")+m[3].trim();
+  out.push({item,quantity,notes:""});
  }
  return out;
 }
