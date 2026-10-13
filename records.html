@@ -21,9 +21,9 @@
 </style>
 </head>
 <body>
-<header class="top"><div><div class="brand">🏭 Feed Plant Control Center</div><div class="subbrand">Spare Parts & Maintenance • Notes</div></div><a class="linkbtn" href="./index.html">← Dashboard</a></header>
+<header class="top"><div><div class="brand">🏭 Feed Plant Control Center</div><div class="subbrand">Maintenance • Order History • Notes</div></div><a class="linkbtn" href="./index.html">← Dashboard</a></header>
 <main class="wrap">
-<section class="hero"><h1>Spare Parts & Maintenance</h1><p>Keep maintenance work and spare-parts orders together. Use the saved history to search past work and purchase records. Notes remain separate.</p></section>
+<section class="hero"><h1>Plant Records</h1><p>Maintenance CSV upload / direct paste, WhatsApp order history, and quick notes. Records are private to the signed-in account.</p></section>
 <section id="authPanel" class="panel authbox">
 <h2 id="authTitle">Sign in</h2><p class="muted" id="authHelp">Sign in to save and view your plant records.</p>
 <form id="authForm">
@@ -34,7 +34,7 @@
 </section>
 <section id="appPanel" class="hidden">
 <div class="panel" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><strong id="signedInAs">Signed in</strong><div class="muted">Your records are isolated by Supabase Row Level Security.</div></div><button class="btn secondary" id="signOutBtn">Sign out</button></div>
-<div class="tabs" role="tablist"><button class="tab active" data-tab="work">🔧 Spare & Maintenance</button><button class="tab" data-tab="notes">📝 Notes</button></div>
+<div class="tabs" role="tablist"><button class="tab active" data-tab="maintenance">🔧 Maintenance</button><button class="tab" data-tab="orders">📦 Order History</button><button class="tab" data-tab="notes">📝 Notes</button></div>
 <section id="maintenanceTab" class="panel">
 <h2>Maintenance records</h2><p class="muted">Upload a CSV or paste rows from Excel/WhatsApp. Review the fields before saving. A plain text entry is saved as “Needs Review” rather than guessing the machine or problem type.</p>
 <div class="grid" style="margin-top:14px">
@@ -70,8 +70,8 @@
 </form><div id="noteNotice" class="notice hidden"></div>
 </section>
 <section class="panel">
-<div class="history-head"><div><h2 id="historyTitle" style="margin-bottom:4px">Spare & Maintenance History</h2><div class="muted">Maintenance records and spare-parts orders together · latest 100 of each type loaded</div></div><button class="btn secondary" id="refreshHistoryBtn">↻ Refresh</button></div>
-<input id="historySearch" class="search" placeholder="Search machines, work descriptions, spare parts, vendors...">
+<div class="history-head"><div><h2 id="historyTitle" style="margin-bottom:4px">Maintenance History</h2><div class="muted">Latest 100 records for the selected tab</div></div><button class="btn secondary" id="refreshHistoryBtn">↻ Refresh</button></div>
+<input id="historySearch" class="search" placeholder="Search saved maintenance, orders, and notes...">
 <div id="historyNotice" class="notice hidden"></div><div id="historyList" class="history-list" style="margin-top:12px"><div class="muted">Loading records...</div></div>
 </section>
 </section>
@@ -81,7 +81,7 @@
 const SUPABASE_URL="https://iqxprkmainafqjodpfdk.supabase.co";
 const SUPABASE_KEY="sb_publishable_54VfHOULYN31VknExbmdVA_mYxhtU-7";
 const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-let user=null, authMode="signin", previewRows=[], allHistory=[], currentHistoryKind="work";
+let user=null, authMode="signin", previewRows=[], allHistory=[], currentHistoryKind="maintenance";
 const $=id=>document.getElementById(id);
 const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
 $("orderDate").value=today();$("noteDate").value=today();
@@ -95,7 +95,7 @@ $("authForm").addEventListener("submit",async e=>{e.preventDefault();const email
 $("signOutBtn").addEventListener("click",async()=>{await client.auth.signOut();setAuthView(null);});
 client.auth.getSession().then(({data})=>setAuthView(data.session));
 client.auth.onAuthStateChange((_event,session)=>{setAuthView(session);});
-document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));const work=b.dataset.tab==="work";$("maintenanceTab").classList.toggle("hidden",!work);$("ordersTab").classList.toggle("hidden",!work);$("notesTab").classList.toggle("hidden",work);currentHistoryKind=work?"work":"note";const labels={work:["Spare & Maintenance History","Search machines, work descriptions, spare parts, vendors..."],note:["Notes History","Search notes..."]};$("historyTitle").textContent=labels[currentHistoryKind][0];$("historySearch").placeholder=labels[currentHistoryKind][1];renderHistory();}));
+document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));["maintenance","orders","notes"].forEach(k=>$(k+"Tab").classList.toggle("hidden",k!==b.dataset.tab));currentHistoryKind=b.dataset.tab;const labels={maintenance:["Maintenance History","Search maintenance records..."],orders:["Order History","Search order history..."],notes:["Notes History","Search notes..."]};$("historyTitle").textContent=labels[currentHistoryKind][0];$("historySearch").placeholder=labels[currentHistoryKind][1];renderHistory();}));
 function parseCSV(text,delimiter){const rows=[];let row=[],cell="",quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;}else if(c===delimiter&&!quoted){row.push(cell);cell="";}else if((c==="\n"||c==="\r")&&!quoted){if(c==="\r"&&text[i+1]==="\n")i++;row.push(cell);if(row.some(v=>String(v).trim()))rows.push(row);row=[];cell="";}else cell+=c;}row.push(cell);if(row.some(v=>String(v).trim()))rows.push(row);return rows;}
 function key(v){return String(v||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
 function isoDate(v){const s=String(v||"").trim();if(!s)return today();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;let m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");const d=new Date(s);return Number.isNaN(d.getTime())?today():d.toISOString().slice(0,10);}
@@ -157,7 +157,7 @@ $("orderForm").addEventListener("submit",async e=>{e.preventDefault();if(!user)r
 $("noteForm").addEventListener("submit",async e=>{e.preventDefault();if(!user)return;const b=e.submitter;b.disabled=true;try{const {error}=await client.from("plant_notes").insert({user_id:user.id,note_date:$("noteDate").value||today(),title:$("noteTitle").value.trim(),category:$("noteCategory").value,note_text:$("noteText").value.trim()});if(error)throw error;notice("noteNotice","Note saved successfully.","success");$("noteTitle").value="";$("noteText").value="";await loadHistory();}catch(err){notice("noteNotice",err.message||"Could not save note.","error");}finally{b.disabled=false;}});
 function card(kind,r){let title="",body="",date="",tag="";if(kind==="maintenance"){title=r.machine+" · "+r.line;body=r.work_description;date=r.activity_date;tag=r.activity_category+" / "+r.maintenance_type+" / "+r.status;}else if(kind==="order"){title=r.item||r.vendor||r.category;body=[r.notes,r.vendor?"Vendor: "+r.vendor:""].filter(Boolean).join("\n");date=r.order_date;tag=r.category+" / "+r.status+(r.quantity?" / Qty "+r.quantity:"");}else{title=r.title||r.category;body=r.note_text;date=r.note_date;tag=r.category;}return '<article class="record"><div class="record-top"><div><h3>'+esc(title)+'</h3><div class="meta"><span>'+esc(date||"")+'</span><span>'+esc(kind==="maintenance"?"Maintenance":kind==="order"?"Order":"Note")+'</span></div></div><span class="pill">'+esc(tag)+'</span></div><p>'+esc(body)+'</p></article>';}
 async function loadHistory(){if(!user)return;$("historyList").innerHTML='<div class="muted">Loading records...</div>';try{const results=await Promise.all([client.from("maintenance_log").select("*").eq("user_id",user.id).order("activity_date",{ascending:false}).limit(100),client.from("plant_order_history").select("*").eq("user_id",user.id).order("order_date",{ascending:false}).limit(100),client.from("plant_notes").select("*").eq("user_id",user.id).order("note_date",{ascending:false}).limit(100)]);const err=results.find(x=>x.error);if(err)throw err.error;allHistory=[...results[0].data.map(r=>({kind:"maintenance",row:r})),...results[1].data.map(r=>({kind:"order",row:r})),...results[2].data.map(r=>({kind:"note",row:r}))].sort((a,b)=>String(b.row.created_at||b.row.activity_date||b.row.order_date||b.row.note_date).localeCompare(String(a.row.created_at||a.row.activity_date||a.row.order_date||a.row.note_date)));renderHistory();hideNotice("historyNotice");}catch(err){$("historyList").innerHTML="";notice("historyNotice",err.message||"Could not load saved history.","error");}}
-function renderHistory(){const q=$("historySearch").value.trim().toLowerCase();const rows=allHistory.filter(x=>(currentHistoryKind==="work"?(x.kind==="maintenance"||x.kind==="order"):x.kind==="note")&&JSON.stringify(x.row).toLowerCase().includes(q));$("historyList").innerHTML=rows.length?rows.map(x=>card(x.kind,x.row)).join(""):'<div class="muted">No matching '+(currentHistoryKind==="work"?"spare-parts or maintenance records":"notes")+' found.</div>';}
+function renderHistory(){const q=$("historySearch").value.trim().toLowerCase();const rows=allHistory.filter(x=>x.kind===currentHistoryKind&&JSON.stringify(x.row).toLowerCase().includes(q));$("historyList").innerHTML=rows.length?rows.map(x=>card(x.kind,x.row)).join(""):'<div class="muted">No matching '+(currentHistoryKind==="maintenance"?"maintenance records":currentHistoryKind==="orders"?"orders":"notes")+' found.</div>';}
 $("historySearch").addEventListener("input",renderHistory);$("refreshHistoryBtn").addEventListener("click",loadHistory);
 })();
 </script>
