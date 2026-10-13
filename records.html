@@ -118,6 +118,7 @@ function parseOrderMessage(message){
  const out=[];
  for(const original of lines){
   const line=original.replace(/^\s*(?:\d+[.)]|[-•])\s*/,"").trim();
+  if(/^line\s*[-:#]?\s*\d+\s*$/i.test(line))continue;
   const m=line.match(/^(.*?)\s*[-–—:]\s*(\d+(?:\.\d+)?\s*(?:sets?|nos?\.?|pcs?\.?|pieces?|kg|kgs|g|grams?|litres?|liters?|ltr|boxes?|rolls?|pairs?|units?|bags?|tonnes?|tons?)?)(?:\s*\((.*?)\))?\s*$/i);
   if(!m||!m[1].trim())continue;
   const extra=(m[3]||"").trim();
