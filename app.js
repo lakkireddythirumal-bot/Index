@@ -465,11 +465,43 @@ function setText(id,v){const e=document.getElementById(id);if(e)e.textContent=v}
 /* =====================================================
    CACHE
 ===================================================== */
-function saveCache(payload){
-  return;
+const DASHBOARD_CACHE_DB="feed_manager_dashboard_cache";
+const DASHBOARD_CACHE_STORE="snapshots";
+const DASHBOARD_CACHE_FULL_SYNC_MS=24*60*60*1000;
+const DASHBOARD_CACHE_RECENT_DAYS=7;
+function dashboardCacheRequest(mode,operation,value){
+  return new Promise((resolve,reject)=>{
+    if(!("indexedDB" in window)){reject(new Error("IndexedDB unavailable"));return;}
+    const request=indexedDB.open(DASHBOARD_CACHE_DB,1);
+    request.onerror=()=>reject(request.error||new Error("Unable to open dashboard cache"));
+    request.onupgradeneeded=()=>{
+      const db=request.result;
+      if(!db.objectStoreNames.contains(DASHBOARD_CACHE_STORE))db.createObjectStore(DASHBOARD_CACHE_STORE,{keyPath:"key"});
+    };
+    request.onsuccess=()=>{
+      const db=request.result;
+      let tx;
+      try{
+        tx=db.transaction(DASHBOARD_CACHE_STORE,mode);
+        const store=tx.objectStore(DASHBOARD_CACHE_STORE);
+        const req=operation==="get"?store.get("latest"):store.put(value);
+        req.onsuccess=()=>resolve(req.result||null);
+        req.onerror=()=>reject(req.error||new Error("Dashboard cache request failed"));
+        tx.oncomplete=()=>db.close();
+        tx.onerror=()=>{db.close();reject(tx.error||new Error("Dashboard cache transaction failed"));};
+        tx.onabort=()=>{db.close();reject(tx.error||new Error("Dashboard cache transaction aborted"));};
+      }catch(error){db.close();reject(error);}
+    };
+  });
 }
-function cachedData(){
-  return null;
+async function saveCache(payload,rawTables=null){
+  try{
+    await dashboardCacheRequest("readwrite","put",{key:"latest",savedAt:Date.now(),payload,rawTables});
+  }catch(error){console.warn("Dashboard cache save skipped",error);}
+}
+async function cachedData(){
+  try{return await dashboardCacheRequest("readonly","get");}
+  catch(error){console.warn("Dashboard cache read skipped",error);return null;}
 }
 function applyData(apiData,fromCache=false){
   DATA={
@@ -493,10 +525,15 @@ function applyData(apiData,fromCache=false){
   if(DATA.report_date)setText("reportDate",VIEW_DATE||DATA.report_date);
   renderDashboard();
   try{renderDataControl();}catch(e){console.warn("Data control render skipped",e)}
-  if(!fromCache)saveCache(apiData);
 }
-function restoreCache(){
-  return false;
+async function restoreCache(){
+  const cached=await cachedData();
+  if(!cached||!cached.payload||!cached.savedAt)return false;
+  applyData(cached.payload,true);
+  const savedAt=new Date(cached.savedAt);
+  setConnection(false,"Saved data • refreshing");
+  setText("lastUpdated","Cached "+savedAt.toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}));
+  return true;
 }
 function setConnection(ok,text){
   const dot=document.getElementById("statusDot");
@@ -524,11 +561,12 @@ function sbNormalizeRow(r,kind){
   if(kind==="totals") x.type=sbClean(x.type);
   return x;
 }
-async function supabaseRows(table,attempt=0){
+async function supabaseRows(table,attempt=0,fromDate=null){
   const rows=[];
   const pageSize=1000;
   for(let offset=0;;offset+=pageSize){
-    const qs=new URLSearchParams({select:"*",order:"id.asc",limit:String(pageSize),offset:String(offset),apikey:SUPABASE_KEY});
+    const qs=new URLSearchParams({select:"*",order:fromDate?"report_date.asc,id.asc":"id.asc",limit:String(pageSize),offset:String(offset),apikey:SUPABASE_KEY});
+    if(fromDate)qs.set("report_date","gte."+fromDate);
     const res=await fetch(`${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}?${qs.toString()}`,{method:"GET",cache:"no-store",credentials:"omit"});
     if(!res.ok){
       const body=await res.text().catch(()=>"");
@@ -540,6 +578,18 @@ async function supabaseRows(table,attempt=0){
     if(batch.length<pageSize)break;
   }
   return rows;
+}
+function sbDateOffset(days){
+  const d=new Date();
+  d.setDate(d.getDate()-days);
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+}
+function sbMergeRecentRows(previous,fresh,cutoff){
+  const retained=(Array.isArray(previous)?previous:[]).filter(r=>{
+    const d=dateOnly(r.report_date||r.Report_Date||r.date);
+    return !d||d<cutoff;
+  });
+  return retained.concat(Array.isArray(fresh)?fresh:[]);
 }
 function sbLatestDate(rows){
   return rows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)).filter(Boolean).sort().pop()||"";
@@ -568,15 +618,33 @@ function sbBuildLatestProducts(rows,kind){
   const latest=sbLatestDate(all);
   return {current:sbLatestByDate(all,latest),history:all};
 }
-async function loadDashboard(attempt=0){
+async function loadDashboard(attempt=0,forceFull=false){
   try{
-    const [stockRaw,productionRaw,bagsRaw,feedRaw,totalsRaw]=await Promise.all([
-      supabaseRows("stock_data",attempt),
-      supabaseRows("production_data",attempt),
-      supabaseRows("pp_bags_data",attempt),
-      supabaseRows("feed_unit_data",attempt),
-      supabaseRows("feed_unit_totals",attempt)
+    const cached=await cachedData();
+    const cacheAge=cached&&cached.savedAt?Date.now()-cached.savedAt:Infinity;
+    const canIncrement=!forceFull&&cached&&cached.payload&&cached.rawTables&&cacheAge<DASHBOARD_CACHE_FULL_SYNC_MS;
+    const cutoff=sbDateOffset(DASHBOARD_CACHE_RECENT_DAYS);
+    const fromDate=canIncrement?cutoff:null;
+    const [stockFresh,productionFresh,bagsFresh,feedFresh,totalsFresh]=await Promise.all([
+      supabaseRows("stock_data",attempt,fromDate),
+      supabaseRows("production_data",attempt,fromDate),
+      supabaseRows("pp_bags_data",attempt,fromDate),
+      supabaseRows("feed_unit_data",attempt,fromDate),
+      supabaseRows("feed_unit_totals",attempt,fromDate)
     ]);
+    const prior=cached&&cached.rawTables?cached.rawTables:{};
+    const rawTables=canIncrement?{
+      stock:sbMergeRecentRows(prior.stock,stockFresh,cutoff),
+      production:sbMergeRecentRows(prior.production,productionFresh,cutoff),
+      bags:sbMergeRecentRows(prior.bags,bagsFresh,cutoff),
+      feed:sbMergeRecentRows(prior.feed,feedFresh,cutoff),
+      totals:sbMergeRecentRows(prior.totals,totalsFresh,cutoff)
+    }:{stock:stockFresh,production:productionFresh,bags:bagsFresh,feed:feedFresh,totals:totalsFresh};
+    const stockRaw=rawTables.stock;
+    const productionRaw=rawTables.production;
+    const bagsRaw=rawTables.bags;
+    const feedRaw=rawTables.feed;
+    const totalsRaw=rawTables.totals;
 
     const stock=sbBuildStock(stockRaw);
     const production=sbBuildLatestProducts(productionRaw,"production");
@@ -605,9 +673,10 @@ async function loadDashboard(attempt=0){
     };
 
     applyData(apiData,false);
+    await saveCache(apiData,rawTables);
     return apiData;
   }catch(error){
-    if(attempt<1){await new Promise(r=>setTimeout(r,800));return loadDashboard(attempt+1)}
+    if(attempt<1){await new Promise(r=>setTimeout(r,800));return loadDashboard(attempt+1,forceFull)}
     const e=new Error(error&&error.message?error.message:"Supabase API load failed");
     e.code="API_NETWORK";
     throw e;
@@ -615,28 +684,31 @@ async function loadDashboard(attempt=0){
 }
 
 let refreshing=false;
-async function refreshData(){
+async function refreshData(forceFull=false){
   if(refreshing)return;
   refreshing=true;
-  setConnection(true,"Connecting...");
+  setConnection(true,forceFull?"Full refresh...":"Connecting...");
   try{
-    await loadDashboard();
+    await loadDashboard(0,forceFull);
     setConnection(true,"Live");
     const tm=Date.now();setText("lastUpdated","Updated "+new Date(tm).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}));
   }catch(e){
     console.error(e);
-    const has=false;
+    const has=!!(DATA.stock?.length||DATA.stockHistory?.length||DATA.production?.length||DATA.productionHistory?.length||DATA.bags?.length||DATA.feedUnitData?.length||DATA.feedUnitTotals?.length);
     let msg="Unable to refresh";
     if(e&&e.code==="DASHBOARD_PROCESSING")msg="Data received • dashboard processing error";
     else if(e&&e.code==="API_TIMEOUT")msg="API timeout • showing saved data";
     else if(e&&e.code==="API_NETWORK")msg="API connection issue • showing saved data";
     else if(e&&e.code==="API_RESPONSE")msg="API response error • showing saved data";
-    setConnection(false,has?msg:"Unable to load dashboard");
-    if(!has)document.getElementById("stockList").innerHTML="<div class='error-box'>❌ Unable to load dashboard data.</div>";
+    setConnection(false,has?"Offline • showing saved data":msg);
+    if(!has){
+      const list=document.getElementById("stockList");
+      if(list)list.innerHTML="<div class='error-box'>❌ Unable to load dashboard data.</div>";
+    }
   }finally{refreshing=false}
 }
 
-function manualRefresh(){refreshData()}
+function manualRefresh(){refreshData(true)}
 
 /* =====================================================
    DASHBOARD RENDER
@@ -3015,8 +3087,7 @@ function openPlantAI(){
 /* =====================================================
    START
 ===================================================== */
-restoreCache();
-refreshData();
+restoreCache().catch(error=>console.warn("Dashboard cache restore skipped",error)).finally(()=>refreshData());
 loadSpareParts();
 
 /* PWA */
