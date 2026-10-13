@@ -1863,16 +1863,73 @@ function chart(canvasId,labels,series){
   labels.forEach((l,i)=>{if(i%step===0||i===labels.length-1){const raw=String(l);const label=/^\d{4}-\d{2}-\d{2}$/.test(raw)?raw.slice(5).replace("-","/"):raw.slice(-8);ctx.fillText(label,xAt(i),h-8)}});
 }
 function usageLabels(){const n=Math.max(...Object.values(DATA.usage).map(a=>Array.isArray(a)?a.length:0),0);return Array.from({length:n},(_,i)=>"D"+(i+1))}
-function drawMaterialChart(material){chart("materialChart",usageLabels(),Array.isArray(DATA.usage[material])?DATA.usage[material]:[])}
+let TREND_RANGE="30";
+function trendISODate(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")}
+function trendDateBounds(){
+  const today=new Date(),end=trendISODate(today);
+  if(TREND_RANGE==="custom"){
+    const from=document.getElementById("trendFromDate")?.value||"";
+    const to=document.getElementById("trendToDate")?.value||"";
+    return {from,to,valid:!!from&&!!to&&from<=to};
+  }
+  if(TREND_RANGE==="month")return {from:trendISODate(new Date(today.getFullYear(),today.getMonth(),1)),to:end,valid:true};
+  const days=Math.max(1,Number(TREND_RANGE)||30),start=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  start.setDate(start.getDate()-days+1);
+  return {from:trendISODate(start),to:end,valid:true};
+}
+function trendDateInRange(value){
+  const d=dateOnly(value),range=trendDateBounds();
+  return !!d&&range.valid&&d>=range.from&&d<=range.to;
+}
+function setTrendRange(value){
+  TREND_RANGE=["7","30","90","month","custom"].includes(String(value))?String(value):"30";
+  const custom=document.getElementById("trendCustomDates");
+  if(custom)custom.hidden=TREND_RANGE!=="custom";
+  if(TREND_RANGE==="custom"){
+    const today=trendISODate(new Date());
+    const from=document.getElementById("trendFromDate"),to=document.getElementById("trendToDate");
+    if(to&&!to.value)to.value=today;
+    if(from&&!from.value){const d=new Date();d.setDate(d.getDate()-29);from.value=trendISODate(d);}
+  }
+  renderTrends();
+}
+function setTrendCustomDates(){if(TREND_RANGE==="custom"&&trendDateBounds().valid)renderTrends()}
+function updateTrendRangeLabel(){
+  const range=trendDateBounds(),label=document.getElementById("trendRangeLabel");
+  if(label){const names={"7":"Last 7 days","30":"Last 30 days","90":"Last 3 months","month":"Calendar month","custom":"Custom range"};
+    label.textContent=range.valid?names[TREND_RANGE]+": "+range.from+" → "+range.to:"Choose a valid start and end date";}
+  setText("dateTrends",range.valid?"Trend period: "+range.from+" → "+range.to:"Trend period: select valid dates");
+}
+function drawMaterialChart(material){
+  const map={};
+  transactions(material).forEach(t=>{
+    const type=tType(t);
+    if(!(type.includes("CONSUMPTION")||type.includes("CONSUMPION")||type.includes("CONSUMPTON")||type.includes("CONSUMPTI")))return;
+    const d=rowDate(t);if(!trendDateInRange(d))return;
+    map[d]=(map[d]||0)+tVal(t);
+  });
+  const labels=Object.keys(map).sort();chart("materialChart",labels,labels.map(d=>map[d]));
+}
 function productionTrendData(){return DATA.productionTrend.map(x=>typeof x==="object"?num(x.actual_output??x.actual??x.value):num(x)).filter(v=>v!==null)}
 
 
 function trendFromTransactions(type){
-  const map={};getMaterials().forEach(m=>transactions(m).forEach(t=>{if(tType(t)===type){const d=rowDate(t)||"Latest";map[d]=(map[d]||0)+tVal(t)}}));
+  const map={};
+  getMaterials().forEach(m=>transactions(m).forEach(t=>{
+    if(tType(t)!==type)return;
+    const d=rowDate(t);if(!trendDateInRange(d))return;
+    map[d]=(map[d]||0)+tVal(t);
+  }));
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 function trendClosing(){
-  const map={};getMaterials().forEach(m=>transactions(m).forEach(t=>{const d=rowDate(t);if(d&&tType(t)==="CL. STOCK")map[d]=(map[d]||0)+(num(t.for_day)||0)}));
+  const byMaterialDate={};
+  getMaterials().forEach(m=>transactions(m).forEach(t=>{
+    const d=rowDate(t);if(!d||!trendDateInRange(d)||tType(t)!=="CL. STOCK")return;
+    byMaterialDate[d+"|"+normalize(m)]={date:d,material:m,value:num(t.for_day)};
+  }));
+  const map={};
+  Object.values(byMaterialDate).forEach(x=>{if(x.value===null)return;map[x.date]=(map[x.date]||0)+x.value});
   const labels=Object.keys(map).sort();return {labels,values:labels.map(k=>map[k])}
 }
 
@@ -2377,6 +2434,7 @@ function openDateSelector(){
 
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
 function renderTrends(){
+  updateTrendRangeLabel();
   const sel=document.getElementById("materialSelect"),mats=getMaterials();
   if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(sel?.value||mats[0]);
@@ -2384,7 +2442,7 @@ function renderTrends(){
     .filter(r=>!dcIsHiddenProduct(r.product||r.Product));
   const byDate={};
   prodRows.forEach(r=>{
-    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!d)return;
+    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!trendDateInRange(d))return;
     const item=byDate[d]||(byDate[d]={actual:0,actualCount:0,outputSum:0,outputCount:0,lossSum:0,lossCount:0});
     const actual=num(r.actual_output??r.actual??r.value);
     if(actual!==null){item.actual+=actual;item.actualCount++;}
@@ -2409,7 +2467,7 @@ function feedTrend(){
   const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
   const map={};
   rows.forEach(r=>{
-    const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!d)return;
+    const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
     const item=map[d]||(map[d]={production:0,productionCount:0,dispatch:0,dispatchCount:0});
     const production=feedField(r,"Production_Day_MT"),dispatch=feedField(r,"Dispatch_Day_MT");
     if(production!==null){item.production+=production;item.productionCount++;}
@@ -2422,7 +2480,7 @@ function bagTrend(){
   const rows=(Array.isArray(DATA.bagsHistory)&&DATA.bagsHistory.length?DATA.bagsHistory:DATA.bags||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
   const map={};
   rows.forEach(r=>{
-    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!d)return;
+    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!trendDateInRange(d))return;
     const item=map[d]||(map[d]={issue:0,issueCount:0,damage:0,damageCount:0});
     const issue=num(r.issue??r.Issue),damage=num(r.damage??r.Damage);
     if(issue!==null){item.issue+=issue;item.issueCount++;}
