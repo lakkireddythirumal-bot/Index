@@ -1272,16 +1272,18 @@ function dacStockItems(targetDate){
   return getMaterials().map(material=>{
     const rows=transactions(material).filter(t=>dateOnly(rowDate(t))===targetDate);
     if(!rows.length)return {name:material,date:targetDate,status:"NO DATA",message:"No stock transactions for this date."};
-    let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false;
+    let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false;const unclassified=[];
     rows.forEach(t=>{
       const type=tType(t);
       const value=dacValue(t,["for_day","value","quantity","qty"]);
       if(type==="OPENING STOCK"){if(value===null)invalid=true;else opening=value;}
-      else if(type==="CL. STOCK"){if(value===null)invalid=true;else closing=value;}
+      else if(type==="CL. STOCK"||type.startsWith("CL. STOCK ")){if(value===null)invalid=true;else closing=value;}
       else if(type.includes("CONSUMPTION")||type.includes("CONSUMPION")){if(value===null)invalid=true;else recorded+=Math.abs(value);}
       else if(type==="PURCHASE"||type==="RECEIVED"||type==="GAIN"||type.includes("TRANSFER FROM")){if(value===null)invalid=true;else inflow+=Math.abs(value);}
       else if(type.includes("TRANSFER TO")||type.includes("SALE")||type.includes("SHORTAGE")||type==="DAMAGE"||type==="ISSUE"||type.includes("RETURN TO")){if(value===null)invalid=true;else outflow+=Math.abs(value);}
+      else if(type)unclassified.push(type);
     });
+    if(unclassified.length)return {name:material,date:targetDate,status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm whether each is inward or outward before reconciling."};
     if(invalid)return {name:material,date:targetDate,status:"NO DATA",message:"One or more relevant transaction quantities are missing."};
     if(opening===null||closing===null)return {name:material,date:targetDate,status:"NO DATA",message:"Opening stock or closing stock is missing."};
     const calculated=opening+inflow-outflow-closing;
