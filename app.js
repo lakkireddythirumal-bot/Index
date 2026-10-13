@@ -1322,14 +1322,15 @@ function dacProductionItems(targetDate){
   return rows.filter(r=>{const key=normalize(r.product||r.Product);if(!key||seen.has(key))return false;seen.add(key);return true;}).map(r=>{
     const product=clean(r.product||r.Product);
     const standard=dacValue(r,["standard_output","Standard_Output"]),actual=dacValue(r,["actual_output","Actual_Output"]),reported=dacValue(r,["output_percentage","Output_Percentage"]);
+    if(standard===0&&actual===0&&reported===null)return {name:product,date:targetDate,status:"N/A",message:"No standard or actual output recorded; percentage check is not applicable."};
     if(standard===null||actual===null||reported===null)return {name:product,date:targetDate,status:"NO DATA",message:"Standard output, actual output, or reported output percentage is missing."};
     if(standard<=0||actual<0||reported<0)return {name:product,date:targetDate,status:"MISMATCH",message:"Invalid negative output or non-positive standard output.",standard,actual,reported};
     const calculated=actual/standard*100,diff=reported-calculated;
     return {name:product,date:targetDate,status:Math.abs(diff)<=0.5?"MATCH":"MISMATCH",standard,actual,reported,calculated,diff,message:Math.abs(diff)<=0.5?"Reported output percentage agrees with actual ÷ standard.":"Reported output percentage differs from actual ÷ standard."};
   });
 }
-function dacCount(items){const a=Array.isArray(items)?items:[];return {total:a.length,match:a.filter(x=>x.status==="MATCH").length,mismatch:a.filter(x=>x.status==="MISMATCH").length,noData:a.filter(x=>x.status==="NO DATA").length};}
-function dacStatusLabel(status){const cls=status==="MATCH"?"good":status==="MISMATCH"?"bad":"muted";return "<span class=\"dac-pill "+cls+"\">"+esc(status)+"</span>";}
+function dacCount(items){const a=(Array.isArray(items)?items:[]).filter(x=>x.status!=="N/A");return {total:a.length,match:a.filter(x=>x.status==="MATCH").length,mismatch:a.filter(x=>x.status==="MISMATCH").length,noData:a.filter(x=>x.status==="NO DATA").length};}
+function dacStatusLabel(status){const cls=status==="LATEST"||status==="MATCH"?"good":status==="MISMATCH"?"bad":"muted";return "<span class=\"dac-pill "+cls+"\">"+esc(status)+"</span>";}
 function dataAccuracySnapshot(){
   const selected=VIEW_DATE?dateOnly(VIEW_DATE):"";
   const stockDate=selected||dacLatestDate(DATA.stockHistory)||dacLatestDate(DATA.stock);
@@ -1367,7 +1368,7 @@ function renderDataAccuracyCenter(){
     const list=document.getElementById("dacCheckList");
     if(list)list.innerHTML=snap.groups.map(g=>{const c=dacCount(g.items);const state=c.mismatch?"bad":c.noData?"warn":"good";return "<button type=\"button\" class=\"dac-check-row\" onclick=\"openDataAccuracyDetails('"+g.key+"')\"><span class=\"dac-check-icon "+state+"\">"+(c.mismatch?"!":c.noData?"?":"✓")+"</span><span class=\"dac-check-copy\"><strong>"+esc(g.label)+"</strong><small>"+esc(g.description)+"</small><em>"+esc(g.date||"No report date")+" • "+c.total+" item(s)</em></span><span class=\"dac-check-counts\"><b>"+c.match+" match</b><b class=\""+(c.mismatch?"text-bad":"")+"\">"+c.mismatch+" mismatch</b><b>"+c.noData+" no data</b></span><span class=\"dac-chevron\">›</span></button>";}).join("")||"<div class='empty'>No records available to check.</div>";
     const fresh=document.getElementById("dacFreshness");
-    if(fresh)fresh.innerHTML=snap.sources.map(x=>"<div class=\"dac-fresh-row\"><span>"+esc(x.name)+"</span><strong>"+esc(x.date||"No date")+"</strong>"+dacStatusLabel(x.status==="LATEST"?"MATCH":x.status==="OLDER"?"MISMATCH":"NO DATA")+"</div>").join("");
+    if(fresh)fresh.innerHTML=snap.sources.map(x=>"<div class=\"dac-fresh-row\"><span>"+esc(x.name)+"</span><strong>"+esc(x.date||"No date")+"</strong>"+dacStatusLabel(x.status==="LATEST"?"LATEST":x.status==="OLDER"?"OLDER":"NO DATA")+"</div>").join("");
   }catch(error){
     console.warn("Data accuracy center could not render",error);
     setText("dacSubtitle","Unable to run checks; existing dashboard remains available.");
