@@ -31,7 +31,7 @@ The cache stores a single latest snapshot rather than unbounded entries. Indexed
 
 ### 4. Main JavaScript file is a large, tightly coupled unit — medium priority
 
-`app.js` is approximately 226 KB and contains more than 360 named functions. Rendering, data access, calculations, reports, and UI interactions share one global script.
+`app.js` is approximately 230 KB and contains more than 360 named functions. Rendering, data access, calculations, reports, and UI interactions share one global script.
 
 **Risk:** Changes can cause regressions across unrelated sections, and isolated automated tests are difficult.
 
@@ -39,15 +39,13 @@ The cache stores a single latest snapshot rather than unbounded entries. Indexed
 
 ### 5. Frontend data-access security needs a backend review — important, not confirmed as a vulnerability
 
-The browser source includes a Supabase legacy `anon` key and a Google Apps Script web-app URL. A Supabase `anon` key is expected to be public in a browser app; it is not equivalent to a service-role/secret key. Actual security depends on table grants, Row Level Security (RLS) policies, and the Apps Script deployment's access settings.
+The browser source includes a Supabase legacy `anon` key and a Google Apps Script web-app URL. A Supabase `anon` key is designed to be public in browser code; it is not equivalent to a service-role/secret key. A live database check confirmed RLS is enabled on the five dashboard tables and `material_master`, but each table's SELECT policy uses `USING (true)`. Therefore, anyone who can reach the API with the public key can read those tables. This may be intentional for the current dashboard, but it is not private/user-scoped access.
 
-**Required verification outside this repository:** Confirm RLS is enabled for every exposed table, review grants and policies for all operations, ensure no service-role/secret key is present in browser code, and confirm the Apps Script endpoint exposes only intended data. No database policy or Apps Script permission changes were made in this audit.
+The Supabase security advisor returned no findings during this review. That is not a guarantee that public access is appropriate for the business data. No RLS policy or Apps Script permission changes were made, to avoid breaking the existing app or integrations. The Google Apps Script deployment's access settings still require a separate check.
 
-### 6. Error handling does not consistently preserve useful stale data — medium priority
+### 6. Error handling and stale-data visibility — improved
 
-The dashboard retries the full data load once after an error, then displays a generic connection failure. Because persistent cache restoration is disabled, the user may lose access to previously loaded information after a network failure or page reload.
-
-**Recommendation:** Pair the cache restoration work with a visible last-updated timestamp and a clear stale-data indicator. Never label cached data as live.
+On startup, the app can restore its last successful snapshot and show a cached timestamp while refreshing. If a refresh fails, already loaded data remains visible and the connection status is marked offline. Cached data is not labelled as live.
 
 ## Changes made in this audit
 
