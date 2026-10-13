@@ -2454,7 +2454,6 @@ function renderTrendAlerts(){
     if(i<5)return;
     const prev=dates.slice(Math.max(0,i-7),i).map(k=>byDate[k]);
     if(prev.length<5)return;
-    const avg=(key,countKey)=>{const vals=prev.filter(x=>x[countKey]).map(x=>x[key]/(key==="production"?"1":x[countKey]));return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;};
     const prodVals=prev.filter(x=>x.productionCount).map(x=>x.production);
     const outputVals=prev.filter(x=>x.outputCount).map(x=>x.outputSum/x.outputCount);
     const lossVals=prev.filter(x=>x.lossCount).map(x=>x.lossSum/x.lossCount);
@@ -2472,9 +2471,63 @@ function renderTrendAlerts(){
 }
 
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
+function renderTrendOverview(){
+  const rows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[])
+    .filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  const range=trendDateBounds();
+  const selected=rows.filter(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);return d&&range.valid&&d>=range.from&&d<=range.to;});
+  const dates=[...new Set(selected.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)).filter(Boolean))].sort();
+  const sum=selected.reduce((a,r)=>a+(num(r.actual_output??r.actual??r.value)||0),0);
+  const outputs=selected.map(r=>num(r.output_percentage??r.outputPercent)).filter(v=>v!==null);
+  const losses=selected.map(r=>num(r.process_loss??r.processLoss)).filter(v=>v!==null);
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const fmtMetric=v=>v===null||v===undefined?"--":Number(v).toLocaleString("en-IN",{maximumFractionDigits:1});
+  setText("trendKpiProduction",dates.length?fmtMetric(sum)+" MT":"--");
+  setText("trendKpiProductionNote",dates.length?dates.length+" dated production days • "+dates[0]+" to "+dates[dates.length-1]:"No production data in this period");
+  const outputAvg=avg(outputs),lossAvg=avg(losses);
+  setText("trendKpiOutput",outputAvg===null?"--":fmtMetric(outputAvg)+"%");
+  setText("trendKpiOutputNote",outputs.length?outputs.length+" reported output values":"No output percentage values");
+  setText("trendKpiLoss",lossAvg===null?"--":fmtMetric(lossAvg)+"%");
+  setText("trendKpiLossNote",losses.length?losses.length+" reported loss values":"No process loss values");
+  const compare=document.getElementById("trendKpiCompare");
+  const note=document.getElementById("trendKpiCompareNote");
+  if(compare)compare.textContent="--";
+  if(note)note.textContent="Needs both months' data";
+  if(!dates.length||!compare||!note)return;
+  const latest=dates[dates.length-1],latestDate=new Date(latest+"T12:00:00");
+  const year=latestDate.getFullYear(),month=latestDate.getMonth(),day=latestDate.getDate();
+  const currentStart=year+"-"+String(month+1).padStart(2,"0")+"-01";
+  const prevLastDay=new Date(year,month,0).getDate();
+  const compareDay=Math.min(day,prevLastDay);
+  const prevStartDate=new Date(year,month-1,1);
+  const prevStart=prevStartDate.getFullYear()+"-"+String(prevStartDate.getMonth()+1).padStart(2,"0")+"-01";
+  const prevEnd=prevStartDate.getFullYear()+"-"+String(prevStartDate.getMonth()+1).padStart(2,"0")+"-"+String(compareDay).padStart(2,"0");
+  const currRows=rows.filter(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);return d&&d>=currentStart&&d<=latest;});
+  const prevRows=rows.filter(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);return d&&d>=prevStart&&d<=prevEnd;});
+  const currDates=new Set(currRows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)));
+  const prevDates=new Set(prevRows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)));
+  const currentTotal=currRows.reduce((a,r)=>a+(num(r.actual_output??r.actual??r.value)||0),0);
+  const previousTotal=prevRows.reduce((a,r)=>a+(num(r.actual_output??r.actual??r.value)||0),0);
+  const currentLabel=latestDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
+  const previousLabel=prevStartDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
+  if(!currDates.size||!prevDates.size||currDates.size<Math.min(compareDay,3)||prevDates.size<Math.min(compareDay,3)){
+    note.textContent=currentLabel+" vs "+previousLabel+" • not enough comparable daily history";
+    return;
+  }
+  if(previousTotal===0){
+    note.textContent=currentLabel+" vs "+previousLabel+" • previous total is zero; percentage change unavailable";
+    return;
+  }
+  const change=(currentTotal-previousTotal)/previousTotal*100;
+  compare.textContent=(change>0?"+":"")+fmtMetric(change)+"%";
+  compare.classList.toggle("is-positive",change>0);
+  compare.classList.toggle("is-negative",change<0);
+  note.textContent=currentLabel+" MTD vs "+previousLabel+" same "+compareDay+" calendar days • "+fmtMetric(currentTotal)+" vs "+fmtMetric(previousTotal)+" MT";
+}
 function renderTrends(){
   updateTrendRangeLabel();
   renderTrendAlerts();
+  renderTrendOverview();
   const sel=document.getElementById("materialSelect"),mats=getMaterials();
   if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(sel?.value||mats[0]);
