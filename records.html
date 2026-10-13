@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f4f7fb">
 <title>Plant Records | Feed Plant Control Center</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3"></script>
 <style>
 :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f4f7fb;font-synthesis:none}
 *{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}button{cursor:pointer}
@@ -83,7 +83,7 @@ const SUPABASE_KEY="sb_publishable_54VfHOULYN31VknExbmdVA_mYxhtU-7";
 const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let user=null, authMode="signin", previewRows=[], allHistory=[];
 const $=id=>document.getElementById(id);
-const today=()=>new Date().toLocaleDateString("en-CA");
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
 $("orderDate").value=today();$("noteDate").value=today();
 function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function notice(id,msg,tone){const el=$(id);el.textContent=msg;el.className="notice"+(tone?" "+tone:"");el.classList.remove("hidden");}
