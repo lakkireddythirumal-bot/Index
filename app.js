@@ -623,7 +623,8 @@ async function loadDashboard(attempt=0,forceFull=false){
     const cached=await cachedData();
     const lastFullSyncAt=cached&&(cached.fullSyncAt||cached.savedAt)?(cached.fullSyncAt||cached.savedAt):0;
     const fullSyncAge=lastFullSyncAt?Date.now()-lastFullSyncAt:Infinity;
-    const canIncrement=!forceFull&&cached&&cached.payload&&cached.rawTables&&fullSyncAge<DASHBOARD_CACHE_FULL_SYNC_MS;
+    const hasRawHistory=!!(cached&&cached.rawTables&&Array.isArray(cached.rawTables.stock)&&Array.isArray(cached.rawTables.production)&&Array.isArray(cached.rawTables.bags)&&Array.isArray(cached.rawTables.feed)&&Array.isArray(cached.rawTables.totals));
+    const canIncrement=!forceFull&&cached&&cached.payload&&hasRawHistory&&fullSyncAge<DASHBOARD_CACHE_FULL_SYNC_MS;
     const cutoff=sbDateOffset(DASHBOARD_CACHE_RECENT_DAYS);
     const fromDate=canIncrement?cutoff:null;
     const [stockFresh,productionFresh,bagsFresh,feedFresh,totalsFresh]=await Promise.all([
