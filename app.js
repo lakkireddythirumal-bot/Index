@@ -1975,7 +1975,7 @@ function switchDashboardView(view){
     el.classList.toggle("active",active);
     if(active)el.setAttribute("aria-current","page");else el.removeAttribute("aria-current");
   });
-  if(view==="spares")loadSpareParts(false);
+  if(view==="spares"){loadSpareParts(false);loadSpareRecordInsights(false);}
   if(view==="reports")requestAnimationFrame(()=>{try{drawTrends()}catch(e){console.warn("Trend redraw skipped",e)}});
   window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -2905,6 +2905,74 @@ async function loadSpareParts(showToastOnSuccess=false){
   }catch(error){
     console.error('Spare Parts API:',error);
     if(el)el.innerHTML='<div class="error-box">❌ Spare Parts API connection failed.</div>';
+  }
+}
+
+/* =====================================================
+   RECORDS INTELLIGENCE — READ-ONLY ADDITION INSIDE SPARES
+   Reads the signed-in user's saved maintenance/order records.
+   Does not change records.html or write to any source table.
+===================================================== */
+let spareRecordsClient=null;
+function getSpareRecordsClient(){
+  if(spareRecordsClient)return spareRecordsClient;
+  if(!window.supabase||!window.supabase.createClient)return null;
+  spareRecordsClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  return spareRecordsClient;
+}
+function insightDate(row,kind){
+  return String(kind==='maintenance'?(row.activity_date||row.created_at||''):(row.order_date||row.created_at||'')).slice(0,10);
+}
+function insightIssueKey(row){
+  const machine=String(row.machine||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const desc=String(row.work_description||'').toLowerCase()
+    .replace(/\\b\\d{1,4}[-/.]\\d{1,2}[-/.]\\d{1,4}\\b/g,' ')
+    .replace(/\\b\\d+(?:\\.\\d+)?\\b/g,' ')
+    .replace(/[^a-z0-9]+/g,' ').trim().replace(/\\s+/g,' ');
+  if(!desc||desc.length<8||/^(maintenance|work done|routine check|ok|completed)$/.test(desc))return '';
+  return machine+' | '+desc;
+}
+function insightOrderLabel(row){
+  return String(row.item||row.vendor||row.category||'Spare part order').trim();
+}
+function renderSpareRecordInsights(maintenance,orders){
+  const host=document.getElementById('spareRecordInsightBody');if(!host)return;
+  const machineNames=new Set(maintenance.map(r=>String(r.machine||'').trim()).filter(x=>x&&x.toLowerCase()!=='needs review'));
+  const issueMap=new Map();
+  maintenance.forEach(r=>{const key=insightIssueKey(r);if(!key)return;const current=issueMap.get(key)||{key,machine:String(r.machine||'Unknown'),description:String(r.work_description||''),count:0,lastDate:''};current.count++;const d=insightDate(r,'maintenance');if(d>current.lastDate)current.lastDate=d;issueMap.set(key,current);});
+  const repeats=[...issueMap.values()].filter(x=>x.count>1).sort((a,b)=>b.count-a.count||b.lastDate.localeCompare(a.lastDate)).slice(0,5);
+  const statusMap={};orders.forEach(r=>{const s=String(r.status||'Unknown').trim()||'Unknown';statusMap[s]=(statusMap[s]||0)+1;});
+  const pending=orders.filter(r=>/pending|ordered|confirmed|partially received/i.test(String(r.status||''))).length;
+  const recentM=[...maintenance].sort((a,b)=>insightDate(b,'maintenance').localeCompare(insightDate(a,'maintenance'))).slice(0,4);
+  const recentO=[...orders].sort((a,b)=>insightDate(b,'order').localeCompare(insightDate(a,'order'))).slice(0,4);
+  const metric=(label,value,sub)=>'<div class="spare-insight-metric"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong><small>'+esc(sub)+'</small></div>';
+  const repeatHtml=repeats.length?repeats.map(x=>'<div class="spare-insight-row"><div><strong>'+esc(x.machine||'Unknown machine')+'</strong><small>'+esc(x.description)+'</small></div><span class="spare-insight-count">'+x.count+'×</span></div>').join(''):'<div class="spare-insight-empty">No exact repeated maintenance descriptions detected in the loaded records.</div>';
+  const orderHtml=recentO.length?recentO.map(r=>'<div class="spare-insight-row"><div><strong>'+esc(insightOrderLabel(r))+'</strong><small>'+esc([r.quantity?'Qty '+r.quantity:'',r.vendor||'',insightDate(r,'order')].filter(Boolean).join(' · '))+'</small></div><span class="spare-insight-status">'+esc(r.status||'Status not set')+'</span></div>').join(''):'<div class="spare-insight-empty">No saved spare-parts orders found.</div>';
+  const maintenanceHtml=recentM.length?recentM.map(r=>'<div class="spare-insight-row"><div><strong>'+esc(r.machine||'Machine not set')+'</strong><small>'+esc(r.work_description||'')+'</small></div><span class="spare-insight-status">'+esc(insightDate(r,'maintenance'))+'</span></div>').join(''):'<div class="spare-insight-empty">No saved maintenance records found.</div>';
+  host.innerHTML='<div class="spare-insight-metrics">'+metric('Maintenance records',maintenance.length,'Saved history')+metric('Machines recorded',machineNames.size,'Distinct machine names')+metric('Spare orders',orders.length,'Saved order items')+metric('Repeat patterns',repeats.length,'Exact description matches')+'</div>'+
+    '<div class="spare-insight-columns"><div class="spare-insight-block"><h3>🔁 Repeated maintenance</h3>'+repeatHtml+'</div><div class="spare-insight-block"><h3>📦 Recent spare orders</h3>'+orderHtml+'</div><div class="spare-insight-block"><h3>🛠 Recent maintenance</h3>'+maintenanceHtml+'</div><div class="spare-insight-block"><h3>📍 Order status summary</h3><div class="spare-insight-statuses">'+(Object.keys(statusMap).length?Object.entries(statusMap).map(([s,n])=>'<span>'+esc(s)+': <strong>'+n+'</strong></span>').join(''):'<span>No order statuses recorded</span>')+'</div><small class="spare-insight-foot">Status counts reflect saved records; verify order status in Records when needed.</small></div></div>';
+}
+async function loadSpareRecordInsights(showMessage=false){
+  const host=document.getElementById('spareRecordInsightBody');if(!host)return;
+  host.innerHTML='<div class="empty">Loading saved maintenance and order insights...</div>';
+  try{
+    const client=getSpareRecordsClient();
+    if(!client){host.innerHTML='<div class="spare-insight-empty">Could not load the records service. <a href="./records.html">Open Records</a>.</div>';return;}
+    const {data:sessionData,error:sessionError}=await client.auth.getSession();
+    if(sessionError)throw sessionError;
+    const session=sessionData&&sessionData.session;
+    if(!session||!session.user){host.innerHTML='<div class="spare-insight-empty">Sign in to <a href="./records.html">Records</a> once on this browser, then return here and tap Update. Your records stay private to your account.</div>';return;}
+    const uid=session.user.id;
+    const [m,o]=await Promise.all([
+      client.from('maintenance_log').select('activity_date,machine,line,work_description,maintenance_type,activity_category,status,created_at').eq('user_id',uid).order('activity_date',{ascending:false}).limit(1000),
+      client.from('plant_order_history').select('order_date,item,quantity,vendor,category,status,notes,message,created_at').eq('user_id',uid).order('order_date',{ascending:false}).limit(1000)
+    ]);
+    if(m.error)throw m.error;if(o.error)throw o.error;
+    renderSpareRecordInsights(m.data||[],o.data||[]);
+    if(showMessage)showToast('Maintenance & order insights updated');
+  }catch(error){
+    console.error('Records insights:',error);
+    host.innerHTML='<div class="spare-insight-empty">Could not load saved Records data. Open Records and confirm you are signed in, then tap Update. <small>'+esc(error.message||'Connection error')+'</small></div>';
   }
 }
 
