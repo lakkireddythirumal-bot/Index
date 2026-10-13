@@ -2436,8 +2436,7 @@ function openDateSelector(){
 function trendMonthCompareBounds(){
   const now=new Date(),year=now.getFullYear(),month=now.getMonth(),day=now.getDate();
   const currentStart=trendISODate(new Date(year,month,1)),currentEnd=trendISODate(new Date(year,month,day));
-  const prevEndDate=new Date(year,month-1,Math.min(day,new Date(year,month,0).getDate()));
-  const prevStartDate=new Date(year,month-1,1);
+  const prevStartDate=new Date(year,month-1,1),prevEndDate=new Date(year,month,0);
   return {current:{from:currentStart,to:currentEnd,label:new Date(year,month,1).toLocaleDateString("en-IN",{month:"short",year:"numeric"})},previous:{from:trendISODate(prevStartDate),to:trendISODate(prevEndDate),label:prevStartDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"})}};
 }
 function trendPeriodContains(date,period){const d=dateOnly(date);return !!d&&d>=period.from&&d<=period.to;}
@@ -2488,7 +2487,7 @@ function renderMonthlyTrendScorecard(){
   const feedRows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
   const dispatchNow=trendCompareAggregate(feedRows,r=>r.Report_Date||r.report_date||r.date||r.DATE,r=>feedField(r,"Dispatch_Day_MT"),periods.current,false);
   const dispatchPrev=trendCompareAggregate(feedRows,r=>r.Report_Date||r.report_date||r.date||r.DATE,r=>feedField(r,"Dispatch_Day_MT"),periods.previous,false);
-  root.innerHTML='<div class="trend-scoreboard-head"><div><h3>🏏 Monthly Performance Scorecard</h3><p>Month-to-date vs same number of days last month</p></div><div class="trend-scoreboard-period"><strong>'+esc(periods.current.label)+'</strong><span>vs</span><strong>'+esc(periods.previous.label)+'</strong></div></div><div class="trend-scoreboard-grid">'+trendCompareCard("Production","MT",prodNow,prodPrev,false,1)+trendCompareCard("Output","%",outputNow,outputPrev,false,1)+trendCompareCard("Process Loss","%",lossNow,lossPrev,true,2)+trendCompareCard("Raw Material Consumption","MT",consumptionNow,consumptionPrev,true,1)+trendCompareCard("Feed Dispatch","MT",dispatchNow,dispatchPrev,false,1)+'</div><div class="trend-scoreboard-note">Uses available dated records only. Missing data is shown as “No data”, not zero. Output and process loss are averages; production, consumption and dispatch are totals.</div>';
+  root.innerHTML='<div class="trend-scoreboard-head"><div><h3>🏏 Monthly Performance Scorecard</h3><p>Current month-to-date vs previous month available data</p></div><div class="trend-scoreboard-period"><strong>'+esc(periods.current.label)+'</strong><span>vs</span><strong>'+esc(periods.previous.label)+'</strong></div></div><div class="trend-scoreboard-grid">'+trendCompareCard("Production","MT",prodNow,prodPrev,false,1)+trendCompareCard("Output","%",outputNow,outputPrev,false,1)+trendCompareCard("Process Loss","%",lossNow,lossPrev,true,2)+trendCompareCard("Raw Material Consumption","MT",consumptionNow,consumptionPrev,true,1)+trendCompareCard("Feed Dispatch","MT",dispatchNow,dispatchPrev,false,1)+'</div><div class="trend-scoreboard-note">October shows month-to-date totals; September includes only dates with available records (your data starts Sep 23). Missing data is shown as “No data”, not zero. Output and process loss are averages; production, consumption and dispatch are totals.</div>';
 }
 
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
