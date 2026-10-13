@@ -10,6 +10,7 @@
 <title>Manager Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="style.css?v=20261013-attention-health2">
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3"></script>
 </head>
 <body>
 <div class="container">
@@ -165,6 +166,13 @@
   <!-- SPARE PARTS -->
   <div class="card spare-parts-card" id="sparePartsSection">
     <div class="card-title"><div><h2>🔧 Spare Parts</h2><span id="dateSpareParts">Data: --</span></div><button class="spare-refresh-btn" onclick="loadSpareParts(true)">↻ Refresh</button></div>
+    <div class="spare-record-insights" id="spareRecordInsights">
+      <div class="spare-insights-head">
+        <div><strong>📊 Maintenance & Purchase Intelligence</strong><small>Insights from your saved Records data</small></div>
+        <button type="button" onclick="loadSpareRecordInsights(true)">↻ Update</button>
+      </div>
+      <div id="spareRecordInsightBody"><div class="empty">Loading saved maintenance and order insights...</div></div>
+    </div>
     <div class="section-tabs spare-tabs">
       <button class="active" onclick="setSpareTab(this,'SPARE_STOCK')">Stock</button>
       <button onclick="setSpareTab(this,'SPARE_ORDERS')">Orders</button>
