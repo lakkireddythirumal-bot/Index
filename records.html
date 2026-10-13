@@ -56,7 +56,7 @@
 <div class="field"><label for="orderQuantity">Quantity (if known)</label><input id="orderQuantity" placeholder="2 nos / 10 kg"></div>
 <div class="field full"><label for="orderMessage">Paste WhatsApp message *</label><textarea id="orderMessage" required placeholder="Paste the full WhatsApp message here..."></textarea></div>
 <div class="field full"><label for="orderNotes">Additional notes (optional)</label><textarea id="orderNotes" style="min-height:70px" placeholder="Follow-up date, delivery promise, quotation details..."></textarea></div>
-<div class="field full"><button class="btn" type="submit">Save order message</button></div>
+<div class="field full"><div id="orderParsedPreview" class="hidden"></div></div><div class="field full"><button class="btn" type="submit">Preview and save order items</button></div>
 </form><div id="orderNotice" class="notice hidden"></div>
 </section>
 <section id="notesTab" class="panel hidden">
@@ -112,7 +112,40 @@ $("previewRows").addEventListener("input",e=>{const el=e.target;if(el.dataset.i!
 $("previewRows").addEventListener("click",e=>{const b=e.target.closest("[data-remove]");if(!b)return;previewRows.splice(Number(b.dataset.remove),1);renderPreview();});
 async function sha(text){const data=new TextEncoder().encode(text.trim().toLowerCase());if(window.crypto&&crypto.subtle){const hash=await crypto.subtle.digest("SHA-256",data);return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("");}let h=2166136261;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}return "fnv-"+(h>>>0).toString(16);}
 $("saveMaintenanceBtn").addEventListener("click",async()=>{if(!user)return notice("maintenanceNotice","Sign in first.","error");if(!previewRows.length)return notice("maintenanceNotice","No records to save.","error");const b=$("saveMaintenanceBtn");b.disabled=true;b.textContent="Saving...";try{const payload=[];for(const r of previewRows){if(!r.work_description.trim())continue;const identity=[r.activity_date,r.machine,r.line,r.work_description,r.maintenance_type].join("|");payload.push({...r,user_id:user.id,source_hash:await sha(identity)});}if(!payload.length)throw new Error("Every row needs a work description.");const {data,error}=await client.from("maintenance_log").upsert(payload,{onConflict:"user_id,source_hash",ignoreDuplicates:true}).select("id");if(error)throw error;notice("maintenanceNotice",(data||[]).length+" record(s) saved. Duplicate rows were skipped.","success");previewRows=[];$("maintenancePreview").classList.add("hidden");$("maintenancePaste").value="";$("maintenanceFile").value="";await loadHistory();}catch(err){notice("maintenanceNotice",err.message||"Save failed. Check the table and permissions.","error");}finally{b.disabled=false;b.textContent="Save maintenance records";}});
-$("orderForm").addEventListener("submit",async e=>{e.preventDefault();if(!user)return;const b=e.submitter;b.disabled=true;try{const msg=$("orderMessage").value.trim();const row={user_id:user.id,order_date:$("orderDate").value||today(),vendor:$("orderVendor").value.trim(),category:$("orderCategory").value,item:$("orderItem").value.trim(),quantity:$("orderQuantity").value.trim(),status:$("orderStatus").value,message:msg,notes:$("orderNotes").value.trim(),source_hash:await sha([$ ("orderDate").value,$("orderVendor").value,$("orderCategory").value,$("orderItem").value,$("orderQuantity").value,msg].join("|"))};const {error}=await client.from("plant_order_history").upsert(row,{onConflict:"user_id,source_hash",ignoreDuplicates:true});if(error)throw error;notice("orderNotice","Order message saved. If it was an exact duplicate, it was skipped.","success");$("orderMessage").value="";$("orderNotes").value="";await loadHistory();}catch(err){notice("orderNotice",err.message||"Could not save order.","error");}finally{b.disabled=false;}});
+let parsedOrderItems=[];
+function parseOrderMessage(message){
+ const lines=message.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ const out=[];
+ for(const original of lines){
+  const line=original.replace(/^\s*(?:\d+[.)]|[-•])\s*/,"").trim();
+  const m=line.match(/^(.*?)\s*[-–—:]\s*(\d+(?:\.\d+)?\s*(?:sets?|nos?\.?|pcs?\.?|pieces?|kg|kgs|g|grams?|litres?|liters?|ltr|boxes?|rolls?|pairs?|units?|bags?|tonnes?|tons?)?)(?:\s*\((.*?)\))?\s*$/i);
+  if(!m||!m[1].trim())continue;
+  const extra=(m[3]||"").trim();
+  out.push({item:m[1].trim(),quantity:m[2].trim(),notes:extra?extra.replace(/^make\s*[:=-]?\s*/i,"Make: "):""});
+ }
+ return out;
+}
+function renderOrderPreview(){
+ const host=$("orderParsedPreview");
+ if(!parsedOrderItems.length){host.classList.add("hidden");host.innerHTML="";return;}
+ host.classList.remove("hidden");
+ host.innerHTML='<div class="preview-head"><strong>Detected '+parsedOrderItems.length+' item(s)</strong><span>Check before saving</span></div>'+parsedOrderItems.map((r,i)=>'<div class="preview-row"><div class="preview-fields"><label class="wide">Item name<input data-order-i="'+i+'" data-order-f="item" value="'+esc(r.item)+'"></label><label>Quantity<input data-order-i="'+i+'" data-order-f="quantity" value="'+esc(r.quantity)+'"></label><label>Make / item notes<input data-order-i="'+i+'" data-order-f="notes" value="'+esc(r.notes)+'"></label></div></div>').join("");
+}
+$("orderParsedPreview").addEventListener("input",e=>{const el=e.target;if(el.dataset.orderI!==undefined&&el.dataset.orderF)parsedOrderItems[Number(el.dataset.orderI)][el.dataset.orderF]=el.value;});
+$("orderMessage").addEventListener("input",()=>{const found=parseOrderMessage($("orderMessage").value);if(found.length){parsedOrderItems=found;renderOrderPreview();}else{parsedOrderItems=[];renderOrderPreview();}});
+$("orderForm").addEventListener("submit",async e=>{e.preventDefault();if(!user)return notice("orderNotice","Sign in first.","error");const b=e.submitter;b.disabled=true;try{
+ const msg=$("orderMessage").value.trim();if(!msg)throw new Error("Paste the WhatsApp order message first.");
+ if(!parsedOrderItems.length){const found=parseOrderMessage(msg);if(found.length)parsedOrderItems=found;else parsedOrderItems=[{item:$("orderItem").value.trim()||"Unparsed order message",quantity:$("orderQuantity").value.trim(),notes:""}];}
+ renderOrderPreview();
+ if(!confirm("Save "+parsedOrderItems.length+" detected order item(s)? Check the preview first. Click Cancel to review/edit."))return;
+ const base={user_id:user.id,order_date:$("orderDate").value||today(),vendor:$("orderVendor").value.trim(),category:$("orderCategory").value,status:$("orderStatus").value,message:msg};
+ const rows=[];
+ for(const item of parsedOrderItems){const noteParts=[$("orderNotes").value.trim(),item.notes].filter(Boolean);const identity=[base.order_date,base.vendor,base.category,item.item,item.quantity,msg].join("|");rows.push({...base,item:item.item,quantity:item.quantity,notes:noteParts.join(" | "),source_hash:await sha(identity)});}
+ const {error}=await client.from("plant_order_history").upsert(rows,{onConflict:"user_id,source_hash",ignoreDuplicates:true});if(error)throw error;
+ notice("orderNotice",rows.length+" order item(s) saved. Duplicate items were skipped.","success");
+ $("orderMessage").value="";$("orderItem").value="";$("orderQuantity").value="";$("orderNotes").value="";parsedOrderItems=[];renderOrderPreview();await loadHistory();
+ }catch(err){notice("orderNotice",err.message||"Could not save order.","error");}finally{b.disabled=false;}});
+
 $("noteForm").addEventListener("submit",async e=>{e.preventDefault();if(!user)return;const b=e.submitter;b.disabled=true;try{const {error}=await client.from("plant_notes").insert({user_id:user.id,note_date:$("noteDate").value||today(),title:$("noteTitle").value.trim(),category:$("noteCategory").value,note_text:$("noteText").value.trim()});if(error)throw error;notice("noteNotice","Note saved successfully.","success");$("noteTitle").value="";$("noteText").value="";await loadHistory();}catch(err){notice("noteNotice",err.message||"Could not save note.","error");}finally{b.disabled=false;}});
 function card(kind,r){let title="",body="",date="",tag="";if(kind==="maintenance"){title=r.machine+" · "+r.line;body=r.work_description;date=r.activity_date;tag=r.activity_category+" / "+r.maintenance_type+" / "+r.status;}else if(kind==="order"){title=r.item||r.vendor||r.category;body=r.message;date=r.order_date;tag=r.category+" / "+r.status+(r.vendor?" / "+r.vendor:"")+(r.quantity?" / Qty "+r.quantity:"");}else{title=r.title||r.category;body=r.note_text;date=r.note_date;tag=r.category;}return '<article class="record"><div class="record-top"><div><h3>'+esc(title)+'</h3><div class="meta"><span>'+esc(date||"")+'</span><span>'+esc(kind==="maintenance"?"Maintenance":kind==="order"?"Order":"Note")+'</span></div></div><span class="pill">'+esc(tag)+'</span></div><p>'+esc(body)+'</p></article>';}
 async function loadHistory(){if(!user)return;$("historyList").innerHTML='<div class="muted">Loading records...</div>';try{const results=await Promise.all([client.from("maintenance_log").select("*").eq("user_id",user.id).order("activity_date",{ascending:false}).limit(100),client.from("plant_order_history").select("*").eq("user_id",user.id).order("order_date",{ascending:false}).limit(100),client.from("plant_notes").select("*").eq("user_id",user.id).order("note_date",{ascending:false}).limit(100)]);const err=results.find(x=>x.error);if(err)throw err.error;allHistory=[...results[0].data.map(r=>({kind:"maintenance",row:r})),...results[1].data.map(r=>({kind:"order",row:r})),...results[2].data.map(r=>({kind:"note",row:r}))].sort((a,b)=>String(b.row.created_at||b.row.activity_date||b.row.order_date||b.row.note_date).localeCompare(String(a.row.created_at||a.row.activity_date||a.row.order_date||a.row.note_date)));renderHistory();hideNotice("historyNotice");}catch(err){$("historyList").innerHTML="";notice("historyNotice",err.message||"Could not load saved history.","error");}}
