@@ -2530,7 +2530,8 @@ function renderTrends(){
   const byDate={};
   feedProductionRows.forEach(r=>{
     const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
-    const production=feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product);if(production===null)return;
+    const rawProduction=feedField(r,"Production_Day_MT");if(rawProduction===null)return;
+    const production=feedValueInMT(rawProduction,r.Product||r.product);
     const item=byDate[d]||(byDate[d]={production:0,productionCount:0});item.production+=production;item.productionCount++;
   });
   const qualityRows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
