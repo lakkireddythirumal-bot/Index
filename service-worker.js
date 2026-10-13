@@ -1,10 +1,11 @@
-const CACHE_NAME = "feed-manager-dashboard-v4";
+const CACHE_NAME = "feed-manager-dashboard-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
-  "./manifest.json"
+  "./manifest.json",
+  "./records.html"
 ];
 
 self.addEventListener("install", event => {
