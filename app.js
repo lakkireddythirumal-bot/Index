@@ -494,9 +494,9 @@ function dashboardCacheRequest(mode,operation,value){
     };
   });
 }
-async function saveCache(payload,rawTables=null){
+async function saveCache(payload,rawTables=null,fullSyncAt=null){
   try{
-    await dashboardCacheRequest("readwrite","put",{key:"latest",savedAt:Date.now(),payload,rawTables});
+    await dashboardCacheRequest("readwrite","put",{key:"latest",savedAt:Date.now(),fullSyncAt:fullSyncAt||Date.now(),payload,rawTables});
   }catch(error){console.warn("Dashboard cache save skipped",error);}
 }
 async function cachedData(){
@@ -621,8 +621,9 @@ function sbBuildLatestProducts(rows,kind){
 async function loadDashboard(attempt=0,forceFull=false){
   try{
     const cached=await cachedData();
-    const cacheAge=cached&&cached.savedAt?Date.now()-cached.savedAt:Infinity;
-    const canIncrement=!forceFull&&cached&&cached.payload&&cached.rawTables&&cacheAge<DASHBOARD_CACHE_FULL_SYNC_MS;
+    const lastFullSyncAt=cached&&(cached.fullSyncAt||cached.savedAt)?(cached.fullSyncAt||cached.savedAt):0;
+    const fullSyncAge=lastFullSyncAt?Date.now()-lastFullSyncAt:Infinity;
+    const canIncrement=!forceFull&&cached&&cached.payload&&cached.rawTables&&fullSyncAge<DASHBOARD_CACHE_FULL_SYNC_MS;
     const cutoff=sbDateOffset(DASHBOARD_CACHE_RECENT_DAYS);
     const fromDate=canIncrement?cutoff:null;
     const [stockFresh,productionFresh,bagsFresh,feedFresh,totalsFresh]=await Promise.all([
@@ -673,7 +674,8 @@ async function loadDashboard(attempt=0,forceFull=false){
     };
 
     applyData(apiData,false);
-    await saveCache(apiData,rawTables);
+    const nextFullSyncAt=canIncrement?lastFullSyncAt:Date.now();
+    await saveCache(apiData,rawTables,nextFullSyncAt);
     return apiData;
   }catch(error){
     if(attempt<1){await new Promise(r=>setTimeout(r,800));return loadDashboard(attempt+1,forceFull)}
