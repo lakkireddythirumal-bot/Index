@@ -117,15 +117,19 @@ function parseOrderMessage(message){
  const lines=message.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  const out=[];
  for(const original of lines){
-  let line=original.replace(/^\s*(?:\d+[.)]|[-•])\s*/,"").trim();
+  const numbered=/^\s*\d+\s*[.)]\s*/.test(original);
+  let line=original.replace(/^\s*(?:\d+\s*[.)]|[-•])\s*/,"").trim();
   if(!line||/^line\s*[-:#]?\s*\d+\s*$/i.test(line))continue;
-  // Match quantities at the end so item codes containing numbers/hyphens stay in the item name.
-  const m=line.match(/^(.*?)\s*(?:[-–—:]\s*|\b(each)\s+)(\d+(?:\.\d+)?\s*(?:sets?|nos?\.?|pcs?\.?|pieces?|kg|kgs|g|grams?|met(?:er|re)s?|m(?:et(?:er|re)s?)?|litres?|liters?|ltr|boxes?|rolls?|pairs?|units?|bags?|tonnes?|tons?|qty)?)[.\s]*$/i);
-  if(!m||!m[1].trim())continue;
-  let item=m[1].trim().replace(/\s*[-–—:]\s*$/,"");
-  if(!item)continue;
-  const quantity=(m[2]?"each ":"")+m[3].trim();
-  out.push({item,quantity,notes:""});
+  if(/^(sir[,!]?|dear\b|thanks\b|thank you\b|regards\b|requirement\b|spares?\s+requirement\b|spares?\s+required\b|.*\brequirement\s*:?)$/i.test(line))continue;
+  const units="(?:sets?|nos?\\.?|pcs?\\.?|pieces?|kg|kgs|g|grams?|met(?:er|re)s?|m|litres?|liters?|ltr|l|boxes?|rolls?|pairs?|units?|bags?|tonnes?|tons?|qty|quantity)";
+  const qre=new RegExp("^(.*?)\\s*(?:[-–—:]\\s*|\\b(?:each|qty|quantity)\\s+)(\\d+(?:\\.\\d+)?\\s*(?:"+units+")?)(?:\\s*(?:qty|quantity))?\\s*[.!]*$","i");
+  let m=line.match(qre);
+  if(!m){const trailing=new RegExp("^(.*?)\\s+(\\d+(?:\\.\\d+)?\\s*"+units+")(?:\\s*[.!]*)$","i");m=line.match(trailing);}
+  if(m&&m[1].trim()){
+   let item=m[1].trim().replace(/\\s*[-–—:]\\s*$/,"");
+   let quantity=m[2].trim().replace(/\\s+/g," ");
+   if(item)out.push({item,quantity,notes:""});
+  }else if(numbered){out.push({item:line,quantity:"",notes:"Needs review — quantity not detected"});}
  }
  return out;
 }
