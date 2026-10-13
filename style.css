@@ -1587,3 +1587,13 @@ body.dc-page-open{overflow:hidden}
   #bagGrid .pp-metrics .pp-closing strong{font-size:15px}
 }
 @media(prefers-reduced-motion:reduce){#bagGrid .pp-item{transition:none}}
+
+
+/* COMPACT SECTION NAVIGATION — keep one dashboard section visible at a time */
+.dashboard-view{display:none;min-width:0}
+.dashboard-view.active{display:block}
+.dashboard-view[hidden]{display:none!important}
+.dashboard-view>.card,.dashboard-view>.attention-card,.dashboard-view>.data-accuracy-card{margin-bottom:10px}
+.bottom-nav .nav-item{cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.bottom-nav .nav-item:focus-visible{outline:2px solid #2563eb;outline-offset:2px;border-radius:10px}
+@media(prefers-reduced-motion:reduce){.dashboard-view{scroll-behavior:auto}}
