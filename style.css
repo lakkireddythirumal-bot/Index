@@ -1402,27 +1402,3 @@ body.dc-page-open{overflow:hidden}
 .dac-table td{color:#334155;vertical-align:top}.dac-table tr:last-child td{border-bottom:0}
 .dac-table td:last-child{white-space:normal;min-width:150px;max-width:240px}
 @media(max-width:430px){.data-accuracy-card{padding:12px;border-radius:15px}.dac-head h2{font-size:15px}.dac-stats{gap:5px}.dac-stat{padding:9px 7px}.dac-stat span{font-size:8px}.dac-stat strong{font-size:19px}.dac-check-row{gap:7px;padding:9px 7px}.dac-check-icon{flex-basis:24px;width:24px;height:24px}.dac-check-copy small{font-size:8px}.dac-check-counts b{font-size:8px}.dac-fresh-row{grid-template-columns:minmax(0,1fr) auto auto;gap:5px;font-size:9px}}
-
-/* Cricket-style month-to-month Trends scorecard */
-.trend-scoreboard{margin:0 0 14px;padding:13px;background:linear-gradient(145deg,#f7faff,#fff);border:1px solid #e3eaf4;border-radius:16px}
-.trend-scoreboard-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
-.trend-scoreboard-head h3{font-size:15px;margin:0;color:#1f2937}
-.trend-scoreboard-head p{font-size:11px;color:#667085;margin:4px 0 0}
-.trend-scoreboard-period{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end;font-size:10px;color:#667085}
-.trend-scoreboard-period strong{font-size:10px;background:#e9effa;color:#243b63;border-radius:7px;padding:5px 7px}
-.trend-scoreboard-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-.trend-score-card{min-width:0;padding:11px;border-radius:12px;background:#fff;border:1px solid #e7ebf2;box-shadow:0 2px 7px rgba(25,45,75,.035)}
-.trend-score-title{font-size:11px;font-weight:700;color:#475467;margin-bottom:10px;min-height:14px}
-.trend-score-values{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.trend-score-values>div{min-width:0}
-.trend-score-values small{display:block;font-size:9px;color:#7b8494;margin-bottom:4px}
-.trend-score-values strong{display:block;font-size:16px;line-height:1.2;color:#202938;overflow-wrap:anywhere}
-.trend-score-change{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #eef0f4}
-.trend-score-change span{font-size:11px;font-weight:800}
-.trend-score-change small{font-size:9px;color:#667085;text-align:right}
-.trend-score-change.good span{color:#13804a}
-.trend-score-change.bad span{color:#c2413b}
-.trend-score-change.neutral span{color:#667085}
-.trend-scoreboard-note{font-size:10px;line-height:1.45;color:#778092;margin-top:10px}
-@media(min-width:700px){.trend-scoreboard-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:390px){.trend-scoreboard{padding:10px}.trend-scoreboard-head{display:block}.trend-scoreboard-period{justify-content:flex-start;margin-top:8px}.trend-score-values strong{font-size:14px}}
