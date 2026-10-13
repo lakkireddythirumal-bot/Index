@@ -1378,6 +1378,23 @@ function renderDataAccuracyCenter(){
     if(overall){overall.className="dac-overall warn";overall.textContent="Checks could not complete. Open the browser console or retry.";}
   }
 }
+function openDataHealthDetails(){
+  const snap=dataAccuracySnapshot(),t=snap.totals;
+  const mismatch=t.mismatch||0, missing=t.noData||0;
+  const status=mismatch?'bad':missing?'warn':'good';
+  const html=`<div class="dac-modal-intro">Data health runs automatically in the background. Only issues are added to Attention Required; this view shows the diagnostic details. Source data is not edited.</div>
+    <div class="dac-stats">
+      <div class="dac-stat"><span>Checks</span><strong>${t.total}</strong></div>
+      <div class="dac-stat dac-good"><span>Match</span><strong>${t.match}</strong></div>
+      <div class="dac-stat dac-bad"><span>Mismatch</span><strong>${mismatch}</strong></div>
+      <div class="dac-stat dac-muted"><span>No data</span><strong>${missing}</strong></div>
+    </div>
+    <div class="dac-overall ${status}">${mismatch?mismatch+' mismatch(es) need review.':missing?missing+' check(s) could not be verified because data is missing.':'All available checks match.'}</div>
+    <div class="dac-check-list">${snap.groups.map(g=>{const c=dacCount(g.items),state=c.mismatch?'bad':c.noData?'warn':'good';return `<button type="button" class="dac-check-row" onclick="openDataAccuracyDetails('${g.key}')"><span class="dac-check-icon ${state}">${c.mismatch?'!':c.noData?'?':'✓'}</span><span class="dac-check-copy"><strong>${esc(g.label)}</strong><small>${esc(g.description)}</small><em>${esc(g.date||'No report date')} • ${c.total} item(s)</em></span><span class="dac-check-counts"><b>${c.match} match</b><b class="${c.mismatch?'text-bad':''}">${c.mismatch} mismatch</b><b>${c.noData} no data</b></span><span class="dac-chevron">›</span></button>`}).join('')}</div>
+    <div class="dac-freshness-head"><strong>Source freshness</strong><span>Latest report date per section</span></div>
+    <div class="dac-freshness-list">${snap.sources.map(x=>`<div class="dac-fresh-row"><span>${esc(x.name)}</span><strong>${esc(x.date||'No date')}</strong>${dacStatusLabel(x.status==='LATEST'?'LATEST':x.status==='OLDER'?'OLDER':'NO DATA')}</div>`).join('')}</div>`;
+  showModal('Data Health & Reconciliation',html);
+}
 function openDataAccuracyDetails(kind){
   const snap=dataAccuracySnapshot(),group=snap.groups.find(g=>g.key===kind);
   if(!group)return;
@@ -1561,6 +1578,11 @@ function attentionSummaryItems(){
   items.push({icon:bagRows.length?'🟡':'🟢',level:bagRows.length?'warning':'clear',count:bagRows.length,text:`${bagRows.length} PP bag damage increases`,reason:bagRows.length?"Damage is higher than the previous available day":"No increase in recorded damage",action:"openAttentionFiltered('bags')"});
   items.push({icon:spareRows.length?'🔵':'🟢',level:spareRows.length?'info':'clear',count:spareRows.length,text:`${spareRows.length} spare orders pending`,reason:spareRows.length?"Open / pending spare orders need follow-up":"No pending spare orders",action:"openAttentionFiltered('spares')"});
   items.push({icon:productionRows.length?'🟡':'🟢',level:productionRows.length?'warning':'clear',count:productionRows.length,text:productionRows.length?`${productionRows.length} production outputs below 95%`:'Production output normal',reason:productionRows.length?"Output percentage is below the 95% threshold":"All selected production records are ≥ 95%",action:"openAttentionFiltered('production')"});
+  // Data quality checks run in the background and surface here only when review is needed.
+  const health=dataAccuracySnapshot();
+  const healthMismatch=health.totals.mismatch||0, healthMissing=health.totals.noData||0;
+  const healthIssues=healthMismatch+healthMissing;
+  items.push({icon:healthMismatch?'⚠️':healthMissing?'🟠':'🟢',level:healthMismatch?'critical':healthMissing?'warning':'clear',count:healthIssues,text:healthIssues?`Data health: ${healthMismatch} mismatch • ${healthMissing} missing`:'Data health checks passed',reason:healthMismatch?'Reconciliation differences need review':healthMissing?'Some checks cannot be verified because source data is missing':'All available reconciliation checks match',action:"openDataHealthDetails()"});
   // Data-control review state is intentionally kept out of the main Attention count.
   // Review decisions are browser-local (localStorage), so including them here makes
   // the same Supabase data show different Attention counts in Safari vs Incognito.
@@ -3455,7 +3477,7 @@ function setupDashboardViews(){
     production:[production,getCard("feedUnitList"),document.getElementById("monthlyMixSection")],
     bags:[getCard("bagGrid")],
     spares:[document.getElementById("sparePartsSection")],
-    reports:[document.getElementById("dataAccuracyCard"),document.getElementById("reportCenterSection"),document.getElementById("trendsSection")]
+    reports:[document.getElementById("reportCenterSection"),document.getElementById("trendsSection")]
   };
   const views={};
   Object.keys(sections).forEach(name=>{
