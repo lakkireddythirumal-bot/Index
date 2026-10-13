@@ -1940,9 +1940,26 @@ function trendClosing(){
 /* =====================================================
    NAVIGATION
 ===================================================== */
-function goHome(){window.scrollTo({top:0,behavior:"smooth"})}
-function goSpareParts(){document.getElementById("sparePartsSection")?.scrollIntoView({behavior:"smooth",block:"start"});loadSpareParts(false)}
-function goTrend(){document.getElementById("trendsSection").scrollIntoView({behavior:"smooth"})}
+function switchDashboardView(view){
+  const allowed=new Set(["home","stock","production","bags","spares","reports"]);
+  if(!allowed.has(view))view="home";
+  document.querySelectorAll(".dashboard-view").forEach(el=>{
+    const active=el.dataset.dashboardView===view;
+    el.classList.toggle("active",active);
+    el.hidden=!active;
+  });
+  document.querySelectorAll(".bottom-nav .nav-item").forEach(el=>{
+    const active=el.dataset.view===view;
+    el.classList.toggle("active",active);
+    if(active)el.setAttribute("aria-current","page");else el.removeAttribute("aria-current");
+  });
+  if(view==="spares")loadSpareParts(false);
+  if(view==="reports")requestAnimationFrame(()=>{try{drawTrends()}catch(e){console.warn("Trend redraw skipped",e)}});
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function goHome(){switchDashboardView("home")}
+function goSpareParts(){switchDashboardView("spares")}
+function goTrend(){switchDashboardView("reports")}
 
 
 /* =====================================================
@@ -3418,8 +3435,58 @@ function openPlantAI(){
 }
 
 /* =====================================================
+   COMPACT DASHBOARD VIEWS — UI ONLY
+   Reuses existing sections and handlers; no data/API logic changes.
+===================================================== */
+function setupDashboardViews(){
+  const container=document.querySelector(".container");
+  if(!container||container.dataset.viewsReady==="1")return;
+  const nav=container.querySelector(".bottom-nav");
+  const anchor=container.querySelector(".date-strip");
+  if(!nav||!anchor)return;
+  const getCard=id=>document.getElementById(id)?.closest(".card");
+  const quick=[...container.querySelectorAll(":scope > .card")].find(el=>(el.querySelector(".card-title h2")?.textContent||"").includes("Management Quick View"));
+  const desktop=container.querySelector(":scope > .desktop-grid");
+  const reorder=desktop?.children?.[0]||null;
+  const production=desktop?.children?.[1]||null;
+  const sections={
+    home:[document.getElementById("attentionRequiredCard"),quick],
+    stock:[document.getElementById("premixTransferCard"),reorder,getCard("rawCategoryList")],
+    production:[production,getCard("feedUnitList"),document.getElementById("monthlyMixSection")],
+    bags:[getCard("bagGrid")],
+    spares:[document.getElementById("sparePartsSection")],
+    reports:[document.getElementById("dataAccuracyCard"),document.getElementById("reportCenterSection"),document.getElementById("trendsSection")]
+  };
+  const views={};
+  Object.keys(sections).forEach(name=>{
+    const view=document.createElement("div");
+    view.className="dashboard-view"+(name==="home"?" active":"");
+    view.dataset.dashboardView=name;
+    view.hidden=name!=="home";
+    view.setAttribute("aria-label",name.charAt(0).toUpperCase()+name.slice(1)+" dashboard");
+    views[name]=view;
+  });
+  anchor.after(...Object.values(views));
+  Object.entries(sections).forEach(([name,nodes])=>{
+    nodes.forEach(node=>{if(node&&node!==nav)views[name].appendChild(node)});
+  });
+  if(desktop)desktop.remove();
+  container.dataset.viewsReady="1";
+  nav.querySelectorAll(".nav-item").forEach(el=>{
+    el.setAttribute("role","button");
+    el.setAttribute("tabindex","0");
+    el.setAttribute("aria-label",el.textContent.trim());
+    el.addEventListener("keydown",event=>{
+      if(event.key==="Enter"||event.key===" "){event.preventDefault();switchDashboardView(el.dataset.view)}
+    });
+  });
+  switchDashboardView("home");
+}
+
+/* =====================================================
    START
 ===================================================== */
+setupDashboardViews();
 restoreCache().catch(error=>console.warn("Dashboard cache restore skipped",error)).finally(()=>refreshData());
 loadSpareParts();
 
