@@ -1250,10 +1250,148 @@ function refreshBagsHistoryTable(){
 }
 
 
+
+/* =====================================================
+   DATA ACCURACY & RECONCILIATION CENTER
+   Read-only checks over existing loaded data. Does not
+   modify source rows or replace existing calculations.
+===================================================== */
+function dacValue(row,keys){
+  for(const key of keys){
+    const v=row?.[key];
+    if(v===null||v===undefined||String(v).trim()==="")continue;
+    const n=Number(v);
+    if(Number.isFinite(n))return n;
+  }
+  return null;
+}
+function dacLatestDate(rows){
+  return (Array.isArray(rows)?rows:[]).map(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)).filter(Boolean).sort().pop()||"";
+}
+function dacStockItems(targetDate){
+  return getMaterials().map(material=>{
+    const rows=transactions(material).filter(t=>dateOnly(rowDate(t))===targetDate);
+    if(!rows.length)return {name:material,date:targetDate,status:"NO DATA",message:"No stock transactions for this date."};
+    let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false;
+    rows.forEach(t=>{
+      const type=tType(t);
+      const value=dacValue(t,["for_day","value","quantity","qty"]);
+      if(type==="OPENING STOCK"){if(value===null)invalid=true;else opening=value;}
+      else if(type==="CL. STOCK"){if(value===null)invalid=true;else closing=value;}
+      else if(type.includes("CONSUMPTION")||type.includes("CONSUMPION")){if(value===null)invalid=true;else recorded+=Math.abs(value);}
+      else if(type==="PURCHASE"||type==="RECEIVED"||type==="GAIN"||type.includes("TRANSFER FROM")){if(value===null)invalid=true;else inflow+=Math.abs(value);}
+      else if(type.includes("TRANSFER TO")||type.includes("SALE")||type.includes("SHORTAGE")||type==="DAMAGE"||type==="ISSUE"||type.includes("RETURN TO")){if(value===null)invalid=true;else outflow+=Math.abs(value);}
+    });
+    if(invalid)return {name:material,date:targetDate,status:"NO DATA",message:"One or more relevant transaction quantities are missing."};
+    if(opening===null||closing===null)return {name:material,date:targetDate,status:"NO DATA",message:"Opening stock or closing stock is missing."};
+    const calculated=opening+inflow-outflow-closing;
+    const diff=calculated-recorded;
+    return {name:material,date:targetDate,status:Math.abs(diff)<=0.01?"MATCH":"MISMATCH",opening,inflow,outflow,recorded,closing,calculated,diff,message:Math.abs(diff)<=0.01?"Calculated consumption agrees with recorded consumption.":"Calculated consumption differs from recorded consumption."};
+  });
+}
+function dacFeedItems(targetDate){
+  const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===targetDate&&!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const seen=new Set();
+  return rows.filter(r=>{const key=normalize(r.Product||r.product);if(!key||seen.has(key))return false;seen.add(key);return true;}).map(r=>{
+    const product=clean(r.Product||r.product);
+    const opening=dacValue(r,["Opening_Day_MT","opening_day_mt","Opening_Day","opening_day","Opening","opening"]);
+    const production=dacValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]);
+    const transfer=dacValue(r,["Transfer_Day_MT","transfer_day_mt","Transfer_Day","transfer_day","Transfer","transfer"]);
+    const dispatch=dacValue(r,["Dispatch_Day_MT","dispatch_day_mt","Dispatch_Day","dispatch_day","Dispatch","dispatch"]);
+    const closing=dacValue(r,["Closing_Day_MT","closing_day_mt","Closing_Day","closing_day","Closing","closing"]);
+    if(opening===null||closing===null||production===null||dispatch===null)return {name:product,date:targetDate,status:"NO DATA",message:"Opening, production, dispatch, or closing value is missing."};
+    const calc=opening+production+(transfer||0)-dispatch;
+    const diff=closing-calc;
+    return {name:product,date:targetDate,status:Math.abs(diff)<=0.01?"MATCH":"MISMATCH",opening,production,transfer:transfer||0,dispatch,closing,calculated:calc,diff,message:Math.abs(diff)<=0.01?"Feed balance agrees.":"Feed balance does not agree."};
+  });
+}
+function dacBagItems(targetDate){
+  const rows=(Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[]).filter(r=>dateOnly(r.report_date||r.Report_Date||r.date)===targetDate&&!dcIsHiddenProduct(clean(r.product||r.Product)));
+  const seen=new Set();
+  return rows.filter(r=>{const key=normalize(r.product||r.Product||"PP Bags");if(seen.has(key))return false;seen.add(key);return true;}).map(r=>{
+    const product=clean(r.product||r.Product||"PP Bags");
+    const opening=dacValue(r,["opening","Opening"]),received=dacValue(r,["received","Received"]),issue=dacValue(r,["issue","Issue"]),damage=dacValue(r,["damage","Damage"]),closing=dacValue(r,["closing","Closing"]);
+    if(opening===null||closing===null||received===null||issue===null||damage===null)return {name:product,date:targetDate,status:"NO DATA",message:"One or more PP-bag balance fields are missing."};
+    const calc=opening+received-issue-damage,diff=closing-calc;
+    return {name:product,date:targetDate,status:Math.abs(diff)<=0.01?"MATCH":"MISMATCH",opening,received,issue,damage,closing,calculated:calc,diff,message:Math.abs(diff)<=0.01?"PP-bag balance agrees.":"PP-bag balance does not agree."};
+  });
+}
+function dacProductionItems(targetDate){
+  const rows=(Array.isArray(DATA.productionHistory)?DATA.productionHistory:[]).filter(r=>dateOnly(r.report_date||r.Report_Date||r.date)===targetDate&&!dcIsHiddenProduct(clean(r.product||r.Product)));
+  const seen=new Set();
+  return rows.filter(r=>{const key=normalize(r.product||r.Product);if(!key||seen.has(key))return false;seen.add(key);return true;}).map(r=>{
+    const product=clean(r.product||r.Product);
+    const standard=dacValue(r,["standard_output","Standard_Output"]),actual=dacValue(r,["actual_output","Actual_Output"]),reported=dacValue(r,["output_percentage","Output_Percentage"]);
+    if(standard===null||actual===null||reported===null)return {name:product,date:targetDate,status:"NO DATA",message:"Standard output, actual output, or reported output percentage is missing."};
+    if(standard<=0||actual<0||reported<0)return {name:product,date:targetDate,status:"MISMATCH",message:"Invalid negative output or non-positive standard output.",standard,actual,reported};
+    const calculated=actual/standard*100,diff=reported-calculated;
+    return {name:product,date:targetDate,status:Math.abs(diff)<=0.5?"MATCH":"MISMATCH",standard,actual,reported,calculated,diff,message:Math.abs(diff)<=0.5?"Reported output percentage agrees with actual ÷ standard.":"Reported output percentage differs from actual ÷ standard."};
+  });
+}
+function dacCount(items){const a=Array.isArray(items)?items:[];return {total:a.length,match:a.filter(x=>x.status==="MATCH").length,mismatch:a.filter(x=>x.status==="MISMATCH").length,noData:a.filter(x=>x.status==="NO DATA").length};}
+function dacStatusLabel(status){const cls=status==="MATCH"?"good":status==="MISMATCH"?"bad":"muted";return "<span class=\"dac-pill "+cls+"\">"+esc(status)+"</span>";}
+function dataAccuracySnapshot(){
+  const selected=VIEW_DATE?dateOnly(VIEW_DATE):"";
+  const stockDate=selected||dacLatestDate(DATA.stockHistory)||dacLatestDate(DATA.stock);
+  const productionDate=selected||dacLatestDate(DATA.productionHistory)||dacLatestDate(DATA.production);
+  const bagsDate=selected||dacLatestDate(DATA.bagsHistory)||dacLatestDate(DATA.bags);
+  const feedDate=selected||dacLatestDate(DATA.feedUnitData);
+  const stock=dacStockItems(stockDate),feed=dacFeedItems(feedDate),bags=dacBagItems(bagsDate),production=dacProductionItems(productionDate);
+  const groups=[
+    {key:"stock",label:"Raw material stock",date:stockDate,items:stock,description:"Opening + inward − outward − closing compared with recorded consumption."},
+    {key:"feed",label:"Feed-unit balance",date:feedDate,items:feed,description:"Opening + production + transfer − dispatch compared with closing."},
+    {key:"bags",label:"PP-bag balance",date:bagsDate,items:bags,description:"Opening + received − issue − damage compared with closing."},
+    {key:"production",label:"Production output %",date:productionDate,items:production,description:"Reported output percentage compared with actual output ÷ standard output."}
+  ];
+  const totals=groups.reduce((a,g)=>{const c=dacCount(g.items);a.total+=c.total;a.match+=c.match;a.mismatch+=c.mismatch;a.noData+=c.noData;return a;},{total:0,match:0,mismatch:0,noData:0});
+  const sources=[
+    {name:"Raw material stock",date:dacLatestDate(DATA.stockHistory)},
+    {name:"Production",date:dacLatestDate(DATA.productionHistory)},
+    {name:"PP bags",date:dacLatestDate(DATA.bagsHistory)},
+    {name:"Feed unit",date:dacLatestDate(DATA.feedUnitData)},
+    {name:"Feed-unit totals",date:dacLatestDate(DATA.feedUnitTotals)}
+  ];
+  const newest=sources.map(x=>x.date).filter(Boolean).sort().pop()||"";
+  sources.forEach(x=>x.status=!x.date?"NO DATA":x.date===newest?"LATEST":"OLDER");
+  return {groups,totals,sources,newest,selectedDate:selected};
+}
+function renderDataAccuracyCenter(){
+  const card=document.getElementById("dataAccuracyCard");
+  if(!card)return;
+  try{
+    const snap=dataAccuracySnapshot(),t=snap.totals;
+    setText("dacSubtitle",(snap.selectedDate?"Selected date: "+snap.selectedDate:"Latest available records")+" • Read-only checks; source data is not changed");
+    setText("dacTotal",String(t.total));setText("dacMatch",String(t.match));setText("dacMismatch",String(t.mismatch));setText("dacNoData",String(t.noData));
+    const overall=document.getElementById("dacOverall");
+    if(overall){overall.className="dac-overall "+(t.mismatch?"bad":t.noData?"warn":"good");overall.textContent=t.mismatch?(t.mismatch+" mismatch(es) need review"+(t.noData?" • "+t.noData+" check(s) have missing data":"")+"."):t.noData?(t.noData+" check(s) could not be verified because data is missing."):t.total?"All available checks match.":"No records available to check.";}
+    const list=document.getElementById("dacCheckList");
+    if(list)list.innerHTML=snap.groups.map(g=>{const c=dacCount(g.items);const state=c.mismatch?"bad":c.noData?"warn":"good";return "<button type=\"button\" class=\"dac-check-row\" onclick=\"openDataAccuracyDetails('"+g.key+"')\"><span class=\"dac-check-icon "+state+"\">"+(c.mismatch?"!":c.noData?"?":"✓")+"</span><span class=\"dac-check-copy\"><strong>"+esc(g.label)+"</strong><small>"+esc(g.description)+"</small><em>"+esc(g.date||"No report date")+" • "+c.total+" item(s)</em></span><span class=\"dac-check-counts\"><b>"+c.match+" match</b><b class=\""+(c.mismatch?"text-bad":"")+"\">"+c.mismatch+" mismatch</b><b>"+c.noData+" no data</b></span><span class=\"dac-chevron\">›</span></button>";}).join("")||"<div class='empty'>No records available to check.</div>";
+    const fresh=document.getElementById("dacFreshness");
+    if(fresh)fresh.innerHTML=snap.sources.map(x=>"<div class=\"dac-fresh-row\"><span>"+esc(x.name)+"</span><strong>"+esc(x.date||"No date")+"</strong>"+dacStatusLabel(x.status==="LATEST"?"MATCH":x.status==="OLDER"?"MISMATCH":"NO DATA")+"</div>").join("");
+  }catch(error){
+    console.warn("Data accuracy center could not render",error);
+    setText("dacSubtitle","Unable to run checks; existing dashboard remains available.");
+    const overall=document.getElementById("dacOverall");
+    if(overall){overall.className="dac-overall warn";overall.textContent="Checks could not complete. Open the browser console or retry.";}
+  }
+}
+function openDataAccuracyDetails(kind){
+  const snap=dataAccuracySnapshot(),group=snap.groups.find(g=>g.key===kind);
+  if(!group)return;
+  const rows=group.items;
+  const columns=kind==="stock"?[["opening","Opening"],["inflow","Inward"],["outflow","Outward"],["recorded","Recorded consumption"],["calculated","Calculated consumption"],["closing","Closing"],["diff","Difference"]]
+    :kind==="feed"?[["opening","Opening"],["production","Production"],["transfer","Transfer"],["dispatch","Dispatch"],["calculated","Calculated closing"],["closing","Actual closing"],["diff","Difference"]]
+    :kind==="bags"?[["opening","Opening"],["received","Received"],["issue","Issue"],["damage","Damage"],["calculated","Calculated closing"],["closing","Actual closing"],["diff","Difference"]]
+    :[["standard","Standard"],["actual","Actual"],["calculated","Calculated %"],["reported","Reported %"],["diff","Difference"]];
+  const html="<div class=\"dac-modal-intro\">"+esc(group.description)+"<br>Report date: <strong>"+esc(group.date||"No date")+"</strong>. These checks are diagnostic only; no source data is edited.</div><div class=\"dac-table-wrap\"><table class=\"dac-table\"><thead><tr><th>Item</th><th>Status</th>"+columns.map(c=>"<th>"+esc(c[1])+"</th>").join("")+"<th>Notes</th></tr></thead><tbody>"+(rows.map(r=>"<tr><td>"+esc(r.name)+"</td><td>"+dacStatusLabel(r.status)+"</td>"+columns.map(c=>"<td>"+(r[c[0]]===null||r[c[0]]===undefined?"—":esc(fmt(r[c[0]])))+"</td>").join("")+"<td>"+esc(r.message||"")+"</td></tr>").join("")||"<tr><td colspan=\""+(columns.length+3)+"\">No records available for this date.</td></tr>")+"</tbody></table></div>";
+  showModal("Data Accuracy • "+group.label,html);
+}
+
 function renderDashboard(){
   initReportCenter();
   renderSmartHeader();
   renderAttentionRequired();
+  renderDataAccuracyCenter();
   renderQuick();
   renderMonthlyMix();
   renderControlCenter();
