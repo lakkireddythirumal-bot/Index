@@ -1975,7 +1975,7 @@ function switchDashboardView(view){
     el.classList.toggle("active",active);
     if(active)el.setAttribute("aria-current","page");else el.removeAttribute("aria-current");
   });
-  if(view==="spares"){loadSpareParts(false);loadSpareRecordInsights(false);}
+  if(view==="spares")loadSpareParts(false);
   if(view==="reports")requestAnimationFrame(()=>{try{drawTrends()}catch(e){console.warn("Trend redraw skipped",e)}});
   window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -2951,6 +2951,16 @@ function renderSpareRecordInsights(maintenance,orders){
   const maintenanceHtml=recentM.length?recentM.map(r=>'<div class="spare-insight-row"><div><strong>'+esc(r.machine||'Machine not set')+'</strong><small>'+esc(r.work_description||'')+'</small></div><span class="spare-insight-status">'+esc(insightDate(r,'maintenance'))+'</span></div>').join(''):'<div class="spare-insight-empty">No saved maintenance records found.</div>';
   host.innerHTML='<div class="spare-insight-metrics">'+metric('Maintenance records',maintenance.length,'Saved history')+metric('Machines recorded',machineNames.size,'Distinct machine names')+metric('Spare orders',orders.length,'Saved order items')+metric('Repeat patterns',repeats.length,'Exact description matches')+'</div>'+
     '<div class="spare-insight-columns"><div class="spare-insight-block"><h3>🔁 Repeated maintenance</h3>'+repeatHtml+'</div><div class="spare-insight-block"><h3>📦 Recent spare orders</h3>'+orderHtml+'</div><div class="spare-insight-block"><h3>🛠 Recent maintenance</h3>'+maintenanceHtml+'</div><div class="spare-insight-block"><h3>📍 Order status summary</h3><div class="spare-insight-statuses">'+(Object.keys(statusMap).length?Object.entries(statusMap).map(([s,n])=>'<span>'+esc(s)+': <strong>'+n+'</strong></span>').join(''):'<span>No order statuses recorded</span>')+'</div><small class="spare-insight-foot">Status counts reflect saved records; verify order status in Records when needed.</small></div></div>';
+}
+function toggleSpareRecordInsights(){
+  const panel=document.getElementById('spareRecordInsights');
+  const btn=document.getElementById('spareInsightsViewBtn');
+  if(!panel||!btn)return;
+  const opening=panel.hidden;
+  panel.hidden=!opening;
+  btn.setAttribute('aria-expanded',String(opening));
+  btn.innerHTML=opening?'✕ Hide Insights':'👁 View Insights';
+  if(opening)loadSpareRecordInsights(false);
 }
 async function loadSpareRecordInsights(showMessage=false){
   const host=document.getElementById('spareRecordInsightBody');if(!host)return;
