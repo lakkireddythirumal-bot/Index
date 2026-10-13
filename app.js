@@ -2927,7 +2927,7 @@ function insightIssueKey(row){
   const machine=String(row.machine||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const desc=String(row.work_description||'').toLowerCase()
     .replace(/\b\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\b/g,' ')
-    .replace(/\b\d+(?:\\.\d+)?\b/g,' ')
+    .replace(/\b\d+(?:\.\d+)?\b/g,' ')
     .replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
   if(!desc||desc.length<8||/^(maintenance|work done|routine check|ok|completed)$/.test(desc))return '';
   return machine+' | '+desc;
