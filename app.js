@@ -2289,7 +2289,7 @@ function renderPPBags(){
     seen.add(key);
     return true;
   });
-  const sorted=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0)).slice(0,10);
+  const sorted=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0));
   el.innerHTML=sorted.map(r=>{
     const p=r.product||"PP Bags";
     const opening=num(r.opening)||0, received=num(r.received)||0, issue=num(r.issue)||0, damage=num(r.damage)||0, closing=num(r.closing)||0;
