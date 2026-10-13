@@ -81,7 +81,7 @@
 const SUPABASE_URL="https://iqxprkmainafqjodpfdk.supabase.co";
 const SUPABASE_KEY="sb_publishable_54VfHOULYN31VknExbmdVA_mYxhtU-7";
 const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-let user=null, authMode="signin", previewRows=[], allHistory=[], currentHistoryKind="maintenance";
+let user=null, authMode="signin", previewRows=[], allHistory=[], currentHistoryKind="work";
 const $=id=>document.getElementById(id);
 const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
 $("orderDate").value=today();$("noteDate").value=today();
