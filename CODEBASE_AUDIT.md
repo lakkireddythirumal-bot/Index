@@ -15,17 +15,19 @@ The previous service worker used cache-first behavior for same-origin non-naviga
 
 **Change committed:** `service-worker.js` now uses network-first for navigation and local JS/CSS/JSON/web-manifest assets, falls back to cached content when offline, precaches `app.js` and `style.css`, and uses cache version `v3` to retire the prior cache after activation.
 
-### 2. Dashboard refresh downloads full history from five Supabase tables — high priority
+### 2. Dashboard history reads — improved with a bounded incremental refresh
 
-`loadDashboard()` concurrently reads `stock_data`, `production_data`, `pp_bags_data`, `feed_unit_data`, and `feed_unit_totals`. `supabaseRows()` uses `select=*` and offset pagination in batches of 1,000 until each table is exhausted. The complete history is then retained in browser memory for dashboard calculations and reports.
+The dashboard still retains the complete history required by historical views and reports. The first load and a forced full refresh read all five tables. After a successful full sync, ordinary refreshes fetch only rows with `report_date` in the most recent seven days, replacing cached rows in that date window while retaining older history locally. A full sync is scheduled after 24 hours, and the visible Refresh button forces a full sync.
 
-**Risk:** Refresh time and data transfer grow with history. Avoiding this safely requires identifying which views need full history, using date-range queries or server-side summaries where possible, and validating that historical reports and comparisons remain correct. This was not changed in this first pass because it can affect business calculations.
+A live database count on 2026-10-13 showed 6,430 rows across the five tables. The recent-date query returned 2,432 rows, or about 38% of the full row count. This suggests roughly 62% fewer rows transferred during incremental refreshes when the cache is eligible. This is a row-count estimate, not a measured network-byte or latency benchmark.
 
-### 3. Cache persistence and fallback are disabled — high priority
+**Trade-off:** Changes or deletions older than the seven-day window are picked up by the daily full sync or the manual full refresh. The full history remains available between syncs; if IndexedDB is unavailable or empty, the app safely falls back to a full read.
 
-The source defines cache keys, but `saveCache()` returns immediately, `cachedData()` returns `null`, and `restoreCache()` returns `false`. The refresh failure UI mentions saved data, but this code path does not restore a previously successful dashboard payload.
+### 3. Cache persistence and fallback — addressed
 
-**Recommendation:** Add a bounded, versioned persistent cache with explicit freshness labels and safe quota/error handling. Prefer IndexedDB for larger history payloads over assuming the browser's localStorage quota is sufficient.
+The dashboard now stores one versioned snapshot in IndexedDB, including the normalized dashboard payload, raw source rows, save time, and last full-sync time. On startup, a previous snapshot is rendered while a live refresh runs. If the network refresh fails, the app retains available dashboard data and marks the connection as offline instead of replacing the screen with a blank error state. Cache read/write failures are caught and do not block a live refresh.
+
+The cache stores a single latest snapshot rather than unbounded entries. IndexedDB quota or browser restrictions can still prevent caching, in which case the live-data path continues to work.
 
 ### 4. Main JavaScript file is a large, tightly coupled unit — medium priority
 
@@ -50,26 +52,30 @@ The dashboard retries the full data load once after an error, then displays a ge
 ## Changes made in this audit
 
 - Updated `service-worker.js` to prefer fresh deployed app assets while retaining offline fallback.
-- Added `app.js` and `style.css` to the app-shell cache.
-- Bumped the service-worker cache version to `v3` so the previous cache is removed on activation.
+- Added `app.js` and `style.css` to the app-shell cache and bumped the cache version to `v3`.
+- Added a single-snapshot IndexedDB cache for the dashboard and raw history.
+- Added a seven-day recent-date refresh path, with a full sync after 24 hours and a full sync on manual Refresh.
+- Changed refresh-failure handling to retain loaded/cached data and clearly mark the dashboard offline.
 - Preserved the existing Supabase URL/key wiring, Google Apps Script endpoint, dashboard data shape, reports, and application logic.
 - Added this audit document for traceability.
 
 ## Verification status
 
-- [x] Inspected current repository source files and the existing service-worker behavior.
-- [x] Confirmed the service-worker update was committed to GitHub.
+- [x] Inspected current repository source files and existing service-worker/cache behavior.
+- [x] Confirmed the cache and refresh changes were committed to GitHub.
+- [x] Queried the live Supabase schema and row counts. At review time: stock 5,487; production 230; PP bags 230; feed unit 462; feed totals 21.
+- [x] Confirmed RLS is enabled on the five dashboard tables and `material_master`; each has a SELECT policy with `USING (true)`. This means reads are intentionally public to callers who have the public API key; it does not provide user-level confidentiality.
+- [x] Supabase security advisor returned no findings at the time of review.
 - [ ] Browser-level online/offline testing — not run in this environment.
-- [ ] Confirm service-worker update activation on a real device — not run.
+- [ ] Confirm service-worker update activation and IndexedDB behavior on a real iPhone/browser — not run.
 - [ ] Confirm live GitHub Pages deployment and deployed version — not checked.
-- [ ] Audit live Supabase RLS/grants and Google Apps Script access settings — not possible from source files alone.
-- [ ] Measure real API transfer/time before and after — baseline not collected.
+- [ ] Verify Google Apps Script deployment access settings — not confirmed.
+- [ ] Measure actual response bytes, refresh latency, and behavior after real data imports — not yet measured.
 
 ## Recommended next sequence
 
-1. Verify the service-worker update on the deployed site and an iPhone.
-2. Add a safe, bounded IndexedDB cache and honest stale-data status.
-3. Measure per-table row counts, payload sizes, and refresh timings.
-4. Reduce redundant history reads with validated date-range queries or server-side summaries.
+1. Verify the service-worker and IndexedDB cache on the deployed site and an iPhone.
+2. Measure actual network bytes and refresh timings, then confirm historical reports against a full sync.
+3. Decide whether public read access is acceptable for this internal dashboard; if not, introduce authentication and scoped RLS policies before tightening the current SELECT policies.
+4. Verify Google Apps Script deployment access separately.
 5. Add automated checks for stock reconciliation, month comparisons, and report totals before refactoring the large JavaScript file.
-6. Review Supabase RLS/grants and Apps Script permissions separately before making security changes.
