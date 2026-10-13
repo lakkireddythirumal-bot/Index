@@ -98,3 +98,15 @@ Missing required fields are shown as NO DATA; numeric differences are shown as M
 - [x] Existing Supabase, Google Apps Script, caching, reports, and Data Control wiring was not intentionally changed by this addition.
 - [x] JavaScript syntax and manifest JSON checks performed after changes.
 - [ ] Browser rendering, real mobile interaction, and end-to-end comparison against a manually verified plant report remain to be tested.
+
+
+### Live source-data spot check — 2026-10-13
+
+A read-only SQL spot check was run against the latest available report date:
+
+- **Production:** 10 rows; 5 have zero standard and zero actual output with no percentage (not applicable); the other eligible rows had no output-percentage mismatches in this sample.
+- **PP bags:** 10 rows; no missing balance fields and no arithmetic mismatches in this sample.
+- **Feed unit:** 21 rows; 3 have one or more required balance fields missing. One complete row, YOUNG LAYER MASH 60KG, has a 7.20 MT difference between reported closing and calculated closing and should be reviewed against the original MIS.
+- **Raw material stock:** 34 materials on the latest date. Some key transaction rows have missing daily quantities, and the source contains generic or variant transaction labels. The center therefore marks missing or unclassified rows as NO DATA rather than claiming a false match.
+
+These are source-data spot checks, not browser end-to-end tests. The flagged differences are observations to reconcile with the plant's original MIS, not automatic edits to the database.
