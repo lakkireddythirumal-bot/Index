@@ -2472,56 +2472,50 @@ function renderTrendAlerts(){
 
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
 function renderTrendOverview(){
-  const rows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[])
-    .filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  const feedRows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const qualityRows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
   const range=trendDateBounds();
-  const selected=rows.filter(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);return d&&range.valid&&d>=range.from&&d<=range.to;});
-  const dates=[...new Set(selected.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)).filter(Boolean))].sort();
-  const sum=selected.reduce((a,r)=>a+(num(r.actual_output??r.actual??r.value)||0),0);
-  const outputs=selected.map(r=>num(r.output_percentage??r.outputPercent)).filter(v=>v!==null);
-  const losses=selected.map(r=>num(r.process_loss??r.processLoss)).filter(v=>v!==null);
+  const rowDateValue=r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);
+  const selectedFeed=feedRows.filter(r=>{const d=rowDateValue(r);return d&&range.valid&&d>=range.from&&d<=range.to&&feedField(r,"Production_Day_MT")!==null;});
+  const dates=[...new Set(selectedFeed.map(rowDateValue).filter(Boolean))].sort();
+  const sum=selectedFeed.reduce((a,r)=>a+feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product),0);
+  const selectedQuality=qualityRows.filter(r=>{const d=rowDateValue(r);return d&&range.valid&&d>=range.from&&d<=range.to;});
+  const outputs=selectedQuality.map(r=>num(r.output_percentage??r.outputPercent)).filter(v=>v!==null);
+  const losses=selectedQuality.map(r=>num(r.process_loss??r.processLoss)).filter(v=>v!==null);
   const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
   const fmtMetric=v=>v===null||v===undefined?"--":Number(v).toLocaleString("en-IN",{maximumFractionDigits:1});
   setText("trendKpiProduction",dates.length?fmtMetric(sum)+" MT":"--");
-  setText("trendKpiProductionNote",dates.length?dates.length+" dated production days • "+dates[0]+" to "+dates[dates.length-1]:"No production data in this period");
+  setText("trendKpiProductionNote",dates.length?dates.length+" dated Feed Unit production days • "+dates[0]+" to "+dates[dates.length-1]:"No Feed Unit production data in this period");
   const outputAvg=avg(outputs),lossAvg=avg(losses);
   setText("trendKpiOutput",outputAvg===null?"--":fmtMetric(outputAvg)+"%");
   setText("trendKpiOutputNote",outputs.length?outputs.length+" reported output values":"No output percentage values");
   setText("trendKpiLoss",lossAvg===null?"--":fmtMetric(lossAvg)+"%");
   setText("trendKpiLossNote",losses.length?losses.length+" reported loss values":"No process loss values");
-  const compare=document.getElementById("trendKpiCompare");
-  const note=document.getElementById("trendKpiCompareNote");
+  const compare=document.getElementById("trendKpiCompare"),note=document.getElementById("trendKpiCompareNote");
   if(compare)compare.textContent="--";
-  if(note)note.textContent="Needs both months' data";
+  if(note)note.textContent="Needs both months' Feed Unit data";
   if(!dates.length||!compare||!note)return;
   const latest=dates[dates.length-1],latestDate=new Date(latest+"T12:00:00");
   const year=latestDate.getFullYear(),month=latestDate.getMonth(),day=latestDate.getDate();
   const currentStart=year+"-"+String(month+1).padStart(2,"0")+"-01";
-  const prevLastDay=new Date(year,month,0).getDate();
-  const compareDay=Math.min(day,prevLastDay);
+  const prevLastDay=new Date(year,month,0).getDate(),compareDay=Math.min(day,prevLastDay);
   const prevStartDate=new Date(year,month-1,1);
   const prevStart=prevStartDate.getFullYear()+"-"+String(prevStartDate.getMonth()+1).padStart(2,"0")+"-01";
   const prevEnd=prevStartDate.getFullYear()+"-"+String(prevStartDate.getMonth()+1).padStart(2,"0")+"-"+String(compareDay).padStart(2,"0");
-  const currRows=rows.filter(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);return d&&d>=currentStart&&d<=latest;});
-  const prevRows=rows.filter(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);return d&&d>=prevStart&&d<=prevEnd;});
-  const currDates=new Set(currRows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)));
-  const prevDates=new Set(prevRows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)));
-  const currentTotal=currRows.reduce((a,r)=>a+(num(r.actual_output??r.actual??r.value)||0),0);
-  const previousTotal=prevRows.reduce((a,r)=>a+(num(r.actual_output??r.actual??r.value)||0),0);
+  const prodValue=r=>feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product);
+  const currRows=feedRows.filter(r=>{const d=rowDateValue(r);return d&&d>=currentStart&&d<=latest&&feedField(r,"Production_Day_MT")!==null;});
+  const prevRows=feedRows.filter(r=>{const d=rowDateValue(r);return d&&d>=prevStart&&d<=prevEnd&&feedField(r,"Production_Day_MT")!==null;});
+  const currDates=new Set(currRows.map(rowDateValue)),prevDates=new Set(prevRows.map(rowDateValue));
+  const currentTotal=currRows.reduce((a,r)=>a+prodValue(r),0),previousTotal=prevRows.reduce((a,r)=>a+prodValue(r),0);
   const currentLabel=latestDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
   const previousLabel=prevStartDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
   if(!currDates.size||!prevDates.size||currDates.size<Math.min(compareDay,3)||prevDates.size<Math.min(compareDay,3)){
-    note.textContent=currentLabel+" vs "+previousLabel+" • not enough comparable daily history";
-    return;
+    note.textContent=currentLabel+" vs "+previousLabel+" • not enough comparable Feed Unit daily history";return;
   }
-  if(previousTotal===0){
-    note.textContent=currentLabel+" vs "+previousLabel+" • previous total is zero; percentage change unavailable";
-    return;
-  }
+  if(previousTotal===0){note.textContent=currentLabel+" vs "+previousLabel+" • previous total is zero; percentage change unavailable";return;}
   const change=(currentTotal-previousTotal)/previousTotal*100;
   compare.textContent=(change>0?"+":"")+fmtMetric(change)+"%";
-  compare.classList.toggle("is-positive",change>0);
-  compare.classList.toggle("is-negative",change<0);
+  compare.classList.toggle("is-positive",change>0);compare.classList.toggle("is-negative",change<0);
   note.textContent=currentLabel+" MTD vs "+previousLabel+" same "+compareDay+" calendar days • "+fmtMetric(currentTotal)+" vs "+fmtMetric(previousTotal)+" MT";
 }
 function renderTrends(){
@@ -2531,23 +2525,26 @@ function renderTrends(){
   const sel=document.getElementById("materialSelect"),mats=getMaterials();
   if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(sel?.value||mats[0]);
-  const prodRows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[])
-    .filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  // Production chart uses FEED UNIT tonnes; PRODUCTION_DATA actual_output is bag-count data.
+  const feedProductionRows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
   const byDate={};
-  prodRows.forEach(r=>{
-    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!trendDateInRange(d))return;
-    const item=byDate[d]||(byDate[d]={actual:0,actualCount:0,outputSum:0,outputCount:0,lossSum:0,lossCount:0});
-    const actual=num(r.actual_output??r.actual??r.value);
-    if(actual!==null){item.actual+=actual;item.actualCount++;}
-    const output=num(r.output_percentage??r.outputPercent);
-    if(output!==null){item.outputSum+=output;item.outputCount++;}
-    const loss=num(r.process_loss??r.processLoss);
-    if(loss!==null){item.lossSum+=loss;item.lossCount++;}
+  feedProductionRows.forEach(r=>{
+    const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
+    const production=feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product);if(production===null)return;
+    const item=byDate[d]||(byDate[d]={production:0,productionCount:0});item.production+=production;item.productionCount++;
   });
-  const dates=Object.keys(byDate).sort();
-  chart("productionChart",dates,dates.map(d=>byDate[d].actualCount?byDate[d].actual:null));
-  chart("outputChart",dates,dates.map(d=>byDate[d].outputCount?byDate[d].outputSum/byDate[d].outputCount:null));
-  chart("lossChart",dates,dates.map(d=>byDate[d].lossCount?byDate[d].lossSum/byDate[d].lossCount:null));
+  const qualityRows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  const qualityByDate={};
+  qualityRows.forEach(r=>{
+    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!trendDateInRange(d))return;
+    const item=qualityByDate[d]||(qualityByDate[d]={outputSum:0,outputCount:0,lossSum:0,lossCount:0});
+    const output=num(r.output_percentage??r.outputPercent);if(output!==null){item.outputSum+=output;item.outputCount++;}
+    const loss=num(r.process_loss??r.processLoss);if(loss!==null){item.lossSum+=loss;item.lossCount++;}
+  });
+  const dates=Object.keys(byDate).sort(),qualityDates=Object.keys(qualityByDate).sort();
+  chart("productionChart",dates,dates.map(d=>byDate[d].productionCount?byDate[d].production:null));
+  chart("outputChart",qualityDates,qualityDates.map(d=>qualityByDate[d].outputCount?qualityByDate[d].outputSum/qualityByDate[d].outputCount:null));
+  chart("lossChart",qualityDates,qualityDates.map(d=>qualityByDate[d].lossCount?qualityByDate[d].lossSum/qualityByDate[d].lossCount:null));
   const purchase=trendFromTransactions("PURCHASE");chart("purchaseChart",purchase.labels,purchase.values);
   const closing=trendClosing();chart("closingChart",closing.labels,closing.values);
   const feed=feedTrend();chart("feedChart",feed.labels,feed.values);
