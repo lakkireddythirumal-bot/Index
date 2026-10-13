@@ -2432,9 +2432,69 @@ function openDateSelector(){
   showModal("Date Selector",`<div class="detail-section"><h3>📅 Dashboard Date</h3><div class="small-note">Selecting a date now changes the entire dashboard, not just the summary popup.</div><div class="date-list">${buttons||"<div class='empty'>No dated records available.</div>"}</div></div>`);
 }
 
+
+function trendMonthCompareBounds(){
+  const now=new Date(),year=now.getFullYear(),month=now.getMonth(),day=now.getDate();
+  const currentStart=trendISODate(new Date(year,month,1)),currentEnd=trendISODate(new Date(year,month,day));
+  const prevEndDate=new Date(year,month-1,Math.min(day,new Date(year,month,0).getDate()));
+  const prevStartDate=new Date(year,month-1,1);
+  return {current:{from:currentStart,to:currentEnd,label:new Date(year,month,1).toLocaleDateString("en-IN",{month:"short",year:"numeric"})},previous:{from:trendISODate(prevStartDate),to:trendISODate(prevEndDate),label:prevStartDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"})}};
+}
+function trendPeriodContains(date,period){const d=dateOnly(date);return !!d&&d>=period.from&&d<=period.to;}
+function trendCompareAggregate(rows,dateFn,valueFn,period,average){
+  let total=0,count=0;
+  rows.forEach(r=>{if(!trendPeriodContains(dateFn(r),period))return;const v=valueFn(r);if(v!==null&&Number.isFinite(v)){total+=v;count++;}});
+  return count?{value:average?total/count:total,count}:null;
+}
+function trendCompareCard(title,unit,current,previous,lowerIsBetter,decimals){
+  const value=function(v){return v===null?"No data":v.value.toLocaleString("en-IN",{minimumFractionDigits:decimals,maximumFractionDigits:decimals})+(unit?" "+unit:"");};
+  let status="neutral",change="Comparison unavailable",delta="Based on available records";
+  if(current&&previous){
+    const diff=current.value-previous.value;
+    if(Math.abs(diff)<Math.pow(10,-decimals)/2){change="No change";status="neutral";delta="";}
+    else if(previous.value!==0){
+      const pct=Math.abs(diff/previous.value*100),good=lowerIsBetter?diff<0:diff>0;
+      status=good?"good":"bad";change=(diff>0?"▲ ":"▼ ")+pct.toLocaleString("en-IN",{maximumFractionDigits:1})+"%";
+      delta=(diff>0?"+":"")+diff.toLocaleString("en-IN",{maximumFractionDigits:decimals,minimumFractionDigits:decimals})+(unit?" "+unit:"");
+    }else{
+      status=(lowerIsBetter?diff<0:diff>0)?"good":"bad";
+      change=diff>0?"▲ Increased":"▼ Decreased";
+      delta=(diff>0?"+":"")+diff.toLocaleString("en-IN",{maximumFractionDigits:decimals})+(unit?" "+unit:"");
+    }
+  }
+  return '<div class="trend-score-card"><div class="trend-score-title">'+esc(title)+'</div><div class="trend-score-values"><div><small>This month</small><strong>'+(current?value(current):"No data")+'</strong></div><div><small>Last month</small><strong>'+(previous?value(previous):"No data")+'</strong></div></div><div class="trend-score-change '+status+'"><span>'+change+'</span><small>'+delta+'</small></div></div>';
+}
+function renderMonthlyTrendScorecard(){
+  const root=document.getElementById("trendMonthlyScorecard");if(!root)return;
+  const periods=trendMonthCompareBounds();
+  const productionRows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  const dateProd=r=>r.report_date||r.Report_Date||r.date;
+  const actual=r=>num(r.actual_output??r.actual??r.value);
+  const output=r=>num(r.output_percentage??r.outputPercent);
+  const loss=r=>num(r.process_loss??r.processLoss);
+  const prodNow=trendCompareAggregate(productionRows,dateProd,actual,periods.current,false);
+  const prodPrev=trendCompareAggregate(productionRows,dateProd,actual,periods.previous,false);
+  const outputNow=trendCompareAggregate(productionRows,dateProd,output,periods.current,true);
+  const outputPrev=trendCompareAggregate(productionRows,dateProd,output,periods.previous,true);
+  const lossNow=trendCompareAggregate(productionRows,dateProd,loss,periods.current,true);
+  const lossPrev=trendCompareAggregate(productionRows,dateProd,loss,periods.previous,true);
+  const materialRows=[];
+  getMaterials().forEach(material=>transactions(material).forEach(t=>{
+    const type=tType(t);
+    if(type.includes("CONSUMPTION")||type.includes("CONSUMPION")||type.includes("CONSUMPTON")||type.includes("CONSUMPTI"))materialRows.push({date:rowDate(t),value:tVal(t)});
+  }));
+  const consumptionNow=trendCompareAggregate(materialRows,r=>r.date,r=>r.value,periods.current,false);
+  const consumptionPrev=trendCompareAggregate(materialRows,r=>r.date,r=>r.value,periods.previous,false);
+  const feedRows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const dispatchNow=trendCompareAggregate(feedRows,r=>r.Report_Date||r.report_date||r.date||r.DATE,r=>feedField(r,"Dispatch_Day_MT"),periods.current,false);
+  const dispatchPrev=trendCompareAggregate(feedRows,r=>r.Report_Date||r.report_date||r.date||r.DATE,r=>feedField(r,"Dispatch_Day_MT"),periods.previous,false);
+  root.innerHTML='<div class="trend-scoreboard-head"><div><h3>🏏 Monthly Performance Scorecard</h3><p>Month-to-date vs same number of days last month</p></div><div class="trend-scoreboard-period"><strong>'+esc(periods.current.label)+'</strong><span>vs</span><strong>'+esc(periods.previous.label)+'</strong></div></div><div class="trend-scoreboard-grid">'+trendCompareCard("Production","MT",prodNow,prodPrev,false,1)+trendCompareCard("Output","%",outputNow,outputPrev,false,1)+trendCompareCard("Process Loss","%",lossNow,lossPrev,true,2)+trendCompareCard("Raw Material Consumption","MT",consumptionNow,consumptionPrev,true,1)+trendCompareCard("Feed Dispatch","MT",dispatchNow,dispatchPrev,false,1)+'</div><div class="trend-scoreboard-note">Uses available dated records only. Missing data is shown as “No data”, not zero. Output and process loss are averages; production, consumption and dispatch are totals.</div>';
+}
+
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
 function renderTrends(){
   updateTrendRangeLabel();
+  renderMonthlyTrendScorecard();
   const sel=document.getElementById("materialSelect"),mats=getMaterials();
   if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(sel?.value||mats[0]);
