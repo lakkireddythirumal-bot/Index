@@ -2434,9 +2434,47 @@ function openDateSelector(){
 
 
 
+
+function renderTrendAlerts(){
+  const root=document.getElementById("trendAlerts");if(!root)return;
+  const rows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  const byDate={};
+  rows.forEach(r=>{
+    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!d||!trendDateInRange(d))return;
+    const x=byDate[d]||(byDate[d]={production:0,productionCount:0,outputSum:0,outputCount:0,lossSum:0,lossCount:0});
+    const p=num(r.actual_output??r.actual??r.value),o=num(r.output_percentage??r.outputPercent),l=num(r.process_loss??r.processLoss);
+    if(p!==null){x.production+=p;x.productionCount++;}
+    if(o!==null){x.outputSum+=o;x.outputCount++;}
+    if(l!==null){x.lossSum+=l;x.lossCount++;}
+  });
+  const dates=Object.keys(byDate).sort();
+  const alerts=[];
+  dates.forEach((d,i)=>{
+    const cur=byDate[d];
+    if(i<5)return;
+    const prev=dates.slice(Math.max(0,i-7),i).map(k=>byDate[k]);
+    if(prev.length<5)return;
+    const avg=(key,countKey)=>{const vals=prev.filter(x=>x[countKey]).map(x=>x[key]/(key==="production"?"1":x[countKey]));return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;};
+    const prodVals=prev.filter(x=>x.productionCount).map(x=>x.production);
+    const outputVals=prev.filter(x=>x.outputCount).map(x=>x.outputSum/x.outputCount);
+    const lossVals=prev.filter(x=>x.lossCount).map(x=>x.lossSum/x.lossCount);
+    const prodAvg=prodVals.length?prodVals.reduce((a,b)=>a+b,0)/prodVals.length:null;
+    const outputAvg=outputVals.length?outputVals.reduce((a,b)=>a+b,0)/outputVals.length:null;
+    const lossAvg=lossVals.length?lossVals.reduce((a,b)=>a+b,0)/lossVals.length:null;
+    if(cur.productionCount&&prodAvg>0&&cur.production<prodAvg*0.7)alerts.push({date:d,type:"warning",title:"Production dropped",detail:cur.production.toLocaleString("en-IN",{maximumFractionDigits:1})+" MT vs recent average "+prodAvg.toLocaleString("en-IN",{maximumFractionDigits:1})+" MT"});
+    if(cur.outputCount&&outputAvg!==null&&(outputAvg-(cur.outputSum/cur.outputCount))>=3)alerts.push({date:d,type:"warning",title:"Output % fell",detail:(cur.outputSum/cur.outputCount).toFixed(1)+"% vs recent average "+outputAvg.toFixed(1)+"%"});
+    if(cur.lossCount&&lossAvg!==null&&((cur.lossSum/cur.lossCount)-lossAvg)>=1)alerts.push({date:d,type:"danger",title:"Process loss increased",detail:(cur.lossSum/cur.lossCount).toFixed(2)+"% vs recent average "+lossAvg.toFixed(2)+"%"});
+  });
+  const recent=alerts.slice(-4).reverse();
+  if(!dates.length){root.innerHTML='<div class="trend-alert-empty">No dated production history in the selected period.</div>';return;}
+  if(!recent.length){root.innerHTML='<div class="trend-alert-empty"><strong>✓ No unusual production pattern detected</strong><span>Checks require at least 5 earlier dated records. This is an early-warning indicator, not a quality guarantee.</span></div>';return;}
+  root.innerHTML='<div class="trend-alert-head"><strong>⚠ Trend Alerts</strong><span>Latest unusual changes</span></div><div class="trend-alert-list">'+recent.map(x=>'<div class="trend-alert-item '+x.type+'"><div><strong>'+esc(x.title)+'</strong><small>'+esc(x.date)+'</small></div><span>'+esc(x.detail)+'</span></div>').join("")+'</div><div class="trend-alert-foot">Compared with up to the previous 7 available production dates; at least 5 earlier dates required.</div>';
+}
+
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
 function renderTrends(){
   updateTrendRangeLabel();
+  renderTrendAlerts();
   const sel=document.getElementById("materialSelect"),mats=getMaterials();
   if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(sel?.value||mats[0]);
