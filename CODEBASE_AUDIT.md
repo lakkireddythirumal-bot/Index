@@ -77,3 +77,24 @@ On startup, the app can restore its last successful snapshot and show a cached t
 3. Decide whether public read access is acceptable for this internal dashboard; if not, introduce authentication and scoped RLS policies before tightening the current SELECT policies.
 4. Verify Google Apps Script deployment access separately.
 5. Add automated checks for stock reconciliation, month comparisons, and report totals before refactoring the large JavaScript file.
+
+
+## Data Accuracy & Reconciliation Center — added 2026-10-13
+
+A read-only panel was added below Attention Required. It summarizes four checks and exposes a row-level drill-down without modifying source data or replacing existing dashboard calculations.
+
+- **Raw material stock:** checks opening + recognized inward movements − recognized outward movements − closing against recorded consumption for the selected/latest stock date. The classification deliberately reuses the current transaction labels; unrecognized movement types are not silently assigned to a category.
+- **Feed-unit balance:** checks opening + production + transfer − dispatch against closing for each product/date.
+- **PP-bag balance:** checks opening + received − issue − damage against closing.
+- **Production output percentage:** checks reported output percentage against actual output ÷ standard output, with a tolerance of 0.5 percentage points. Rows with zero standard and zero actual output and no percentage are marked not applicable rather than counted as missing.
+- **Source freshness:** shows the latest available report date for stock, production, PP bags, feed unit, and feed-unit totals.
+
+Missing required fields are shown as NO DATA; numeric differences are shown as MISMATCH. The panel is diagnostic and read-only. Raw material checks use known transaction labels and should be reconciled against the source MIS before the results are treated as an accounting authority.
+
+### Verification of this addition
+
+- [x] UI markup added without replacing the existing Attention Required or Management Quick View.
+- [x] Checks are called from the existing dashboard render cycle.
+- [x] Existing Supabase, Google Apps Script, caching, reports, and Data Control wiring was not intentionally changed by this addition.
+- [x] JavaScript syntax and manifest JSON checks performed after changes.
+- [ ] Browser rendering, real mobile interaction, and end-to-end comparison against a manually verified plant report remain to be tested.
