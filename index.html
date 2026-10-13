@@ -56,6 +56,28 @@
     <div id="attentionList" class="attention-summary-list"></div>
   </section>
 
+  <!-- DATA ACCURACY & RECONCILIATION -->
+  <section class="data-accuracy-card" id="dataAccuracyCard" aria-live="polite">
+    <div class="dac-head">
+      <div>
+        <div class="dac-kicker">DATA QUALITY</div>
+        <h2>✓ Data Accuracy &amp; Reconciliation</h2>
+        <p id="dacSubtitle">Checking plant records...</p>
+      </div>
+      <button type="button" class="dac-refresh" onclick="renderDataAccuracyCenter()">↻ Recheck</button>
+    </div>
+    <div class="dac-stats">
+      <div class="dac-stat"><span>Checks</span><strong id="dacTotal">--</strong></div>
+      <div class="dac-stat dac-good"><span>Match</span><strong id="dacMatch">--</strong></div>
+      <div class="dac-stat dac-bad"><span>Mismatch</span><strong id="dacMismatch">--</strong></div>
+      <div class="dac-stat dac-muted"><span>No data</span><strong id="dacNoData">--</strong></div>
+    </div>
+    <div id="dacOverall" class="dac-overall" role="status">Checking records...</div>
+    <div class="dac-check-list" id="dacCheckList"></div>
+    <div class="dac-freshness-head"><strong>Source freshness</strong><span>Latest report date per section</span></div>
+    <div class="dac-freshness-list" id="dacFreshness"></div>
+  </section>
+
   <!-- MANAGEMENT QUICK VIEW -->
   <div class="card">
     <div class="card-title"><h2>⚡ Management Quick View</h2><span id="dateQuickView">Data: --</span></div>
