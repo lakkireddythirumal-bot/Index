@@ -1,33 +1,4 @@
 /* =====================================================
-   THEME SWITCH — user preference stored locally
-===================================================== */
-const THEME_KEY="feed_plant_dashboard_theme_v1";
-function applyTheme(theme){
-  const dark=theme==="dark";
-  document.documentElement.dataset.theme=dark?"dark":"light";
-  document.body.classList.toggle("dark-mode",dark);
-  const btn=document.getElementById("themeToggleBtn");
-  if(btn){
-    btn.textContent=dark?"☀️":"🌙";
-    btn.setAttribute("aria-label",dark?"Switch to light mode":"Switch to dark mode");
-    btn.title=dark?"Light mode":"Dark mode";
-  }
-  const meta=document.querySelector('meta[name="theme-color"]');
-  if(meta)meta.setAttribute("content",dark?"#111827":"#f5f6f8");
-}
-function toggleTheme(){
-  const next=document.body.classList.contains("dark-mode")?"light":"dark";
-  try{localStorage.setItem(THEME_KEY,next)}catch(e){}
-  applyTheme(next);
-}
-(function initTheme(){
-  let saved="light";
-  try{saved=localStorage.getItem(THEME_KEY)||"light"}catch(e){}
-  applyTheme(saved);
-})();
-
-
-/* =====================================================
    WORKING GOOGLE APPS SCRIPT URL — KEEP UNCHANGED • UI REFINEMENT
 ===================================================== */
 const API_URL="https://iqxprkmainafqjodpfdk.supabase.co";
