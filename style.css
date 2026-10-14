@@ -1632,3 +1632,9 @@ body.dc-page-open{overflow:hidden}
 .spare-insights-view-btn:active{transform:scale(.98)}
 .spare-record-insights[hidden]{display:none!important}
 @media(max-width:440px){.spare-card-actions{gap:5px}.spare-insights-view-btn{padding:8px;font-size:10px}}
+
+/* Clickable intelligence metric cards */
+.spare-insight-metric{width:100%;font:inherit;text-align:left;cursor:pointer;appearance:none;color:inherit;transition:transform .15s,border-color .15s,box-shadow .15s}
+.spare-insight-metric:hover,.spare-insight-metric:focus-visible{border-color:#7ca9ed;box-shadow:0 4px 14px rgba(37,99,235,.12);outline:none;transform:translateY(-1px)}
+.spare-insight-metric em{font-style:normal;font-size:9px;font-weight:750;color:#2563eb;margin-top:2px}
+.spare-insight-focus{outline:2px solid #6b9ee8;outline-offset:2px;transition:outline-color .2s}
