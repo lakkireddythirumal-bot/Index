@@ -1183,7 +1183,6 @@ function refreshRMHistoryCard(){
   const fs=document.getElementById("rmHistoryFrom"),ts=document.getElementById("rmHistoryTo");
   if(fs)fs.innerHTML=historyRangeOptions(defaults.all,defaults.from);
   if(ts)ts.innerHTML=historyRangeOptions(defaults.all,defaults.to);
-  fs?.addEventListener("change",refreshRMHistoryTable);ts?.addEventListener("change",refreshRMHistoryTable);
   refreshRMHistoryTable();
 }
 function refreshRMHistoryTable(){
@@ -1213,7 +1212,7 @@ function renderFeedHistoryCard(){
 function refreshFeedHistoryCard(){
   const p=document.getElementById("feedHistoryProduct")?.value||"",dates=feedHistoryDates(p),defaults=historyRangeDefaults(dates),fs=document.getElementById("feedHistoryFrom"),ts=document.getElementById("feedHistoryTo");
   if(fs)fs.innerHTML=historyRangeOptions(defaults.all,defaults.from);if(ts)ts.innerHTML=historyRangeOptions(defaults.all,defaults.to);
-  fs?.addEventListener("change",refreshFeedHistoryTable);ts?.addEventListener("change",refreshFeedHistoryTable);refreshFeedHistoryTable();
+  refreshFeedHistoryTable();
 }
 function refreshFeedHistoryTable(){
   const p=document.getElementById("feedHistoryProduct")?.value||"",from=document.getElementById("feedHistoryFrom")?.value||"",to=document.getElementById("feedHistoryTo")?.value||"",el=document.getElementById("feedHistoryTable");if(!el)return;
@@ -1239,7 +1238,7 @@ function renderBagsHistoryCard(){
 function refreshBagsHistoryCard(){
   const p=document.getElementById("bagsHistoryProduct")?.value||"",dates=bagsHistoryDates(p),defaults=historyRangeDefaults(dates),fs=document.getElementById("bagsHistoryFrom"),ts=document.getElementById("bagsHistoryTo");
   if(fs)fs.innerHTML=historyRangeOptions(defaults.all,defaults.from);if(ts)ts.innerHTML=historyRangeOptions(defaults.all,defaults.to);
-  fs?.addEventListener("change",refreshBagsHistoryTable);ts?.addEventListener("change",refreshBagsHistoryTable);refreshBagsHistoryTable();
+  refreshBagsHistoryTable();
 }
 function refreshBagsHistoryTable(){
   const p=document.getElementById("bagsHistoryProduct")?.value||"",from=document.getElementById("bagsHistoryFrom")?.value||"",to=document.getElementById("bagsHistoryTo")?.value||"",el=document.getElementById("bagsHistoryTable");if(!el)return;
