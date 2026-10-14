@@ -1638,3 +1638,23 @@ body.dc-page-open{overflow:hidden}
 .spare-insight-metric:hover,.spare-insight-metric:focus-visible{border-color:#7ca9ed;box-shadow:0 4px 14px rgba(37,99,235,.12);outline:none;transform:translateY(-1px)}
 .spare-insight-metric em{font-style:normal;font-size:9px;font-weight:750;color:#2563eb;margin-top:2px}
 .spare-insight-focus{outline:2px solid #6b9ee8;outline-offset:2px;transition:outline-color .2s}
+
+
+/* Compact mobile header: keep action icons on their own row so the title
+   has full width and no longer collides with the controls. */
+@media (max-width:520px){
+  .container{padding:12px}
+  .header{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-bottom:10px}
+  .header-actions{order:-1;width:100%;justify-content:space-between;gap:5px}
+  .header-tool,.notify-btn,.plant{width:38px;height:38px;min-width:38px;flex:0 0 38px}
+  .header-tool{font-size:17px}
+  .notify-btn{font-size:20px}
+  .header>div:first-child{min-width:0}
+  .smart-greeting{font-size:10px;letter-spacing:1px}
+  .smart-title h1,.header h1{font-size:clamp(25px,7vw,30px);line-height:1.08;max-width:100%;overflow-wrap:normal}
+  .header p{font-size:12px;margin-top:5px}
+  .selected-date-chip{margin-top:4px}
+  .status-line{flex-wrap:wrap;row-gap:6px;font-size:10px;margin-bottom:9px}
+  #lastUpdated{max-width:calc(100% - 85px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .refresh{margin-left:auto;flex-shrink:0}
+}
