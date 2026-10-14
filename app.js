@@ -3207,11 +3207,44 @@ function reportHistoryData(kind,from,to){
   if(kind==='feed')return {title:'Feed Unit Product-wise History',headers:['Date','Product','Production','Dispatch','Closing'],rows:reportProductHistoryRows('feed',selected,from,to).map(r=>[r.Date,r.Product,r.Production??'',r.Dispatch??'',r.Closing??'']),selected};
   return {title:'PP Bags Product-wise History',headers:['Date','Product','Received','Issue','Damage','Closing'],rows:reportProductHistoryRows('bags',selected,from,to).map(r=>[r.Date,r.Product,r.Received??'',r.Issue??'',r.Damage??'',r.Closing??'']),selected};
 }
+/* =====================================================
+   REPORT LIBRARIES — LOAD ONLY WHEN A USER EXPORTS
+===================================================== */
+const REPORT_LIBRARY_URLS={
+  jspdf:"https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js",
+  autotable:"https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js",
+  xlsx:"https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
+};
+const REPORT_LIBRARY_PROMISES={};
+function loadReportScript(name){
+  const ready= name==="jspdf" ? !!(window.jspdf&&window.jspdf.jsPDF)
+    : name==="autotable" ? !!(window.jspdf&&window.jspdf.jsPDF&&window.jspdf.jsPDF.API&&window.jspdf.jsPDF.API.autoTable)
+    : !!(window.XLSX&&window.XLSX.utils);
+  if(ready)return Promise.resolve();
+  if(REPORT_LIBRARY_PROMISES[name])return REPORT_LIBRARY_PROMISES[name];
+  REPORT_LIBRARY_PROMISES[name]=new Promise((resolve,reject)=>{
+    const script=document.createElement("script");
+    script.src=REPORT_LIBRARY_URLS[name];
+    script.async=true;
+    script.onload=()=>resolve();
+    script.onerror=()=>{delete REPORT_LIBRARY_PROMISES[name];reject(new Error("Could not load "+name));};
+    document.head.appendChild(script);
+  });
+  return REPORT_LIBRARY_PROMISES[name];
+}
+function ensureReportLibraries(kind){
+  if(kind==="xlsx")return loadReportScript("xlsx");
+  return loadReportScript("jspdf").then(()=>loadReportScript("autotable"));
+}
+
 function generateHistoryReportPDF(kind){
   const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
   const sec=reportHistoryData(kind,from,to);if(!sec.rows.length){showToast('No history for selected range');return}
   const title=sec.title+' • '+sec.selected;
-  if(!(window.jspdf&&window.jspdf.jsPDF)){reportPdfFallback(title,[sec]);return;}
+  if(!(window.jspdf&&window.jspdf.jsPDF&&window.jspdf.jsPDF.API&&window.jspdf.jsPDF.API.autoTable)){
+    ensureReportLibraries('pdf').then(()=>generateHistoryReportPDF(kind)).catch(e=>{console.error(e);reportPdfFallback(title,[sec]);});
+    return;
+  }
   try{
     const {jsPDF}=window.jspdf,doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
     doc.setFontSize(16);doc.text(title,14,14);doc.setFontSize(9);doc.text('Period: '+from+' → '+to+'   Generated: '+new Date().toLocaleString('en-IN'),14,20);
@@ -3222,7 +3255,10 @@ function generateHistoryReportPDF(kind){
 function exportHistoryReportExcel(kind){
   const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
   const sec=reportHistoryData(kind,from,to);if(!sec.rows.length){showToast('No history for selected range');return}
-  if(!(window.XLSX&&window.XLSX.utils)){showToast('Excel engine not loaded');return}
+  if(!(window.XLSX&&window.XLSX.utils)){
+    ensureReportLibraries('xlsx').then(()=>exportHistoryReportExcel(kind)).catch(e=>{console.error(e);showToast('Could not load Excel engine');});
+    return;
+  }
   const wb=XLSX.utils.book_new(),aoa=[sec.headers,...sec.rows.map(r=>r.map(reportRound))],ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=sec.headers.map(h=>({wch:Math.max(12,Math.min(28,String(h).length+6))}));XLSX.utils.book_append_sheet(wb,ws,'History');
   XLSX.writeFile(wb,'Feed_Plant_'+reportSafeName(sec.title)+'_'+reportSafeName(sec.selected)+'_'+reportFileStamp()+'.xlsx');showToast('History Excel exported');
@@ -3335,7 +3371,10 @@ function generateReportPDF(section){
   const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
   const sections=section==='complete'?reportCompleteSections(from,to):[reportSectionData(section,from,to)];
   const title=section==='complete'?'Feed Plant Complete Management Report':'Feed Plant '+(sections[0]?.title||'Report');
-  if(!(window.jspdf&&window.jspdf.jsPDF)){reportPdfFallback(title,sections);return;}
+  if(!(window.jspdf&&window.jspdf.jsPDF&&window.jspdf.jsPDF.API&&window.jspdf.jsPDF.API.autoTable)){
+    ensureReportLibraries('pdf').then(()=>generateReportPDF(section)).catch(e=>{console.error(e);reportPdfFallback(title,sections);});
+    return;
+  }
   try{
     const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
     doc.setFontSize(16);doc.text(title,14,14);doc.setFontSize(9);doc.text('Period: '+from+' → '+to+'   Generated: '+new Date().toLocaleString('en-IN'),14,20);
@@ -3351,7 +3390,10 @@ function generateReportPDF(section){
 function exportReportExcel(section){
   const {from,to}=reportRange();if(!from||!to){showToast('No report dates available');return}
   const sections=section==='complete'?reportCompleteSections(from,to):[reportSectionData(section,from,to)];
-  if(!(window.XLSX&&window.XLSX.utils)){showToast('Excel engine not loaded — use PDF/CSV fallback');return}
+  if(!(window.XLSX&&window.XLSX.utils)){
+    ensureReportLibraries('xlsx').then(()=>exportReportExcel(section)).catch(e=>{console.error(e);showToast('Could not load Excel engine');});
+    return;
+  }
   const wb=XLSX.utils.book_new();
   sections.forEach((sec,i)=>{const aoa=[sec.headers,...sec.rows.map(r=>r.map(reportRound))];const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=sec.headers.map(h=>({wch:Math.max(12,Math.min(28,String(h).length+5))}));XLSX.utils.book_append_sheet(wb,ws,clean(sec.title).slice(0,31)||('Report'+(i+1)));});
   XLSX.writeFile(wb,'Feed_Plant_'+reportSafeName(section==='complete'?'Complete_Report':sections[0].title)+'_'+reportFileStamp()+'.xlsx');showToast('Excel exported');
