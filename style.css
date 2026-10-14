@@ -1905,3 +1905,131 @@ body.dark-mode .text-bad{color:#fca5a5!important}
 body.dark-mode .warn,body.dark-mode .warning,body.dark-mode .has-warning{color:#fcd34d!important}
 body.dark-mode .good,body.dark-mode .success,body.dark-mode .dac-good{color:#86efac!important}
 body.dark-mode .info{color:#93c5fd!important}
+
+
+/* Final dark-mode override layer: neutralize remaining hard-coded light surfaces. */
+body.dark-mode [class*="card"],
+body.dark-mode [class*="panel"],
+body.dark-mode [class*="section"],
+body.dark-mode [class*="dialog"],
+body.dark-mode [class*="modal"],
+body.dark-mode [class*="preview"],
+body.dark-mode [class*="toolbar"],
+body.dark-mode [class*="filter"],
+body.dark-mode [class*="summary"],
+body.dark-mode [class*="detail"],
+body.dark-mode [class*="insight"],
+body.dark-mode [class*="report"],
+body.dark-mode [class*="history"],
+body.dark-mode [class*="control"],
+body.dark-mode [class*="table-wrap"],
+body.dark-mode [class*="search-result"],
+body.dark-mode [class*="attention-"],
+body.dark-mode [class*="trend-"]{
+  border-color:#334155;
+}
+body.dark-mode .alert,
+body.dark-mode .action-row,
+body.dark-mode .trend-card,
+body.dark-mode .detail-section,
+body.dark-mode .transaction-value,
+body.dark-mode .section-tabs button,
+body.dark-mode .action-badge,
+body.dark-mode .report-preview-meta,
+body.dark-mode .report-preview-table-wrap,
+body.dark-mode .report-view-panel,
+body.dark-mode .report-view-controls,
+body.dark-mode .report-range-bar,
+body.dark-mode .report-reset-btn,
+body.dark-mode .report-view-btn,
+body.dark-mode .report-history-filter select,
+body.dark-mode .dc-page>#dataControlContent,
+body.dark-mode .dc-stat-card,
+body.dark-mode .dc-stats button,
+body.dark-mode .dc-toolbar input,
+body.dark-mode .dc-search-wrap,
+body.dark-mode .dc-section-head,
+body.dark-mode .dc-review-dialog,
+body.dark-mode .dc-report-dialog,
+body.dark-mode .dc-report-summary,
+body.dark-mode .dc-report-section,
+body.dark-mode .dc-report-action,
+body.dark-mode .dc-review-item,
+body.dark-mode .dc-review-empty,
+body.dark-mode .dc-dialog-close,
+body.dark-mode .plant-ai-action,
+body.dark-mode .plant-ai-suggestions button,
+body.dark-mode .plant-ai-data,
+body.dark-mode .plant-ai-data pre,
+body.dark-mode .error-box,
+body.dark-mode .reconcile-warn,
+body.dark-mode .attention-overview-stats>div,
+body.dark-mode .attention-overview-row.warning,
+body.dark-mode .attention-item.critical,
+body.dark-mode .attention-icon,
+body.dark-mode .attention-pill,
+body.dark-mode .attention-pill.warn,
+body.dark-mode .status-symbol.bad,
+body.dark-mode .pp-status.damage,
+body.dark-mode .health-strip,
+body.dark-mode .mix-panel,
+body.dark-mode .mix-month-select,
+body.dark-mode .more-toggle,
+body.dark-mode .dc-clear-btn,
+body.dark-mode .dc-report-btn,
+body.dark-mode .dc-toggle-btn.unhide{
+  background:#172235!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+}
+body.dark-mode .alert{background:#2a2518!important}
+body.dark-mode .error-box{background:#321f27!important;color:#fecaca!important}
+body.dark-mode .reconcile-warn{background:#302819!important;color:#fcd34d!important}
+body.dark-mode .attention-item.critical,
+body.dark-mode .attention-icon,
+body.dark-mode .action-badge{background:#321f27!important;color:#fecaca!important}
+body.dark-mode .attention-pill.warn,
+body.dark-mode .pp-status.damage{background:#302819!important;color:#fcd34d!important}
+body.dark-mode .section-tabs button:not(.active){background:#1e293b!important;color:#cbd5e1!important}
+body.dark-mode .section-tabs button.active,
+body.dark-mode .report-view-btn.active{background:#263b62!important;color:#dbeafe!important}
+body.dark-mode .report-view-btn,
+body.dark-mode .report-reset-btn,
+body.dark-mode .dc-report-btn,
+body.dark-mode .dc-review-btn,
+body.dark-mode .dc-refresh-btn,
+body.dark-mode .dc-report-action,
+body.dark-mode .dc-page-actions button,
+body.dark-mode .dc-actions button,
+body.dark-mode .control-actions button,
+body.dark-mode .more-toggle{background:#1e293b!important;color:#dbeafe!important;border-color:#475569!important}
+body.dark-mode .modal-box,
+body.dark-mode .modal-head,
+body.dark-mode .modal-overlay .modal-box,
+body.dark-mode .dc-page>#dataControlContent,
+body.dark-mode .dc-review-dialog,
+body.dark-mode .dc-report-dialog{background:#111c2d!important;color:#e5e7eb!important}
+body.dark-mode .modal-head{border-bottom-color:#334155!important}
+body.dark-mode .dc-section-head,
+body.dark-mode .dc-overview-head,
+body.dark-mode .dc-report-head,
+body.dark-mode .dc-review-dialog-head{background:#1e293b!important;color:#f1f5f9!important}
+body.dark-mode .report-preview-table-wrap th,
+body.dark-mode .history-table th,
+body.dark-mode .dc-report-table th,
+body.dark-mode .dac-table th{background:#26364d!important;color:#f1f5f9!important}
+body.dark-mode .report-preview-table-wrap td,
+body.dark-mode .history-table td,
+body.dark-mode .dc-report-table td,
+body.dark-mode .dac-table td{background:#111c2d!important;color:#dbe4f0!important;border-color:#334155!important}
+body.dark-mode .quick p,
+body.dark-mode .trend-data-note,
+body.dark-mode .dc-muted,
+body.dark-mode .dac-muted{color:#aebbd0!important}
+body.dark-mode .text-bad,
+body.dark-mode .critical{color:#fca5a5!important}
+body.dark-mode .good,
+body.dark-mode .success{color:#86efac!important}
+body.dark-mode .warning,
+body.dark-mode .warn{color:#fcd34d!important}
+body.dark-mode .info{color:#93c5fd!important}
