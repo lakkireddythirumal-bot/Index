@@ -2945,12 +2945,22 @@ function renderSpareRecordInsights(maintenance,orders){
   const pending=orders.filter(r=>/pending|ordered|confirmed|partially received/i.test(String(r.status||''))).length;
   const recentM=[...maintenance].sort((a,b)=>insightDate(b,'maintenance').localeCompare(insightDate(a,'maintenance'))).slice(0,4);
   const recentO=[...orders].sort((a,b)=>insightDate(b,'order').localeCompare(insightDate(a,'order'))).slice(0,4);
-  const metric=(label,value,sub)=>'<div class="spare-insight-metric"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong><small>'+esc(sub)+'</small></div>';
+  const metric=(label,value,sub,target)=>'<button type="button" class="spare-insight-metric" aria-label="View '+esc(label)+' details" onclick="focusSpareInsight(\''+target+'\')"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong><small>'+esc(sub)+'</small><em>Tap to view details ↗</em></button>';
   const repeatHtml=repeats.length?repeats.map(x=>'<div class="spare-insight-row"><div><strong>'+esc(x.machine||'Unknown machine')+'</strong><small>'+esc(x.description)+'</small></div><span class="spare-insight-count">'+x.count+'×</span></div>').join(''):'<div class="spare-insight-empty">No exact repeated maintenance descriptions detected in the loaded records.</div>';
   const orderHtml=recentO.length?recentO.map(r=>'<div class="spare-insight-row"><div><strong>'+esc(insightOrderLabel(r))+'</strong><small>'+esc([r.quantity?'Qty '+r.quantity:'',r.vendor||'',insightDate(r,'order')].filter(Boolean).join(' · '))+'</small></div><span class="spare-insight-status">'+esc(r.status||'Status not set')+'</span></div>').join(''):'<div class="spare-insight-empty">No saved spare-parts orders found.</div>';
   const maintenanceHtml=recentM.length?recentM.map(r=>'<div class="spare-insight-row"><div><strong>'+esc(r.machine||'Machine not set')+'</strong><small>'+esc(r.work_description||'')+'</small></div><span class="spare-insight-status">'+esc(insightDate(r,'maintenance'))+'</span></div>').join(''):'<div class="spare-insight-empty">No saved maintenance records found.</div>';
-  host.innerHTML='<div class="spare-insight-metrics">'+metric('Maintenance records',maintenance.length,'Saved history')+metric('Machines recorded',machineNames.size,'Distinct machine names')+metric('Spare orders',orders.length,'Saved order items')+metric('Repeat patterns',repeats.length,'Exact description matches')+'</div>'+
-    '<div class="spare-insight-columns"><div class="spare-insight-block"><h3>🔁 Repeated maintenance</h3>'+repeatHtml+'</div><div class="spare-insight-block"><h3>📦 Recent spare orders</h3>'+orderHtml+'</div><div class="spare-insight-block"><h3>🛠 Recent maintenance</h3>'+maintenanceHtml+'</div><div class="spare-insight-block"><h3>📍 Order status summary</h3><div class="spare-insight-statuses">'+(Object.keys(statusMap).length?Object.entries(statusMap).map(([s,n])=>'<span>'+esc(s)+': <strong>'+n+'</strong></span>').join(''):'<span>No order statuses recorded</span>')+'</div><small class="spare-insight-foot">Status counts reflect saved records; verify order status in Records when needed.</small></div></div>';
+  host.innerHTML='<div class="spare-insight-metrics">'+metric('Maintenance records',maintenance.length,'Saved history','recent-maintenance')+metric('Machines recorded',machineNames.size,'Distinct machine names','recent-maintenance')+metric('Spare orders',orders.length,'Saved order items','recent-orders')+metric('Repeat patterns',repeats.length,'Exact description matches','repeat-maintenance')+'</div>'+
+    '<div class="spare-insight-columns"><div class="spare-insight-block" id="spareInsight-repeat-maintenance"><h3>🔁 Repeated maintenance</h3>'+repeatHtml+'</div><div class="spare-insight-block" id="spareInsight-recent-orders"><h3>📦 Recent spare orders</h3>'+orderHtml+'</div><div class="spare-insight-block" id="spareInsight-recent-maintenance"><h3>🛠 Recent maintenance</h3>'+maintenanceHtml+'</div><div class="spare-insight-block" id="spareInsight-order-status"><h3>📍 Order status summary</h3><div class="spare-insight-statuses">'+(Object.keys(statusMap).length?Object.entries(statusMap).map(([s,n])=>'<span>'+esc(s)+': <strong>'+n+'</strong></span>').join(''):'<span>No order statuses recorded</span>')+'</div><small class="spare-insight-foot">Status counts reflect saved records; verify order status in Records when needed.</small></div></div>';
+}
+function focusSpareInsight(section){
+  const ids={'repeat-maintenance':'spareInsight-repeat-maintenance','recent-orders':'spareInsight-recent-orders','recent-maintenance':'spareInsight-recent-maintenance','order-status':'spareInsight-order-status'};
+  const target=document.getElementById(ids[section]||'');
+  if(!target)return;
+  target.scrollIntoView({behavior:'smooth',block:'center'});
+  target.classList.remove('spare-insight-focus');
+  void target.offsetWidth;
+  target.classList.add('spare-insight-focus');
+  window.setTimeout(()=>target.classList.remove('spare-insight-focus'),1600);
 }
 function toggleSpareRecordInsights(){
   const panel=document.getElementById('spareRecordInsights');
