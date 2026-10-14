@@ -1709,3 +1709,199 @@ body.dark-mode .date-state{color:#a9c3ff!important}
 body.dark-mode .empty{color:#aeb8c7}
 body.dark-mode .modal-overlay{background:rgba(0,0,0,.72)}
 body.dark-mode .more-toggle,body.dark-mode button:not(.header-tool):not(.notify-btn):not(.refresh){border-color:#374151}
+
+
+/* ===== Dark mode coverage pass: dashboard, overlays, reports and controls ===== */
+body.dark-mode{
+  background:#0b1120!important;
+  color:#e5e7eb!important;
+  color-scheme:dark;
+}
+body.dark-mode .card,
+body.dark-mode .attention-card,
+body.dark-mode .trend-card,
+body.dark-mode .trend-summary-card,
+body.dark-mode .report-main-card,
+body.dark-mode .report-preview-card,
+body.dark-mode .reorder-card,
+body.dark-mode .data-accuracy-card,
+body.dark-mode .mix-panel,
+body.dark-mode .control-card,
+body.dark-mode .spare-record-insights,
+body.dark-mode .spare-insight-block,
+body.dark-mode .dc-page,
+body.dark-mode .dc-review-dialog,
+body.dark-mode .dc-report-dialog,
+body.dark-mode .modal-box,
+body.dark-mode .modal-head,
+body.dark-mode .modal-header,
+body.dark-mode .modal-content,
+body.dark-mode .plant-ai-hero,
+body.dark-mode .plant-ai-answer,
+body.dark-mode .plant-ai-thinking,
+body.dark-mode .search-result,
+body.dark-mode .detail-section,
+body.dark-mode .compare-box,
+body.dark-mode .compare-summary,
+body.dark-mode .compare-grid>div,
+body.dark-mode .quick-context,
+body.dark-mode .intel-item,
+body.dark-mode .intel-action,
+body.dark-mode .status-tile,
+body.dark-mode .dc-item,
+body.dark-mode .dc-item-v2,
+body.dark-mode .dc-record,
+body.dark-mode .dc-stat-card,
+body.dark-mode .dc-report-section,
+body.dark-mode .dc-report-summary,
+body.dark-mode .dc-report-kv,
+body.dark-mode .dc-review-item,
+body.dark-mode .dc-review-empty,
+body.dark-mode .trend-alert-item,
+body.dark-mode .attention-overview-row,
+body.dark-mode .attention-summary-row,
+body.dark-mode .attention-item,
+body.dark-mode .dac-check-row,
+body.dark-mode .dac-stat,
+body.dark-mode .spare-insight-row,
+body.dark-mode .spare-insight-metric,
+body.dark-mode .reorder-card-metrics,
+body.dark-mode .report-view-panel,
+body.dark-mode .report-view-panel-head,
+body.dark-mode .report-range-bar,
+body.dark-mode .report-view-controls,
+body.dark-mode .history-filter,
+body.dark-mode .report-history-filter,
+body.dark-mode .trend-filters,
+body.dark-mode .trend-toolbar,
+body.dark-mode .trend-period-control,
+body.dark-mode .trend-custom-dates,
+body.dark-mode .section-tabs,
+body.dark-mode .monthly-mix-tab,
+body.dark-mode .dc-toolbar,
+body.dark-mode .dc-filter-line,
+body.dark-mode .dc-search-wrap,
+body.dark-mode .plant-ai-ask,
+body.dark-mode .plant-ai-data,
+body.dark-mode .plant-ai-suggestions,
+body.dark-mode .note-input,
+body.dark-mode .search-input{
+  background-color:#172235!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+}
+body.dark-mode .header-tool,
+body.dark-mode .notify-btn,
+body.dark-mode .plant,
+body.dark-mode .refresh,
+body.dark-mode .date-strip button,
+body.dark-mode .date-strip-main,
+body.dark-mode .quick,
+body.dark-mode .control-item,
+body.dark-mode .mini,
+body.dark-mode .mini-grid>div,
+body.dark-mode .search-box,
+body.dark-mode input,
+body.dark-mode select,
+body.dark-mode textarea,
+body.dark-mode .mix-month-select,
+body.dark-mode .history-filter select,
+body.dark-mode .report-history-filter select,
+body.dark-mode .trend-filters select,
+body.dark-mode .trend-filters input,
+body.dark-mode .trend-custom-dates input,
+body.dark-mode .plant-ai-ask input,
+body.dark-mode .search-input{
+  background-color:#1e293b!important;
+  color:#f1f5f9!important;
+  border-color:#475569!important;
+}
+body.dark-mode input::placeholder,
+body.dark-mode textarea::placeholder{color:#94a3b8!important;opacity:1}
+body.dark-mode h1,body.dark-mode h2,body.dark-mode h3,body.dark-mode h4,
+body.dark-mode h5,body.dark-mode strong,body.dark-mode label,
+body.dark-mode .row-name,body.dark-mode .card-title h2,
+body.dark-mode .date-strip-main strong,body.dark-mode .dc-page-head,
+body.dark-mode .dc-section-head,body.dark-mode .trend-header,
+body.dark-mode .report-card-head,body.dark-mode .history-card-head,
+body.dark-mode .plant-ai-hero h3,body.dark-mode .plant-ai-finding strong,
+body.dark-mode .attention-summary-text strong,
+body.dark-mode .attention-overview-row strong{color:#f8fafc!important}
+body.dark-mode p,body.dark-mode small,body.dark-mode .header p,
+body.dark-mode .smart-greeting,body.dark-mode .status-line,
+body.dark-mode .date-strip-main small,body.dark-mode .card-title span,
+body.dark-mode .attention-meta,body.dark-mode .prod-meta,
+body.dark-mode .muted,body.dark-mode .dac-muted,
+body.dark-mode .dc-page-kicker,body.dark-mode .dc-kicker,
+body.dark-mode .trend-data-note,body.dark-mode .trend-chart-foot,
+body.dark-mode .report-preview-meta,body.dark-mode .section-context,
+body.dark-mode .small-note,body.dark-mode .monthly-mix-note,
+body.dark-mode .spare-insight-foot,body.dark-mode .reorder-subtitle,
+body.dark-mode .plant-ai-meta,body.dark-mode .plant-ai-note,
+body.dark-mode .loading-state,body.dark-mode .empty{color:#aebbd0!important}
+body.dark-mode .feed-row,body.dark-mode .stock-row,body.dark-mode .production-row,
+body.dark-mode .raw-movement-row,body.dark-mode .premix-row,
+body.dark-mode .pp-item,body.dark-mode .spare-stock-row,
+body.dark-mode .detail-row,body.dark-mode .attention-summary-row,
+body.dark-mode .attention-overview-row,body.dark-mode .attention-item,
+body.dark-mode .attention-summary-list>div,body.dark-mode .trend-alert-item,
+body.dark-mode .dc-record,body.dark-mode .dc-item,body.dark-mode .dc-item-v2,
+body.dark-mode .dc-review-item,body.dark-mode .dac-check-row,
+body.dark-mode .spare-insight-row,body.dark-mode .mix-detail-row{
+  background-color:#172235!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+}
+body.dark-mode .raw-movement-group-title,
+body.dark-mode .premix-section-title,
+body.dark-mode .attention-head,
+body.dark-mode .card-title,
+body.dark-mode .trend-header,
+body.dark-mode .report-card-head,
+body.dark-mode .dc-page-head,
+body.dark-mode .dc-section-head,
+body.dark-mode .dc-overview-head,
+body.dark-mode .dc-report-head,
+body.dark-mode .dc-review-dialog-head{border-color:#334155!important}
+body.dark-mode table,body.dark-mode .table-wrap,
+body.dark-mode .history-table,body.dark-mode .dac-table,
+body.dark-mode .dc-report-table,body.dark-mode .report-preview-table-wrap{
+  background:#111c2d!important;color:#e5e7eb!important;border-color:#334155!important
+}
+body.dark-mode th{background:#26364d!important;color:#f1f5f9!important}
+body.dark-mode td{background:transparent!important;color:#dbe4f0!important;border-color:#334155!important}
+body.dark-mode tr:nth-child(even){background:#172235!important}
+body.dark-mode .bottom-nav{background:rgba(11,17,32,.98)!important;border-color:#334155!important}
+body.dark-mode .nav-item{color:#aebbd0!important}
+body.dark-mode .nav-item.active{background:#263b62!important;color:#a9c3ff!important}
+body.dark-mode .selected-date-chip{background:#263b62!important;color:#c2d4ff!important}
+body.dark-mode .date-state{color:#c2d4ff!important}
+body.dark-mode .modal-overlay,
+body.dark-mode .dc-review-overlay,
+body.dark-mode .dc-report-overlay{background:rgba(0,0,0,.78)!important}
+body.dark-mode .modal-box,body.dark-mode .modal-content,
+body.dark-mode .dc-review-dialog,body.dark-mode .dc-report-dialog{
+  box-shadow:0 20px 65px rgba(0,0,0,.5)!important
+}
+body.dark-mode button,body.dark-mode .more-toggle,
+body.dark-mode .report-view-btn,body.dark-mode .report-reset-btn,
+body.dark-mode .dc-report-btn,body.dark-mode .dc-review-btn,
+body.dark-mode .dc-refresh-btn,body.dark-mode .dc-clear-btn,
+body.dark-mode .dc-toggle-btn,body.dark-mode .dc-dialog-close,
+body.dark-mode .dc-page-actions button,body.dark-mode .dc-actions button{
+  border-color:#475569;
+}
+body.dark-mode .trend-chart-foot,
+body.dark-mode .plant-ai-data pre,
+body.dark-mode pre,body.dark-mode code{background:#0b1220!important;color:#dbeafe!important}
+body.dark-mode .quick-kpi,body.dark-mode .mix-row,
+body.dark-mode .mix-panel-head,body.dark-mode .mix-detail-fill,
+body.dark-mode .feed-closing-strip,body.dark-mode .health-strip{
+  border-color:#334155!important
+}
+body.dark-mode .health-strip{background:#123126!important;color:#a7f3d0!important}
+body.dark-mode .bad,body.dark-mode .danger,body.dark-mode .critical,
+body.dark-mode .text-bad{color:#fca5a5!important}
+body.dark-mode .warn,body.dark-mode .warning,body.dark-mode .has-warning{color:#fcd34d!important}
+body.dark-mode .good,body.dark-mode .success,body.dark-mode .dac-good{color:#86efac!important}
+body.dark-mode .info{color:#93c5fd!important}
