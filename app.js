@@ -2094,10 +2094,12 @@ function selectedBags(){
   return PERF_CACHE.bags;
 }
 function selectedFeedRows(){
+  if(PERF_CACHE.feedRows)return PERF_CACHE.feedRows;
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
   const d=effectiveViewDate();
   const dateRows=d?rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
-  return dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  PERF_CACHE.feedRows=dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  return PERF_CACHE.feedRows;
 }
 function latestFeedRows(){
   if(PERF_CACHE.latestFeed)return PERF_CACHE.latestFeed;
