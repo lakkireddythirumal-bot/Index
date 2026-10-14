@@ -1191,9 +1191,11 @@ function refreshRMHistoryTable(){
   if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
   const unit=materialUnit(m,getMaterial(m)?.unit||"MT");
   const rows=rmHistoryTransactions(m).filter(t=>inHistoryRange(dateOnly(rowDate(t)),from,to));
-  const dates=[...new Set(rows.map(t=>dateOnly(rowDate(t))).filter(Boolean))].sort();
+  const byDate=new Map();
+  rows.forEach(t=>{const d=dateOnly(rowDate(t));if(!d)return;if(!byDate.has(d))byDate.set(d,[]);byDate.get(d).push(t)});
+  const dates=[...byDate.keys()].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
-  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Consumption</th><th>Transfer</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const day=rows.filter(t=>dateOnly(rowDate(t))===d);const received=rmHistoryValue(day,"received"),consumption=rmHistoryValue(day,"consumption"),transfer=rmHistoryValue(day,"transfer"),closing=rmHistoryClosing(day);return `<tr><td>${esc(d)}</td><td>${fmt(received)} ${esc(unit)}</td><td>${fmt(consumption)} ${esc(unit)}</td><td>${fmt(transfer)} ${esc(unit)}</td><td>${closing===null?"--":fmt(closing)+" "+esc(unit)}</td></tr>`}).join("")}</tbody></table></div>`;
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Consumption</th><th>Transfer</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const day=byDate.get(d);const received=rmHistoryValue(day,"received"),consumption=rmHistoryValue(day,"consumption"),transfer=rmHistoryValue(day,"transfer"),closing=rmHistoryClosing(day);return `<tr><td>${esc(d)}</td><td>${fmt(received)} ${esc(unit)}</td><td>${fmt(consumption)} ${esc(unit)}</td><td>${fmt(transfer)} ${esc(unit)}</td><td>${closing===null?"--":fmt(closing)+" "+esc(unit)}</td></tr>`}).join("")}</tbody></table></div>`;
 }
 function feedHistoryProducts(){
   const set=new Map();
@@ -1217,9 +1219,11 @@ function refreshFeedHistoryCard(){
 function refreshFeedHistoryTable(){
   const p=document.getElementById("feedHistoryProduct")?.value||"",from=document.getElementById("feedHistoryFrom")?.value||"",to=document.getElementById("feedHistoryTo")?.value||"",el=document.getElementById("feedHistoryTable");if(!el)return;
   if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
-  const rows=feedHistoryRows(p),dates=[...new Set(rows.map(r=>dateOnly(r.Report_Date||r.report_date||r.date)).filter(d=>inHistoryRange(d,from,to)))].sort();
+  const rows=feedHistoryRows(p),byDate=new Map();
+  rows.forEach(r=>{const d=dateOnly(r.Report_Date||r.report_date||r.date);if(!inHistoryRange(d,from,to))return;if(!byDate.has(d))byDate.set(d,[]);byDate.get(d).push(r)});
+  const dates=[...byDate.keys()].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
-  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Production</th><th>Dispatch</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date)===d);const r=rr[rr.length-1];const prod=feedHistoryValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]),disp=feedHistoryValue(r,["Dispatch_Day_MT","dispatch_day_mt","Dispatch_Day","dispatch_day","Dispatch","dispatch"]),close=feedHistoryValue(r,["Closing_Day_MT","closing_day_mt","Closing_Day","closing_day","Closing","closing"]);return `<tr><td>${esc(d)}</td><td>${prod===null?"--":fmtFeed(prod,p)}</td><td>${disp===null?"--":fmtFeed(disp,p)}</td><td>${close===null?"--":fmtFeed(close,p)}</td></tr>`}).join("")}</tbody></table></div>`;
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Production</th><th>Dispatch</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=byDate.get(d),r=rr[rr.length-1];const prod=feedHistoryValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]),disp=feedHistoryValue(r,["Dispatch_Day_MT","dispatch_day_mt","Dispatch_Day","dispatch_day","Dispatch","dispatch"]),close=feedHistoryValue(r,["Closing_Day_MT","closing_day_mt","Closing_Day","closing_day","Closing","closing"]);return `<tr><td>${esc(d)}</td><td>${prod===null?"--":fmtFeed(prod,p)}</td><td>${disp===null?"--":fmtFeed(disp,p)}</td><td>${close===null?"--":fmtFeed(close,p)}</td></tr>`}).join("")}</tbody></table></div>`;
 }
 function bagsHistoryProducts(){
   const set=new Map();
@@ -1243,11 +1247,12 @@ function refreshBagsHistoryCard(){
 function refreshBagsHistoryTable(){
   const p=document.getElementById("bagsHistoryProduct")?.value||"",from=document.getElementById("bagsHistoryFrom")?.value||"",to=document.getElementById("bagsHistoryTo")?.value||"",el=document.getElementById("bagsHistoryTable");if(!el)return;
   if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
-  const rows=bagsHistoryRows(p),dates=[...new Set(rows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)).filter(d=>inHistoryRange(d,from,to)))].sort();
+  const rows=bagsHistoryRows(p),byDate=new Map();
+  rows.forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!inHistoryRange(d,from,to))return;if(!byDate.has(d))byDate.set(d,[]);byDate.get(d).push(r)});
+  const dates=[...byDate.keys()].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
-  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Issue</th><th>Damage</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=rows.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE)===d),r=rr[rr.length-1],v=k=>num(r[k]);return `<tr><td>${esc(d)}</td><td>${v("received")===null?"--":fmt(v("received"))}</td><td>${v("issue")===null?"--":fmt(v("issue"))}</td><td>${v("damage")===null?"--":fmt(v("damage"))}</td><td>${v("closing")===null?"--":fmt(v("closing"))}</td></tr>`}).join("")}</tbody></table></div>`;
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Issue</th><th>Damage</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=byDate.get(d),r=rr[rr.length-1],v=k=>num(r[k]);return `<tr><td>${esc(d)}</td><td>${v("received")===null?"--":fmt(v("received"))}</td><td>${v("issue")===null?"--":fmt(v("issue"))}</td><td>${v("damage")===null?"--":fmt(v("damage"))}</td><td>${v("closing")===null?"--":fmt(v("closing"))}</td></tr>`}).join("")}</tbody></table></div>`;
 }
-
 
 
 /* =====================================================
