@@ -9,7 +9,7 @@
 <link rel="manifest" href="./manifest.json">
 <title>Manager Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261014-dark-mode3" fetchpriority="high">
+  <link rel="stylesheet" href="style.css?v=20261014-no-dark-mode1" fetchpriority="high">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3"></script>
 </head>
 <body>
@@ -21,7 +21,6 @@
       <button class="header-tool" onclick="openDataControlPage()" aria-label="Data settings">⚙️</button>
       <button class="header-tool plant-ai-btn" onclick="openPlantAI()" aria-label="Plant AI">🤖</button>
       <a class="header-tool" href="./records.html" aria-label="Maintenance, orders and notes" title="Maintenance • Orders • Notes" style="display:flex;align-items:center;justify-content:center;text-decoration:none">🗂️</a>
-      <button class="header-tool" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Switch to dark mode" title="Dark mode">🌙</button>
       <button class="header-tool" onclick="openDateSelector()" aria-label="Date selector">📅</button>
       <button class="notify-btn" onclick="openNotifications()" aria-label="Notifications">🔔<span id="notifyBadge" class="notify-badge hidden">0</span></button>
       <div class="plant">🏭</div>
