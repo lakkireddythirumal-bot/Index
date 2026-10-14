@@ -381,17 +381,23 @@ function renderPremixTransfers(){
 function rawTotal(material,tab){
   if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
   const selectedDay=effectiveViewDate();
-  return transactions(material).filter(t=>{
-    if(selectedDay && dateOnly(rowDate(t))!==selectedDay)return false;
+  const cacheKey=[normalize(material),tab,selectedDay||"ALL"].join("|");
+  if(PERF_CACHE.rawTotals.has(cacheKey))return PERF_CACHE.rawTotals.get(cacheKey);
+  const total=transactions(material).reduce((sum,t)=>{
+    if(selectedDay && dateOnly(rowDate(t))!==selectedDay)return sum;
     const ty=tType(t);
-    if(tab==="CONSUMPTION")return ty.includes("CONSUMPTION") || ty.includes("CONSUMPION");
-    if(tab==="PURCHASE")return ty==="PURCHASE" || ty==="RECEIVED";
-    if(tab==="TRANSFER")return ty==="TRANSFER" || ty.includes("TRANSFER FROM") || ty.includes("TRANSFER TO");
-    if(tab==="GAIN")return ty==="GAIN";
-    if(tab==="SHORTAGE")return ty.includes("SHORTAGE");
-    if(tab==="SALE")return ty.includes("SALE");
-    return ty===tab;
-  }).reduce((a,t)=>a+tVal(t),0);
+    let matches=false;
+    if(tab==="CONSUMPTION")matches=ty.includes("CONSUMPTION") || ty.includes("CONSUMPION");
+    else if(tab==="PURCHASE")matches=ty==="PURCHASE" || ty==="RECEIVED";
+    else if(tab==="TRANSFER")matches=ty==="TRANSFER" || ty.includes("TRANSFER FROM") || ty.includes("TRANSFER TO");
+    else if(tab==="GAIN")matches=ty==="GAIN";
+    else if(tab==="SHORTAGE")matches=ty.includes("SHORTAGE");
+    else if(tab==="SALE")matches=ty.includes("SALE");
+    else matches=ty===tab;
+    return matches?sum+tVal(t):sum;
+  },0);
+  PERF_CACHE.rawTotals.set(cacheKey,total);
+  return total;
 }
 function fmtBags(v){return v===null||v===undefined||v===""?"--":fmt(v)+" Bags"}
 function esc(v){return clean(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;")}
@@ -2002,7 +2008,7 @@ function effectiveViewDate(){
 const PERF_CACHE={
   viewStock:null, historyStock:new Map(), materials:null, materialMap:null,
   transactions:new Map(), production:null, bags:null, feedRows:null, latestFeed:null,
-  avgConsumption:new Map(), availableDates:null
+  avgConsumption:new Map(), availableDates:null, rawTotals:new Map()
 };
 function invalidatePerfCache(){
   PERF_CACHE.viewStock=null;
@@ -2016,6 +2022,7 @@ function invalidatePerfCache(){
   PERF_CACHE.latestFeed=null;
   PERF_CACHE.avgConsumption.clear();
   PERF_CACHE.availableDates=null;
+  PERF_CACHE.rawTotals.clear();
 }
 function historyStockRowsForDate(date){
   const d=dateOnly(date);
