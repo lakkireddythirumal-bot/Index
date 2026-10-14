@@ -936,26 +936,32 @@ function monthlyRMConsumption(m){
   return result;
 }
 function monthlyFeedMix(m,key){
+  const cacheKey=[m,key].join("|");
+  if(PERF_CACHE.monthlyFeed.has(cacheKey))return PERF_CACHE.monthlyFeed.get(cacheKey);
   const rows=(DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m);
-  const latest={};
+  const latest=new Map(), byProduct=new Map();
   rows.forEach((r,i)=>{
     const p=clean(r.Product||r.product); if(!p)return;
-    const d=dateOnly(r.report_date||r.Report_Date)||"";
     const k=normalize(p);
-    if(!latest[k] || d>=latest[k].__mixDate)latest[k]={...r,__mixDate:d,__mixIndex:i};
-    else if(d===latest[k].__mixDate)latest[k].__mixIndex=i;
+    const d=dateOnly(r.report_date||r.Report_Date)||"";
+    const current=latest.get(k);
+    if(!current || d>=current.__mixDate)latest.set(k,{...r,__mixDate:d,__mixIndex:i});
+    if(!byProduct.has(k))byProduct.set(k,[]);
+    byProduct.get(k).push(r);
   });
   const result=[];
-  Object.values(latest).forEach(r=>{
+  latest.forEach(r=>{
     const p=r.Product||r.product||"";
     let value=feedField(r,key);
     if(value===null){
-      value=rows.filter(x=>normalize(x.Product||x.product)===normalize(p)).reduce((a,x)=>a+(key.includes("Production")?(num(x.Production_Day_MT??x.production_day_mt??x.Production??x.production)||0):(num(x.Dispatch_Day_MT??x.dispatch_day_mt??x.Dispatch??x.dispatch)||0)),0);
+      value=(byProduct.get(normalize(p))||[]).reduce((a,x)=>a+(key.includes("Production")?(num(x.Production_Day_MT??x.production_day_mt??x.Production??x.production)||0):(num(x.Dispatch_Day_MT??x.dispatch_day_mt??x.Dispatch??x.dispatch)||0)),0);
     }
     value=feedValueInMT(value,p);
     if(value>0)result.push({name:p,value});
   });
-  return result.sort((a,b)=>b.value-a.value);
+  result.sort((a,b)=>b.value-a.value);
+  PERF_CACHE.monthlyFeed.set(cacheKey,result);
+  return result;
 }
 function mixTop5(rows){
   const top=rows.slice(0,5),others=rows.slice(5).reduce((a,r)=>a+r.value,0);
@@ -2010,7 +2016,7 @@ function effectiveViewDate(){
 const PERF_CACHE={
   viewStock:null, historyStock:new Map(), materials:null, materialMap:null,
   transactions:new Map(), production:null, bags:null, feedRows:null, latestFeed:null,
-  avgConsumption:new Map(), availableDates:null, rawTotals:new Map(), monthlyRM:new Map()
+  avgConsumption:new Map(), availableDates:null, rawTotals:new Map(), monthlyRM:new Map(), monthlyFeed:new Map()
 };
 function invalidatePerfCache(){
   PERF_CACHE.viewStock=null;
@@ -2026,6 +2032,7 @@ function invalidatePerfCache(){
   PERF_CACHE.availableDates=null;
   PERF_CACHE.rawTotals.clear();
   PERF_CACHE.monthlyRM.clear();
+  PERF_CACHE.monthlyFeed.clear();
 }
 function historyStockRowsForDate(date){
   const d=dateOnly(date);
