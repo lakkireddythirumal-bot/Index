@@ -1658,3 +1658,54 @@ body.dc-page-open{overflow:hidden}
   #lastUpdated{max-width:calc(100% - 85px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .refresh{margin-left:auto;flex-shrink:0}
 }
+
+
+/* ===== Dashboard dark mode ===== */
+html[data-theme="dark"]{color-scheme:dark}
+body.dark-mode{background:#111827;color:#e5e7eb}
+body.dark-mode .container{color:#e5e7eb}
+body.dark-mode .card,
+body.dark-mode .attention-card,
+body.dark-mode .header-tool,
+body.dark-mode .notify-btn,
+body.dark-mode .plant,
+body.dark-mode .refresh,
+body.dark-mode .date-strip button,
+body.dark-mode .date-strip-main,
+body.dark-mode .quick,
+body.dark-mode .mini-grid>div,
+body.dark-mode .modal-box,
+body.dark-mode .modal-content,
+body.dark-mode .modal-header,
+body.dark-mode .search-box,
+body.dark-mode .control-item,
+body.dark-mode .date-picker,
+body.dark-mode input,
+body.dark-mode select,
+body.dark-mode textarea{background:#1f2937!important;color:#e5e7eb!important;border-color:#374151!important}
+body.dark-mode .card,
+body.dark-mode .attention-card{box-shadow:0 2px 12px rgba(0,0,0,.18)}
+body.dark-mode h1,body.dark-mode h2,body.dark-mode h3,body.dark-mode h4,
+body.dark-mode strong,body.dark-mode label,body.dark-mode .row-name,
+body.dark-mode .card-title h2,body.dark-mode .date-strip-main strong{color:#f3f4f6}
+body.dark-mode p,body.dark-mode small,body.dark-mode .header p,
+body.dark-mode .smart-greeting,body.dark-mode .status-line,
+body.dark-mode .date-strip-main small,body.dark-mode .card-title span,
+body.dark-mode .attention-meta,body.dark-mode .prod-meta{color:#aeb8c7}
+body.dark-mode .feed-row,body.dark-mode .stock-row,body.dark-mode .production-row,
+body.dark-mode .attention-summary-item,body.dark-mode .attention-summary-list>div,
+body.dark-mode .date-strip,body.dark-mode .quick-kpi,
+body.dark-mode .mix-row,body.dark-mode .control-grid,
+body.dark-mode .table-wrap,body.dark-mode table,
+body.dark-mode th,body.dark-mode td{border-color:#374151!important}
+body.dark-mode th{background:#273449!important;color:#e5e7eb!important}
+body.dark-mode tr:nth-child(even),body.dark-mode .feed-row,
+body.dark-mode .stock-row,body.dark-mode .production-row{background:#1f2937}
+body.dark-mode .bottom-nav{background:rgba(17,24,39,.97)!important;border-color:#374151!important}
+body.dark-mode .nav-item{color:#aeb8c7}
+body.dark-mode .nav-item.active{background:#263b62!important;color:#93b4ff!important}
+body.dark-mode .selected-date-chip{background:#263b62;color:#a9c3ff}
+body.dark-mode .date-state{color:#a9c3ff!important}
+body.dark-mode .empty{color:#aeb8c7}
+body.dark-mode .modal-overlay{background:rgba(0,0,0,.72)}
+body.dark-mode .more-toggle,body.dark-mode button:not(.header-tool):not(.notify-btn):not(.refresh){border-color:#374151}
