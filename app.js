@@ -909,29 +909,31 @@ function allMixMaterialTransactions(){
   return out;
 }
 function monthlyRMConsumption(m){
+  // Reuse the computed month until data or Data Control changes.
+  if(PERF_CACHE.monthlyRM.has(m))return PERF_CACHE.monthlyRM.get(m);
   // Use the same approved/active dataset as the main RM calculations.
   // Hidden materials and explicitly excluded records must never appear in
-  // Monthly Mix & Contribution.  Keep the latest dated MTD consumption row
-  // for each visible material so cumulative monthly values are not doubled.
-  const latest={};
+  // Monthly Mix & Contribution. Keep the latest dated MTD row per material.
+  const latest=new Map();
   allMixMaterialTransactions().forEach(({material,t})=>{
     if(dcIsHiddenMaterial(material) || dcIsExcluded(material,t))return;
     const d=rowDate(t);
     if(monthKey(d)!==m || !isConsumptionMovement(tType(t)))return;
     const day=dateOnly(d)||"";
     const key=normalize(material);
-    if(!latest[key] || day>=latest[key].day){
-      latest[key]={material,t,day};
-    }
+    const prior=latest.get(key);
+    if(!prior || day>=prior.day)latest.set(key,{material,t,day});
   });
 
-  return Object.values(latest).map(({material,t})=>{
+  const result=[...latest.values()].map(({material,t})=>{
     const monthly=num(t.for_month??t.For_Month??t.monthly_consumption??t.Monthly_Consumption);
     const value=monthly!==null
       ? materialValueInMT(Math.abs(monthly),material)
       : materialValueInMT(tVal(t),material);
     return {name:material,value};
   }).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
+  PERF_CACHE.monthlyRM.set(m,result);
+  return result;
 }
 function monthlyFeedMix(m,key){
   const rows=(DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m);
@@ -2008,7 +2010,7 @@ function effectiveViewDate(){
 const PERF_CACHE={
   viewStock:null, historyStock:new Map(), materials:null, materialMap:null,
   transactions:new Map(), production:null, bags:null, feedRows:null, latestFeed:null,
-  avgConsumption:new Map(), availableDates:null, rawTotals:new Map()
+  avgConsumption:new Map(), availableDates:null, rawTotals:new Map(), monthlyRM:new Map()
 };
 function invalidatePerfCache(){
   PERF_CACHE.viewStock=null;
@@ -2023,6 +2025,7 @@ function invalidatePerfCache(){
   PERF_CACHE.avgConsumption.clear();
   PERF_CACHE.availableDates=null;
   PERF_CACHE.rawTotals.clear();
+  PERF_CACHE.monthlyRM.clear();
 }
 function historyStockRowsForDate(date){
   const d=dateOnly(date);
