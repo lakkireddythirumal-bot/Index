@@ -159,7 +159,7 @@ function dcDuplicateGroups(){
  byMaterialDate.forEach(base=>{
   const byActivity=new Map();
   base.rows.forEach(r=>{const a=tType(r);if(!byActivity.has(a))byActivity.set(a,[]);byActivity.get(a).push(r)});
-  if(![...byActivity.values()].some(rows=>rows.length>1))return;
+  if(![...byActivity.values()].some(rows=>rows.length>2))return;
   const records=new Map();
   byActivity.forEach(rows=>{
    rows.sort((a,b)=>String(a.imported_at||"").localeCompare(String(b.imported_at||""))||String(a.id||"").localeCompare(String(b.id||"")));
@@ -183,7 +183,7 @@ function dcDuplicateGroups(){
   productGroups.get(key).rows.push({...r,_dcSource:source});
  });
  productGroups.forEach(g=>{
-  if(g.rows.length>1)g.rows.forEach((row,i)=>groups.push({...g,groupKey:g.groupKey+"|record|"+(i+1),recordNumber:i+1,rows:[row]}));
+  if(g.rows.length>2)g.rows.forEach((row,i)=>groups.push({...g,groupKey:g.groupKey+"|record|"+(i+1),recordNumber:i+1,rows:[row]}));
  });
  return groups.sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name)||(a.recordNumber||0)-(b.recordNumber||0));
 }
