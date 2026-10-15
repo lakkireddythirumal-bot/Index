@@ -1,4 +1,4 @@
-const CACHE_NAME = "feed-manager-dashboard-v7";
+const CACHE_NAME = "feed-manager-dashboard-v8";
 const APP_SHELL = [
   "./",
   "./index.html",
