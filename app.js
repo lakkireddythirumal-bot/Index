@@ -148,45 +148,68 @@ function dcProductSourceRows(){
 function dcAllProductNames(){return [...new Set(dcProductSourceRows().map(r=>clean(r.product||r.Product)).filter(Boolean))]}
 function dcDuplicateGroups(){
  const groups=[];
- const byMaterialDate=new Map();
- (DC_RAW_DATA.stock||[]).forEach(item=>(item.transactions||[]).forEach(t=>{
-  const name=clean(item.material),date=dateOnly(rowDate(t)),activity=tType(t);
-  if(!name||!date||!activity)return;
-  const key="M|"+dcKey(name)+"|"+date;
-  if(!byMaterialDate.has(key))byMaterialDate.set(key,{kind:"material",name,date,rows:[]});
-  byMaterialDate.get(key).rows.push({...t,_dcSource:"stock_data"});
- }));
- byMaterialDate.forEach(base=>{
+ const latestByMaterial=new Map();
+ (DC_RAW_DATA.stock||[]).forEach(item=>{
+  const name=clean(item.material); if(!name)return;
+  const dates=(item.transactions||[]).map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
+  if(dates.length)latestByMaterial.set(dcKey(name),dates[dates.length-1]);
+ });
+ (DC_RAW_DATA.stock||[]).forEach(item=>{
+  const name=clean(item.material); if(!name)return;
+  const latest=latestByMaterial.get(dcKey(name)); if(!latest)return;
+  const rows=(item.transactions||[]).filter(t=>dateOnly(rowDate(t))===latest).map(t=>({...t,_dcSource:"stock_data"})).filter(t=>tType(t));
+  if(!rows.length)return;
   const byActivity=new Map();
-  base.rows.forEach(r=>{const a=tType(r);if(!byActivity.has(a))byActivity.set(a,[]);byActivity.get(a).push(r)});
-  if(![...byActivity.values()].some(rows=>rows.length>=2))return;
-  const records=new Map();
-  byActivity.forEach(rows=>{
-   rows.sort((a,b)=>String(a.imported_at||"").localeCompare(String(b.imported_at||""))||String(a.id||"").localeCompare(String(b.id||"")));
-   rows.forEach((r,i)=>{
-    const n=rows.length===1?1:i+1;
-    if(!records.has(n))records.set(n,[]);
-    records.get(n).push(r);
+  rows.forEach(r=>{const a=tType(r);if(!byActivity.has(a))byActivity.set(a,[]);byActivity.get(a).push(r)});
+  const repeated=[...byActivity.entries()].filter(([_,rs])=>rs.length>=2);
+  if(!repeated.length)return;
+  const recordCount=Math.max(...repeated.map(([_,rs])=>rs.length));
+  const candidateRecords=[];
+  for(let n=1;n<=recordCount;n++){
+   const recordRows=[];
+   repeated.forEach(([activity,rs])=>{
+    rs.sort((a,b)=>String(a.imported_at||"").localeCompare(String(b.imported_at||""))||String(a.id||"").localeCompare(String(b.id||"")));
+    if(rs[n-1])recordRows.push(rs[n-1]);
    });
-  });
-  [...records.entries()].sort((a,b)=>a[0]-b[0]).forEach(([n,rows])=>{
-   /* Follow the MAIZE SILO2 pattern: a visible Record must contain at least two activities.
-      Single-occurrence activities are assigned to Record 1; repeated activities are aligned by occurrence order. */
-   if(rows.length<2)return;
-   groups.push({...base,groupKey:"M|"+dcKey(base.name)+"|"+base.date+"|"+n,recordNumber:n,rows:rows.sort((a,b)=>tType(a).localeCompare(tType(b)))});
+   if(recordRows.length>=2)candidateRecords.push({n,rows:recordRows.sort((a,b)=>tType(a).localeCompare(tType(b)))});
+  }
+  /* Only show a duplicate set when at least two records share at least two activities. */
+  if(candidateRecords.length<2)return;
+  const sharedActivities=candidateRecords.reduce((set,r)=>new Set([...set].filter(a=>r.rows.some(x=>tType(x)===a))),new Set(candidateRecords[0].rows.map(tType)));
+  if(sharedActivities.size<2)return;
+  candidateRecords.forEach(({n,rows})=>{
+   const commonRows=rows.filter(r=>sharedActivities.has(tType(r)));
+   if(commonRows.length<2)return;
+   const stableKey="DUPGROUP|M|"+dcKey(name)+"|"+latest+"|"+[...sharedActivities].sort().map(dcKey).join(",");
+   const marker=DATA_CONTROL.records[stableKey];
+   const groupKey="M|"+dcKey(name)+"|"+latest+"|"+n+"|"+[...sharedActivities].sort().map(dcKey).join(",");
+   groups.push({kind:"material",name,date:latest,activity:"Stock transactions",groupKey,stableKey,recordNumber:n,rows:commonRows,excluded:!!(marker&&marker.status==="EXCLUDED")});
   });
  });
- const productGroups=new Map();
+ /* Product sources are checked only on their latest date; exact duplicate rows are grouped consistently. */
+ const productRows=new Map();
  dcProductSourceRows().forEach(r=>{
   const name=clean(r.product||r.Product),date=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE),source=dcSourceName(r,"production_data");
   if(!name||!date)return;
-  const signature=Object.keys(r).filter(k=>!["id","_dcSource","_dcRecordLabel","imported_at","created_at","updated_at"].includes(k)).sort().map(k=>k+":"+String(r[k]??"")).join("|");
-  const key="P|"+source+"|"+dcKey(name)+"|"+date+"|"+signature;
-  if(!productGroups.has(key))productGroups.set(key,{kind:"product",name,date,activity:source,groupKey:key,rows:[]});
-  productGroups.get(key).rows.push({...r,_dcSource:source});
+  const key="P|"+source+"|"+dcKey(name);
+  if(!productRows.has(key))productRows.set(key,{source,name,rows:[]});
+  productRows.get(key).rows.push({...r,_dcSource:source,_dcDate:date});
  });
- productGroups.forEach(g=>{
-  if(g.rows.length>=2)g.rows.forEach((row,i)=>groups.push({...g,groupKey:g.groupKey+"|record|"+(i+1),recordNumber:i+1,rows:[row]}));
+ productRows.forEach(g=>{
+  const latest=g.rows.map(r=>r._dcDate).sort().pop();
+  const latestRows=g.rows.filter(r=>r._dcDate===latest);
+  const sigs=new Map();
+  latestRows.forEach(r=>{
+   const sig=Object.keys(r).filter(k=>!["id","_dcSource","_dcRecordLabel","imported_at","created_at","updated_at","_dcDate"].includes(k)).sort().map(k=>k+":"+String(r[k]??"")).join("|");
+   if(!sigs.has(sig))sigs.set(sig,[]);
+   sigs.get(sig).push(r);
+  });
+  sigs.forEach((rs,sig)=>{
+   if(rs.length<2)return;
+   const stableKey="DUPGROUP|P|"+g.source+"|"+dcKey(g.name)+"|"+latest+"|"+dcKey(sig);
+   const marker=DATA_CONTROL.records[stableKey];
+   rs.forEach((row,i)=>groups.push({kind:"product",name:g.name,date:latest,activity:g.source,groupKey:stableKey+"|record|"+(i+1),stableKey,recordNumber:i+1,rows:[row],excluded:!!(marker&&marker.status==="EXCLUDED")}));
+  });
  });
  return groups.sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name)||(a.recordNumber||0)-(b.recordNumber||0));
 }
@@ -197,9 +220,14 @@ function dcDuplicateGroupStatus(g){
 function dcSetDuplicateGroupEncoded(encoded,status){
  try{
   const g=JSON.parse(decodeURIComponent(encoded));
+  const stamp=new Date().toISOString();
+  if(g.stableKey){
+   if(status==="EXCLUDED")DATA_CONTROL.records[g.stableKey]={status,reason:"Duplicate group manually excluded",updatedAt:stamp};
+   else delete DATA_CONTROL.records[g.stableKey];
+  }
   g.rows.forEach(row=>{
    const tagged={...row,_dcSource:row._dcSource||(g.kind==="material"?"stock_data":g.activity)};
-   DATA_CONTROL.records[dcRecordKey(g.name,tagged)]={status,reason:status==="EXCLUDED"?"Duplicate group manually excluded":"Duplicate group manually restored",updatedAt:new Date().toISOString()};
+   DATA_CONTROL.records[dcRecordKey(g.name,tagged)]={status,reason:status==="EXCLUDED"?"Duplicate group manually excluded":"Duplicate group manually restored",updatedAt:stamp};
   });
   saveDataControl();invalidatePerfCache();dcRefreshUI(g.name+": "+(status==="EXCLUDED"?"whole group excluded":"whole group restored"));
  }catch(e){console.warn("Unable to update duplicate group",e);dcToast("Could not update this group","error")}
@@ -220,8 +248,10 @@ function dcDuplicateGroupCard(g){
 }
 function renderDcDuplicateGroups(){
  const groups=dcDuplicateGroups();
- if(!groups.length)return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>No duplicate groups detected</small></div></div></section>`;
- return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>${groups.length} group(s) • group-level review</small></div></div></div>${groups.map(g=>dcDuplicateGroupCard(g)).join("")}</section>`;
+ const active=groups.filter(g=>!g.excluded);
+ const excluded=groups.filter(g=>g.excluded);
+ const empty=`<div class="small-note">No duplicate groups detected for the latest date.</div>`;
+ return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>${active.length} active group(s) • latest date only</small></div></div></div>${active.length?active.map(g=>dcDuplicateGroupCard(g)).join(""):empty}${excluded.length?`<div class="dc-section-head" style="margin-top:18px"><div><span class="dc-section-icon">🚫</span><div><h3>Excluded duplicate groups</h3><small>${excluded.length} excluded group(s) • will not return to active list</small></div></div></div>${excluded.map(g=>dcDuplicateGroupCard(g)).join("")}`:''}</section>`;
 }
 function dcMaterialActivity(material){
   const rows=dcRawTransactions(material);
