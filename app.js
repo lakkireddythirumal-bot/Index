@@ -36,19 +36,44 @@ function clearDismissedAlerts(){DISMISSED_ALERTS.clear();saveDismissedAlerts();r
 ===================================================== */
 const DATA_CONTROL_KEY="plant_data_control_v1";
 let DATA_CONTROL={materials:{},products:{},records:{}};
-function loadDataControl(){
-  try{
-    const raw=JSON.parse(localStorage.getItem(DATA_CONTROL_KEY)||"{}");
-    DATA_CONTROL={materials:raw.materials||{},products:raw.products||{},records:raw.records||{}};
-  }catch(e){DATA_CONTROL={materials:{},products:{},records:{}}}
+let DC_RAW_DATA={stock:[],stockHistory:[],production:[],productionHistory:[],bags:[],bagsHistory:[],feedUnitData:[],feedUnitTotals:[],productionTrend:[]};
+let DC_REMOTE_LOADED=false,DC_REMOTE_SAVE=Promise.resolve();
+function dcNormalizeSettings(raw){return {materials:raw&&raw.materials||{},products:raw&&raw.products||{},records:raw&&raw.records||{}}}
+function loadDataControl(){try{DATA_CONTROL=dcNormalizeSettings(JSON.parse(localStorage.getItem(DATA_CONTROL_KEY)||"{}"))}catch(e){DATA_CONTROL={materials:{},products:{},records:{}}}}
+function saveDataControl(){
+  const snapshot={...DATA_CONTROL,updatedAt:new Date().toISOString()};
+  try{localStorage.setItem(DATA_CONTROL_KEY,JSON.stringify(snapshot))}catch(e){}
+  DC_REMOTE_SAVE=DC_REMOTE_SAVE.catch(()=>{}).then(async()=>{
+    const res=await fetch(SUPABASE_URL+"/rest/v1/dashboard_data_control?on_conflict=id",{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:"site",settings:snapshot,updated_at:snapshot.updatedAt})});
+    if(!res.ok)throw Error("Supabase Data Control save failed: "+res.status);
+  }).catch(e=>{console.warn("Data Control cloud save failed; local copy retained",e);try{dcToast("Cloud save failed — check connection","error")}catch(_){}});
 }
-function saveDataControl(){try{localStorage.setItem(DATA_CONTROL_KEY,JSON.stringify(DATA_CONTROL))}catch(e){}}
+async function dcLoadSupabase(){
+  if(DC_REMOTE_LOADED)return;
+  try{
+    const res=await fetch(SUPABASE_URL+"/rest/v1/dashboard_data_control?id=eq.site&select=settings&limit=1",{headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY},cache:"no-store"});
+    if(!res.ok)throw Error("Supabase Data Control load failed: "+res.status);
+    const rows=await res.json();
+    if(rows.length&&rows[0].settings&&typeof rows[0].settings==="object"){
+      DATA_CONTROL=dcNormalizeSettings(rows[0].settings);
+      try{localStorage.setItem(DATA_CONTROL_KEY,JSON.stringify({...DATA_CONTROL,updatedAt:rows[0].settings.updatedAt||""}))}catch(e){}
+    }else{
+      const snapshot={...DATA_CONTROL,updatedAt:new Date().toISOString()};
+      const save=await fetch(SUPABASE_URL+"/rest/v1/dashboard_data_control?on_conflict=id",{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:"site",settings:snapshot,updated_at:snapshot.updatedAt})});
+      if(!save.ok)throw Error("Supabase initial Data Control save failed: "+save.status);
+    }
+    DC_REMOTE_LOADED=true;
+  }catch(e){console.warn("Data Control cloud load failed; using local settings",e)}
+}
 loadDataControl();
 function dcKey(v){return normalize(v).replace(/[^A-Z0-9._-]+/g,"_")}
 function dcMaterialState(name){return DATA_CONTROL.materials[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
 function dcProductState(name){return DATA_CONTROL.products[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
+function dcSourceName(t,fallback="stock_data"){return clean(t&&t._dcSource||fallback)}
 function dcRecordKey(material,t){
-  return dcKey([material,dateOnly(rowDate(t)),tType(t),tVal(t),clean(t.for_day),clean(t.for_month),clean(t.for_year)].join("|"));
+  const source=dcSourceName(t,"stock_data");
+  if(t&&t.id!==undefined&&t.id!==null&&clean(t.id)!=="")return "SRC|"+source+"|"+clean(t.id);
+  return dcKey([source,material,dateOnly(rowDate(t)),tType(t),tVal(t),clean(t.for_day),clean(t.for_month),clean(t.for_year)].join("|"));
 }
 function dcRecordState(material,t){return DATA_CONTROL.records[dcRecordKey(material,t)]||null}
 function dcRefreshUI(message, tone="success"){
@@ -105,14 +130,53 @@ function dcIsExcluded(material,t){const s=dcRecordState(material,t);return s&&s.
 function dcIsHiddenMaterial(name){return dcMaterialState(name).status==="HIDDEN"}
 function dcIsHiddenProduct(name){return dcProductState(name).status==="HIDDEN"}
 function dcRawTransactions(material){
-  const x=(()=>{const key=normalize(material); if(PERF_CACHE.rawTransactions&&PERF_CACHE.rawTransactions.has(key))return PERF_CACHE.rawTransactions.get(key); const r=(()=>{const item=(()=>{if(!PERF_CACHE.materialMap){PERF_CACHE.materialMap=new Map(viewStockRows().map(x=>[normalize(x.material),x]));} return PERF_CACHE.materialMap.get(key)||null})(); return item&&Array.isArray(item.transactions)?item.transactions:[]})(); PERF_CACHE.rawTransactions=PERF_CACHE.rawTransactions||new Map(); PERF_CACHE.rawTransactions.set(key,r); return r;})();
-  return x;
+  const item=(DC_RAW_DATA.stock||[]).find(x=>normalize(x.material)===normalize(material));
+  return item&&Array.isArray(item.transactions)?item.transactions:[];
 }
 function dcApprovedTransactions(material){return dcRawTransactions(material).filter(t=>!dcIsExcluded(material,t))}
-function dcAllMaterialNames(){return [...new Set((DATA.stock||[]).map(x=>clean(x.material)).filter(Boolean))]}
-function dcAllProductNames(){
-  const rows=[...(DATA.production||[]),...(DATA.productionHistory||[]),...(DATA.feedUnitData||[]),...(DATA.bags||[]),...(DATA.bagsHistory||[])];
-  return [...new Set(rows.map(r=>clean(r.product||r.Product)).filter(Boolean))];
+function dcAllMaterialNames(){return [...new Set((DC_RAW_DATA.stock||[]).map(x=>clean(x.material)).filter(Boolean))]}
+function dcProductSourceRows(){
+ return [
+ ...(DC_RAW_DATA.production||[]).map(r=>({...r,_dcSource:"production_data"})),
+ ...(DC_RAW_DATA.productionHistory||[]).map(r=>({...r,_dcSource:"production_data"})),
+ ...(DC_RAW_DATA.bags||[]).map(r=>({...r,_dcSource:"pp_bags_data"})),
+ ...(DC_RAW_DATA.bagsHistory||[]).map(r=>({...r,_dcSource:"pp_bags_data"})),
+ ...(DC_RAW_DATA.feedUnitData||[]).map(r=>({...r,_dcSource:"feed_unit_data"})),
+ ...(DC_RAW_DATA.feedUnitTotals||[]).map(r=>({...r,_dcSource:"feed_unit_totals"}))
+ ];
+}
+function dcAllProductNames(){return [...new Set(dcProductSourceRows().map(r=>clean(r.product||r.Product)).filter(Boolean))]}
+function dcDuplicateGroups(){
+ const groups=new Map();
+ (DC_RAW_DATA.stock||[]).forEach(item=>(item.transactions||[]).forEach(t=>{
+  const name=clean(item.material),date=dateOnly(rowDate(t)),activity=tType(t);if(!name||!date||!activity)return;
+  const key="M|"+dcKey(name)+"|"+date+"|"+dcKey(activity);
+  if(!groups.has(key))groups.set(key,{kind:"material",name,date,activity,rows:[]});
+  groups.get(key).rows.push({...t,_dcSource:"stock_data"});
+ }));
+ dcProductSourceRows().forEach(r=>{
+  const name=clean(r.product||r.Product),date=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE),source=dcSourceName(r,"production_data");
+  if(!name||!date)return;const key="P|"+source+"|"+dcKey(name)+"|"+date;
+  if(!groups.has(key))groups.set(key,{kind:"product",name,date,activity:source,rows:[]});
+  groups.get(key).rows.push({...r,_dcSource:source});
+ });
+ return [...groups.values()].filter(g=>g.rows.length>1).map(g=>({...g,rows:g.rows.map((r,i)=>({...r,_dcRecordLabel:"Record "+(i+1)}))})).sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name));
+}
+function dcDuplicateRecordExcluded(g,r){return !!dcRecordState(g.name,{...r,_dcSource:r._dcSource||(g.kind==="material"?"stock_data":g.activity)})}
+function dcSetDuplicateRecord(kind,name,row,status){
+ const tagged={...row,_dcSource:dcSourceName(row,kind==="material"?"stock_data":row._dcSource||"production_data")};
+ DATA_CONTROL.records[dcRecordKey(name,tagged)]={status,reason:status==="EXCLUDED"?"Duplicate manually excluded":"Duplicate manually restored",updatedAt:new Date().toISOString()};
+ saveDataControl();invalidatePerfCache();dcRefreshUI(name+": "+(status==="EXCLUDED"?"Record excluded":"Record restored"));
+}
+function dcDuplicateRecordCard(g,r,i){
+ const excluded=dcDuplicateRecordExcluded(g,r),activity=g.kind==="material"?tType(r):g.activity;
+ const qty=g.kind==="material"?tVal(r):(r.actual_output??r.production_day_mt??r.Production_Day_MT??r.output??r.quantity??r.value??"--");
+ return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border,#ddd);border-radius:10px;margin-top:8px;opacity:${excluded?".72":"1"}"><div><strong>Record ${i+1}</strong><div class="small-note">${esc(activity)} • ${esc(fmt(qty))}</div><div class="small-note">${excluded?"EXCLUDED — not counted":"Included in calculations"}</div></div><button class="dc-toggle-btn ${excluded?"unhide":""}" onclick='dcSetDuplicateRecord("${g.kind}","${jsq(g.name)}",${JSON.stringify(r).replace(/</g,"\\u003c")},"${excluded?"KEPT":"EXCLUDED"}")'>${excluded?"Restore":"Exclude"}</button></div>`;
+}
+function renderDcDuplicateGroups(){
+ const groups=dcDuplicateGroups();
+ if(!groups.length)return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>No duplicate groups detected</small></div></div></section>`;
+ return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>${groups.length} group(s) • manual review only</small></div></div></div>${groups.map(g=>`<article style="padding:12px;border:1px solid var(--border,#ddd);border-radius:12px;margin:12px 0"><div style="display:flex;justify-content:space-between;gap:10px"><strong>${esc(g.name)}</strong><span>${esc(g.date)}</span></div><div class="small-note">${esc(g.activity)} • ${g.rows.length} records</div>${g.rows.map((r,i)=>dcDuplicateRecordCard(g,r,i)).join("")}</article>`).join("")}</section>`;
 }
 function dcMaterialActivity(material){
   const rows=dcRawTransactions(material);
@@ -334,7 +398,7 @@ function renderDataControlLists(){
   if(count)count.textContent=`${total} item${total===1?'':'s'}`;
   const materialSection=ms.length?`<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">📦</span><div><h3>Materials</h3><small>${ms.length} shown</small></div></div></div>${materialHtml}</section>`:(filter.includes('MATERIALS')?`<section class="dc-list-section"><div class="dc-empty-list">No materials match this filter.</div></section>`:'');
   const productSection=ps.length?`<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🌾</span><div><h3>Products</h3><small>${ps.length} shown</small></div></div></div>${productHtml}</section>`:(filter.includes('PRODUCTS')?`<section class="dc-list-section"><div class="dc-empty-list">No products match this filter.</div></section>`:'');
-  el.innerHTML=`<div class="dc-list-grid">${materialSection}${productSection}</div>`;
+  el.innerHTML=`<div class="dc-list-grid">${materialSection}${productSection}</div>${renderDcDuplicateGroups()}`;
 }
 
 function clean(v){return String(v??"").trim()}
@@ -509,22 +573,24 @@ async function cachedData(){
   catch(error){console.warn("Dashboard cache read skipped",error);return null;}
 }
 function applyData(apiData,fromCache=false){
+  DC_RAW_DATA={
+    stock:Array.isArray(apiData.stock)?apiData.stock:[],stockHistory:Array.isArray(apiData.stock_history)?apiData.stock_history:[],
+    production:Array.isArray(apiData.production)?apiData.production:[],productionHistory:Array.isArray(apiData.production_history)?apiData.production_history:[],
+    bags:Array.isArray(apiData.pp_bags)?apiData.pp_bags:[],bagsHistory:Array.isArray(apiData.pp_bags_history)?apiData.pp_bags_history:[],
+    feedUnitData:Array.isArray(apiData.feedUnitData)?apiData.feedUnitData:[],feedUnitTotals:Array.isArray(apiData.feedUnitTotals)?apiData.feedUnitTotals:[],
+    productionTrend:Array.isArray(apiData.productionTrend)?apiData.productionTrend:[]
+  };
+  const filterStock=rows=>(Array.isArray(rows)?rows:[]).filter(r=>!dcIsExcluded(clean(r.material),{...r,_dcSource:"stock_data"}));
+  const filterProducts=(rows,source,field="product")=>(Array.isArray(rows)?rows:[]).filter(r=>!dcIsExcluded(clean(r[field]||r.Product||r.product),{...r,_dcSource:source}));
   DATA={
-    stock:Array.isArray(apiData.stock)?apiData.stock:[],
-    stockHistory:Array.isArray(apiData.stock_history)?apiData.stock_history:[],
-    production:Array.isArray(apiData.production)?apiData.production:[],
-    productionHistory:Array.isArray(apiData.production_history)?apiData.production_history:[],
-    bags:Array.isArray(apiData.pp_bags)?apiData.pp_bags:[],
-    bagsHistory:Array.isArray(apiData.pp_bags_history)?apiData.pp_bags_history:[],
-    feedUnitData:Array.isArray(apiData.feedUnitData)?apiData.feedUnitData:[],
-    feedUnitTotals:Array.isArray(apiData.feedUnitTotals)?apiData.feedUnitTotals:(apiData.feedUnitTotals||[]),
-    productionTrend:Array.isArray(apiData.productionTrend)?apiData.productionTrend:[],
-    usage:apiData.usage&&typeof apiData.usage==="object"?apiData.usage:{},
-    reorder_items:Array.isArray(apiData.reorder_items)?apiData.reorder_items:[],
-    consumption:apiData.consumption??null,
-    efficiency:apiData.efficiency??null,
-    processLoss:apiData.processLoss??null,
-    report_date:apiData.report_date??null
+    stock:DC_RAW_DATA.stock.map(item=>({...item,transactions:(item.transactions||[]).filter(t=>!dcIsExcluded(item.material,{...t,_dcSource:"stock_data"}))})),
+    stockHistory:filterStock(DC_RAW_DATA.stockHistory),
+    production:filterProducts(DC_RAW_DATA.production,"production_data"),productionHistory:filterProducts(DC_RAW_DATA.productionHistory,"production_data"),
+    bags:filterProducts(DC_RAW_DATA.bags,"pp_bags_data"),bagsHistory:filterProducts(DC_RAW_DATA.bagsHistory,"pp_bags_data"),
+    feedUnitData:filterProducts(DC_RAW_DATA.feedUnitData,"feed_unit_data","Product"),feedUnitTotals:filterProducts(DC_RAW_DATA.feedUnitTotals,"feed_unit_totals","Product"),
+    productionTrend:DC_RAW_DATA.productionTrend,usage:apiData.usage&&typeof apiData.usage==="object"?apiData.usage:{},
+    reorder_items:Array.isArray(apiData.reorder_items)?apiData.reorder_items:[],consumption:apiData.consumption??null,
+    efficiency:apiData.efficiency??null,processLoss:apiData.processLoss??null,report_date:apiData.report_date??null
   };
   invalidatePerfCache();
   if(DATA.report_date)setText("reportDate",VIEW_DATE||DATA.report_date);
@@ -534,6 +600,7 @@ function applyData(apiData,fromCache=false){
 async function restoreCache(){
   const cached=await cachedData();
   if(!cached||!cached.payload||!cached.savedAt)return false;
+  await dcLoadSupabase();
   applyData(cached.payload,true);
   const savedAt=new Date(cached.savedAt);
   setConnection(false,"Saved data • refreshing");
@@ -556,14 +623,12 @@ function sbClean(v){
   return s.replace(/^=+/,"").trim();
 }
 function sbNormalizeRow(r,kind){
-  const x={...(r||{})};
-  if(kind==="stock"){
-    x.material=sbClean(x.material);
-    x.transaction=sbClean(x.transaction);
-  }
-  if(kind==="production"||kind==="bags") x.product=sbClean(x.product);
-  if(kind==="feed") x.product=sbClean(x.product);
-  if(kind==="totals") x.type=sbClean(x.type);
+  const x={...(r||{})},sources={stock:"stock_data",production:"production_data",bags:"pp_bags_data",feed:"feed_unit_data",totals:"feed_unit_totals"};
+  x._dcSource=sources[kind]||kind;
+  if(kind==="stock"){x.material=sbClean(x.material);x.transaction=sbClean(x.transaction)}
+  if(kind==="production"||kind==="bags")x.product=sbClean(x.product);
+  if(kind==="feed")x.product=sbClean(x.product);
+  if(kind==="totals")x.type=sbClean(x.type);
   return x;
 }
 async function supabaseRows(table,attempt=0,fromDate=null){
@@ -632,6 +697,7 @@ async function loadDashboard(attempt=0,forceFull=false){
     const canIncrement=!forceFull&&cached&&cached.payload&&hasRawHistory&&fullSyncAge<DASHBOARD_CACHE_FULL_SYNC_MS;
     const cutoff=sbDateOffset(DASHBOARD_CACHE_RECENT_DAYS);
     const fromDate=canIncrement?cutoff:null;
+    await dcLoadSupabase();
     const [stockFresh,productionFresh,bagsFresh,feedFresh,totalsFresh]=await Promise.all([
       supabaseRows("stock_data",attempt,fromDate),
       supabaseRows("production_data",attempt,fromDate),
