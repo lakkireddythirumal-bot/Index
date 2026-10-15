@@ -182,7 +182,9 @@ function dcDuplicateGroups(){
   if(!productGroups.has(key))productGroups.set(key,{kind:"product",name,date,activity:source,groupKey:key,rows:[]});
   productGroups.get(key).rows.push({...r,_dcSource:source});
  });
- productGroups.forEach(g=>{if(g.rows.length>1)groups.push(g)});
+ productGroups.forEach(g=>{
+  if(g.rows.length>1)g.rows.forEach((row,i)=>groups.push({...g,groupKey:g.groupKey+"|record|"+(i+1),recordNumber:i+1,rows:[row]}));
+ });
  return groups.sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name)||(a.recordNumber||0)-(b.recordNumber||0));
 }
 function dcDuplicateGroupStatus(g){
@@ -210,7 +212,7 @@ function dcDuplicateGroupCard(g){
   const d=dcDuplicateRowSummary(g,r);
   return `<div style="padding:8px 10px;border-top:1px solid var(--border,#ddd)"><strong>${esc(d.label)}</strong><div class="small-note">${d.values.map(v=>esc(v[0])+": "+esc(v[1])).join(" • ")||"Record details unavailable"}</div></div>`;
  }).join("");
- const title=g.kind==="material"?"Record "+(g.recordNumber||1):"Duplicate product group";
+ const title="Record "+(g.recordNumber||1);
  return `<article style="padding:12px;border:1px solid var(--border,#ddd);border-radius:12px;margin:12px 0;opacity:${excluded?".75":"1"}"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><strong>${esc(g.name)} — ${esc(title)}</strong><div class="small-note">${esc(g.date)} • ${g.rows.length} records • ${esc(g.activity||"Stock transactions")}</div></div><button class="dc-toggle-btn ${excluded?"unhide":""}" onclick="dcSetDuplicateGroupEncoded('${encodeURIComponent(JSON.stringify(g))}','${excluded?"KEPT":"EXCLUDED"}')">${excluded?"Restore group":"Exclude group"}</button></div><div class="small-note" style="margin-top:6px">${status==="MIXED"?"Partially excluded — action applies to the whole group":excluded?"Entire group excluded from calculations":"All values included in calculations"}</div><div style="margin-top:8px;border:1px solid var(--border,#ddd);border-radius:8px;overflow:hidden">${details}</div></article>`;
 }
 function renderDcDuplicateGroups(){
