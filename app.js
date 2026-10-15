@@ -170,10 +170,14 @@ function dcSetDuplicateRecord(kind,name,row,status){
  DATA_CONTROL.records[dcRecordKey(name,tagged)]={status,reason:status==="EXCLUDED"?"Duplicate manually excluded":"Duplicate manually restored",updatedAt:new Date().toISOString()};
  saveDataControl();invalidatePerfCache();dcRefreshUI(name+": "+(status==="EXCLUDED"?"Record excluded":"Record restored"));
 }
+function dcSetDuplicateRecordEncoded(kind,name,encoded,status){
+ try{dcSetDuplicateRecord(kind,name,JSON.parse(decodeURIComponent(encoded)),status)}
+ catch(e){console.warn("Unable to read duplicate record selection",e);dcToast("Could not update this record","error")}
+}
 function dcDuplicateRecordCard(g,r,i){
  const excluded=dcDuplicateRecordExcluded(g,r),activity=g.kind==="material"?tType(r):g.activity;
  const qty=g.kind==="material"?tVal(r):(r.actual_output??r.production_day_mt??r.Production_Day_MT??r.output??r.quantity??r.value??"--");
- return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border,#ddd);border-radius:10px;margin-top:8px;opacity:${excluded?".72":"1"}"><div><strong>Record ${i+1}</strong><div class="small-note">${esc(activity)} • ${esc(fmt(qty))}</div><div class="small-note">${excluded?"EXCLUDED — not counted":"Included in calculations"}</div></div><button class="dc-toggle-btn ${excluded?"unhide":""}" onclick='dcSetDuplicateRecord("${g.kind}","${jsq(g.name)}",${JSON.stringify(r).replace(/</g,"\\u003c")},"${excluded?"KEPT":"EXCLUDED"}")'>${excluded?"Restore":"Exclude"}</button></div>`;
+ return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border,#ddd);border-radius:10px;margin-top:8px;opacity:${excluded?".72":"1"}"><div><strong>Record ${i+1}</strong><div class="small-note">${esc(activity)} • ${esc(fmt(qty))}</div><div class="small-note">${excluded?"EXCLUDED — not counted":"Included in calculations"}</div></div><button class="dc-toggle-btn ${excluded?"unhide":""}" onclick="dcSetDuplicateRecordEncoded('${g.kind}','${jsq(g.name)}','${encodeURIComponent(JSON.stringify(r))}','${excluded?"KEPT":"EXCLUDED"}')">${excluded?"Restore":"Exclude"}</button></div>`;
 }
 function renderDcDuplicateGroups(){
  const groups=dcDuplicateGroups();
