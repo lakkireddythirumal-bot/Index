@@ -136,11 +136,11 @@ function dcRawTransactions(material){
 function dcApprovedTransactions(material){return dcRawTransactions(material).filter(t=>!dcIsExcluded(material,t))}
 function dcAllMaterialNames(){return [...new Set((DC_RAW_DATA.stock||[]).map(x=>clean(x.material)).filter(Boolean))]}
 function dcProductSourceRows(){
+ const prod=DC_RAW_DATA.productionHistory&&DC_RAW_DATA.productionHistory.length?DC_RAW_DATA.productionHistory:DC_RAW_DATA.production||[];
+ const bags=DC_RAW_DATA.bagsHistory&&DC_RAW_DATA.bagsHistory.length?DC_RAW_DATA.bagsHistory:DC_RAW_DATA.bags||[];
  return [
- ...(DC_RAW_DATA.production||[]).map(r=>({...r,_dcSource:"production_data"})),
- ...(DC_RAW_DATA.productionHistory||[]).map(r=>({...r,_dcSource:"production_data"})),
- ...(DC_RAW_DATA.bags||[]).map(r=>({...r,_dcSource:"pp_bags_data"})),
- ...(DC_RAW_DATA.bagsHistory||[]).map(r=>({...r,_dcSource:"pp_bags_data"})),
+ ...prod.map(r=>({...r,_dcSource:"production_data"})),
+ ...bags.map(r=>({...r,_dcSource:"pp_bags_data"})),
  ...(DC_RAW_DATA.feedUnitData||[]).map(r=>({...r,_dcSource:"feed_unit_data"})),
  ...(DC_RAW_DATA.feedUnitTotals||[]).map(r=>({...r,_dcSource:"feed_unit_totals"}))
  ];
@@ -156,7 +156,9 @@ function dcDuplicateGroups(){
  }));
  dcProductSourceRows().forEach(r=>{
   const name=clean(r.product||r.Product),date=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE),source=dcSourceName(r,"production_data");
-  if(!name||!date)return;const key="P|"+source+"|"+dcKey(name)+"|"+date;
+  if(!name||!date)return;
+  const signature=Object.keys(r).filter(k=>!["id","_dcSource","_dcRecordLabel"].includes(k)).sort().map(k=>k+":"+String(r[k]??"")).join("|");
+  const key="P|"+source+"|"+dcKey(name)+"|"+date+"|"+signature;
   if(!groups.has(key))groups.set(key,{kind:"product",name,date,activity:source,rows:[]});
   groups.get(key).rows.push({...r,_dcSource:source});
  });
