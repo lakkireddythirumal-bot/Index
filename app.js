@@ -147,42 +147,76 @@ function dcProductSourceRows(){
 }
 function dcAllProductNames(){return [...new Set(dcProductSourceRows().map(r=>clean(r.product||r.Product)).filter(Boolean))]}
 function dcDuplicateGroups(){
- const groups=new Map();
+ const groups=[];
+ const byMaterialDate=new Map();
  (DC_RAW_DATA.stock||[]).forEach(item=>(item.transactions||[]).forEach(t=>{
-  const name=clean(item.material),date=dateOnly(rowDate(t)),activity=tType(t);if(!name||!date||!activity)return;
-  const key="M|"+dcKey(name)+"|"+date+"|"+dcKey(activity);
-  if(!groups.has(key))groups.set(key,{kind:"material",name,date,activity,rows:[]});
-  groups.get(key).rows.push({...t,_dcSource:"stock_data"});
+  const name=clean(item.material),date=dateOnly(rowDate(t)),activity=tType(t);
+  if(!name||!date||!activity)return;
+  const key="M|"+dcKey(name)+"|"+date;
+  if(!byMaterialDate.has(key))byMaterialDate.set(key,{kind:"material",name,date,rows:[]});
+  byMaterialDate.get(key).rows.push({...t,_dcSource:"stock_data"});
  }));
+ byMaterialDate.forEach(base=>{
+  const byActivity=new Map();
+  base.rows.forEach(r=>{const a=tType(r);if(!byActivity.has(a))byActivity.set(a,[]);byActivity.get(a).push(r)});
+  if(![...byActivity.values()].some(rows=>rows.length>1))return;
+  const records=new Map();
+  byActivity.forEach(rows=>{
+   rows.sort((a,b)=>String(a.imported_at||"").localeCompare(String(b.imported_at||""))||String(a.id||"").localeCompare(String(b.id||"")));
+   rows.forEach((r,i)=>{
+    const n=rows.length===1?1:i+1;
+    if(!records.has(n))records.set(n,[]);
+    records.get(n).push(r);
+   });
+  });
+  [...records.entries()].sort((a,b)=>a[0]-b[0]).forEach(([n,rows])=>{
+   groups.push({...base,groupKey:"M|"+dcKey(base.name)+"|"+base.date+"|"+n,recordNumber:n,rows:rows.sort((a,b)=>tType(a).localeCompare(tType(b)))});
+  });
+ });
+ const productGroups=new Map();
  dcProductSourceRows().forEach(r=>{
   const name=clean(r.product||r.Product),date=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE),source=dcSourceName(r,"production_data");
   if(!name||!date)return;
-  const signature=Object.keys(r).filter(k=>!["id","_dcSource","_dcRecordLabel"].includes(k)).sort().map(k=>k+":"+String(r[k]??"")).join("|");
+  const signature=Object.keys(r).filter(k=>!["id","_dcSource","_dcRecordLabel","imported_at","created_at","updated_at"].includes(k)).sort().map(k=>k+":"+String(r[k]??"")).join("|");
   const key="P|"+source+"|"+dcKey(name)+"|"+date+"|"+signature;
-  if(!groups.has(key))groups.set(key,{kind:"product",name,date,activity:source,rows:[]});
-  groups.get(key).rows.push({...r,_dcSource:source});
+  if(!productGroups.has(key))productGroups.set(key,{kind:"product",name,date,activity:source,groupKey:key,rows:[]});
+  productGroups.get(key).rows.push({...r,_dcSource:source});
  });
- return [...groups.values()].filter(g=>g.rows.length>1).map(g=>({...g,rows:g.rows.map((r,i)=>({...r,_dcRecordLabel:"Record "+(i+1)}))})).sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name));
+ productGroups.forEach(g=>{if(g.rows.length>1)groups.push(g)});
+ return groups.sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name)||(a.recordNumber||0)-(b.recordNumber||0));
 }
-function dcDuplicateRecordExcluded(g,r){return !!dcRecordState(g.name,{...r,_dcSource:r._dcSource||(g.kind==="material"?"stock_data":g.activity)})}
-function dcSetDuplicateRecord(kind,name,row,status){
- const tagged={...row,_dcSource:dcSourceName(row,kind==="material"?"stock_data":row._dcSource||"production_data")};
- DATA_CONTROL.records[dcRecordKey(name,tagged)]={status,reason:status==="EXCLUDED"?"Duplicate manually excluded":"Duplicate manually restored",updatedAt:new Date().toISOString()};
- saveDataControl();invalidatePerfCache();dcRefreshUI(name+": "+(status==="EXCLUDED"?"Record excluded":"Record restored"));
+function dcDuplicateGroupStatus(g){
+ const states=g.rows.map(r=>!!dcIsExcluded(g.name,{...r,_dcSource:r._dcSource||(g.kind==="material"?"stock_data":g.activity)}));
+ return states.every(Boolean)?"EXCLUDED":states.some(Boolean)?"MIXED":"KEPT";
 }
-function dcSetDuplicateRecordEncoded(kind,name,encoded,status){
- try{dcSetDuplicateRecord(kind,name,JSON.parse(decodeURIComponent(encoded)),status)}
- catch(e){console.warn("Unable to read duplicate record selection",e);dcToast("Could not update this record","error")}
+function dcSetDuplicateGroupEncoded(encoded,status){
+ try{
+  const g=JSON.parse(decodeURIComponent(encoded));
+  g.rows.forEach(row=>{
+   const tagged={...row,_dcSource:row._dcSource||(g.kind==="material"?"stock_data":g.activity)};
+   DATA_CONTROL.records[dcRecordKey(g.name,tagged)]={status,reason:status==="EXCLUDED"?"Duplicate group manually excluded":"Duplicate group manually restored",updatedAt:new Date().toISOString()};
+  });
+  saveDataControl();invalidatePerfCache();dcRefreshUI(g.name+": "+(status==="EXCLUDED"?"whole group excluded":"whole group restored"));
+ }catch(e){console.warn("Unable to update duplicate group",e);dcToast("Could not update this group","error")}
 }
-function dcDuplicateRecordCard(g,r,i){
- const excluded=dcDuplicateRecordExcluded(g,r),activity=g.kind==="material"?tType(r):g.activity;
- const qty=g.kind==="material"?tVal(r):(r.actual_output??r.production_day_mt??r.Production_Day_MT??r.output??r.quantity??r.value??"--");
- return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border,#ddd);border-radius:10px;margin-top:8px;opacity:${excluded?".72":"1"}"><div><strong>Record ${i+1}</strong><div class="small-note">${esc(activity)} • ${esc(fmt(qty))}</div><div class="small-note">${excluded?"EXCLUDED — not counted":"Included in calculations"}</div></div><button class="dc-toggle-btn ${excluded?"unhide":""}" onclick="dcSetDuplicateRecordEncoded('${g.kind}','${jsq(g.name)}','${encodeURIComponent(JSON.stringify(r))}','${excluded?"KEPT":"EXCLUDED"}')">${excluded?"Restore":"Exclude"}</button></div>`;
+function dcDuplicateRowSummary(g,r){
+ if(g.kind==="material")return {label:tType(r)||"Transaction",values:[["Value",fmt(tVal(r))],["Day",fmt(r.for_day)],["Month",fmt(r.for_month)],["Year",fmt(r.for_year)]]};
+ const fields=[["Output",r.actual_output??r.production_day_mt??r.Production_Day_MT??r.output??r.quantity??r.value],["Dispatch",r.dispatch_day_mt??r.Dispatch_Day_MT??r.dispatch]];
+ return {label:clean(r.product||r.Product)||g.activity,values:fields.filter(x=>x[1]!==undefined&&x[1]!==null&&x[1]!=="").map(x=>[x[0],fmt(x[1])])};
+}
+function dcDuplicateGroupCard(g){
+ const status=dcDuplicateGroupStatus(g),excluded=status==="EXCLUDED";
+ const details=g.rows.map(r=>{
+  const d=dcDuplicateRowSummary(g,r);
+  return `<div style="padding:8px 10px;border-top:1px solid var(--border,#ddd)"><strong>${esc(d.label)}</strong><div class="small-note">${d.values.map(v=>esc(v[0])+": "+esc(v[1])).join(" • ")||"Record details unavailable"}</div></div>`;
+ }).join("");
+ const title=g.kind==="material"?"Record "+(g.recordNumber||1):"Duplicate product group";
+ return `<article style="padding:12px;border:1px solid var(--border,#ddd);border-radius:12px;margin:12px 0;opacity:${excluded?".75":"1"}"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><strong>${esc(g.name)} — ${esc(title)}</strong><div class="small-note">${esc(g.date)} • ${g.rows.length} records • ${esc(g.activity||"Stock transactions")}</div></div><button class="dc-toggle-btn ${excluded?"unhide":""}" onclick="dcSetDuplicateGroupEncoded('${encodeURIComponent(JSON.stringify(g))}','${excluded?"KEPT":"EXCLUDED"}')">${excluded?"Restore group":"Exclude group"}</button></div><div class="small-note" style="margin-top:6px">${status==="MIXED"?"Partially excluded — action applies to the whole group":excluded?"Entire group excluded from calculations":"All values included in calculations"}</div><div style="margin-top:8px;border:1px solid var(--border,#ddd);border-radius:8px;overflow:hidden">${details}</div></article>`;
 }
 function renderDcDuplicateGroups(){
  const groups=dcDuplicateGroups();
  if(!groups.length)return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>No duplicate groups detected</small></div></div></section>`;
- return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>${groups.length} group(s) • manual review only</small></div></div></div>${groups.map(g=>`<article style="padding:12px;border:1px solid var(--border,#ddd);border-radius:12px;margin:12px 0"><div style="display:flex;justify-content:space-between;gap:10px"><strong>${esc(g.name)}</strong><span>${esc(g.date)}</span></div><div class="small-note">${esc(g.activity)} • ${g.rows.length} records</div>${g.rows.map((r,i)=>dcDuplicateRecordCard(g,r,i)).join("")}</article>`).join("")}</section>`;
+ return `<section class="dc-list-section"><div class="dc-section-head"><div><span class="dc-section-icon">🔁</span><div><h3>Duplicate records</h3><small>${groups.length} group(s) • group-level review</small></div></div></div>${groups.map(g=>dcDuplicateGroupCard(g)).join("")}</section>`;
 }
 function dcMaterialActivity(material){
   const rows=dcRawTransactions(material);
