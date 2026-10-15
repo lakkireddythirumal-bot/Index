@@ -594,7 +594,7 @@ function applyData(apiData,fromCache=false){
     production:filterProducts(DC_RAW_DATA.production,"production_data"),productionHistory:filterProducts(DC_RAW_DATA.productionHistory,"production_data"),
     bags:filterProducts(DC_RAW_DATA.bags,"pp_bags_data"),bagsHistory:filterProducts(DC_RAW_DATA.bagsHistory,"pp_bags_data"),
     feedUnitData:filterProducts(DC_RAW_DATA.feedUnitData,"feed_unit_data","Product"),feedUnitTotals:filterProducts(DC_RAW_DATA.feedUnitTotals,"feed_unit_totals","Product"),
-    productionTrend:DC_RAW_DATA.productionTrend,usage:apiData.usage&&typeof apiData.usage==="object"?apiData.usage:{},
+    productionTrend:(DC_RAW_DATA.productionHistory.length?DC_RAW_DATA.productionHistory:DC_RAW_DATA.production).filter(r=>!dcIsExcluded(clean(r.product||r.Product),{...r,_dcSource:"production_data"})).slice().sort((a,b)=>String(a.report_date||"").localeCompare(String(b.report_date||""))).map(r=>({report_date:r.report_date||r.Report_Date||r.date,actual_output:r.actual_output})),usage:apiData.usage&&typeof apiData.usage==="object"?apiData.usage:{},
     reorder_items:Array.isArray(apiData.reorder_items)?apiData.reorder_items:[],consumption:apiData.consumption??null,
     efficiency:apiData.efficiency??null,processLoss:apiData.processLoss??null,report_date:apiData.report_date??null
   };
