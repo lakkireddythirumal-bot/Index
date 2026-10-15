@@ -180,7 +180,8 @@ function dcDuplicateGroups(){
   candidateRecords.forEach(({n,rows})=>{
    const commonRows=rows.filter(r=>sharedActivities.has(tType(r)));
    if(commonRows.length<2)return;
-   const stableKey="DUPGROUP|M|"+dcKey(name)+"|"+latest+"|"+[...sharedActivities].sort().map(dcKey).join(",");
+   const rowSignature=commonRows.map(r=>[tType(r),tVal(r),clean(r.for_day),clean(r.for_month),clean(r.for_year)].join(":")).sort().join(";");
+   const stableKey="DUPGROUP|M|"+dcKey(name)+"|"+latest+"|R"+n+"|"+dcKey(rowSignature);
    const marker=DATA_CONTROL.records[stableKey];
    const groupKey="M|"+dcKey(name)+"|"+latest+"|"+n+"|"+[...sharedActivities].sort().map(dcKey).join(",");
    groups.push({kind:"material",name,date:latest,activity:"Stock transactions",groupKey,stableKey,recordNumber:n,rows:commonRows,excluded:!!(marker&&marker.status==="EXCLUDED")});
