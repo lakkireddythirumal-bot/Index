@@ -170,6 +170,9 @@ function dcDuplicateGroups(){
    });
   });
   [...records.entries()].sort((a,b)=>a[0]-b[0]).forEach(([n,rows])=>{
+   /* Follow the MAIZE SILO2 pattern: a visible Record must contain at least two activities.
+      Single-occurrence activities are assigned to Record 1; repeated activities are aligned by occurrence order. */
+   if(rows.length<2)return;
    groups.push({...base,groupKey:"M|"+dcKey(base.name)+"|"+base.date+"|"+n,recordNumber:n,rows:rows.sort((a,b)=>tType(a).localeCompare(tType(b)))});
   });
  });
