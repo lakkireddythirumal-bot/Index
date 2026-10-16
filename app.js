@@ -900,11 +900,11 @@ function materialReconciliation(material, requestedDate=""){
   if(unclassified.length)return {status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling.",date:targetDate};
   if(openingCount>1||closingCount>1)return {status:"NO DATA",message:"Duplicate opening/closing balance rows exist for the latest date. Review the source records before reconciling.",date:targetDate,openingCount,closingCount};
   if(invalid)return {status:"NO DATA",message:"One or more required daily quantities are missing. Monthly/yearly values cannot substitute for daily quantities.",date:targetDate};
-  if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the latest transaction date.",date:latest};
+  if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the selected report date.",date:targetDate};
   const calculated=opening+add-otherOut-closing;
   const diff=calculated-recorded;
   const tol=0.01;
-  return {status:Math.abs(diff)<=tol?"MATCH":"MISMATCH",date:latest,opening,add,otherOut,closing,calculated,recorded,diff,tolerance:tol};
+  return {status:Math.abs(diff)<=tol?"MATCH":"MISMATCH",date:targetDate,opening,add,otherOut,closing,calculated,recorded,diff,tolerance:tol};
 }
 function reconciliationItems(){
   return getMaterials().map(material=>({material,r:materialReconciliation(material)}));
@@ -1938,7 +1938,7 @@ function openMaterialDetails(material){
   if(movementRows.length){
     const openingRows=movementRows.filter(t=>tType(t)==="OPENING STOCK");
     const closingRows=movementRows.filter(t=>isClosingStockMovement(tType(t)));
-    if(openingRows.length===1)html+=detail("Opening Stock",fmt(tVal(openingRows[0]))+" "+unit);
+    if(openingRows.length===1)html+=detail("Opening Stock",fmt(tRawVal(openingRows[0]))+" "+unit);
     else if(openingRows.length>1)html+=detail("Opening Stock","Duplicate records — review source");
     const movementGroups=[
       ["PURCHASE",t=>tType(t)==="PURCHASE"||tType(t)==="RECEIVED"],
@@ -1954,7 +1954,7 @@ function openMaterialDetails(material){
       if(!matching.length)return;
       html+=detail(label,fmt(matching.reduce((sum,t)=>sum+tVal(t),0))+" "+unit);
     });
-    if(closingRows.length===1)html+=detail("Closing Stock",fmt(tVal(closingRows[0]))+" "+unit);
+    if(closingRows.length===1)html+=detail("Closing Stock",fmt(tRawVal(closingRows[0]))+" "+unit);
     else if(closingRows.length>1)html+=detail("Closing Stock","Duplicate records — review source");
   }else{
     html+=`<div class="empty">No transaction movements available for this date.</div>`;
