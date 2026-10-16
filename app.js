@@ -1923,10 +1923,21 @@ function openMaterialDetails(material){
   }else{
     html+=`<div class="detail-section reconcile-warn"><h3>🔎 Stock Reconciliation</h3><div class="empty">${esc(rec.message||"Insufficient data for reconciliation.")}</div></div>`;
   }
-  html+=`<div class="detail-section"><h3>Material-wise Movement</h3>`;
-  groups.forEach(g=>{const total=rows.filter(t=>tType(t)===normalize(g)).reduce((a,t)=>a+tVal(t),0);if(total)html+=detail(g,fmt(total)+" "+unit)});
-  const namedConsumption=rows.filter(t=>isConsumptionMovement(tType(t))).reduce((a,t)=>a+tVal(t),0);
+  // Keep balance snapshots and movement totals on the same report date.
+  // Opening/closing balances are snapshots, so never sum them across historical dates.
+  const movementDate=effectiveViewDate()||rec.date||rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||"";
+  const movementRows=movementDate?rows.filter(t=>dateOnly(rowDate(t))===movementDate):[];
+  html+=`<div class="detail-section"><h3>Material-wise Movement • ${esc(movementDate||"No date available")}</h3>`;
+  groups.forEach(g=>{
+    const matching=movementRows.filter(t=>tType(t)===normalize(g));
+    if(!matching.length)return;
+    // Balance types should be represented by one source row, not summed across dates.
+    const total=matching.reduce((a,t)=>a+tVal(t),0);
+    html+=detail(g,fmt(total)+" "+unit);
+  });
+  const namedConsumption=movementRows.filter(t=>isConsumptionMovement(tType(t))).reduce((a,t)=>a+tVal(t),0);
   if(namedConsumption)html+=detail("All Consumption Activities",fmt(namedConsumption)+" "+unit);
+  if(!movementRows.length)html+=`<div class="empty">No transaction movements available for this date.</div>`;
   html+="</div>";
   if(rows.length){
     html+=`<div class="detail-section"><h3>Transactions</h3>`;
