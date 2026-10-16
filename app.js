@@ -2266,17 +2266,23 @@ function uniqueDatedProductRows(rows,productGetter,dateGetter){
   });
   return [...latest.values()];
 }
-function latestUniqueRows(rows,productGetter){
+function latestUniqueRows(rows,productGetter,dateGetter){
   const latest=new Map();
   (Array.isArray(rows)?rows:[]).forEach(r=>{
-    const p=clean(productGetter(r));
-    if(p)latest.set(normalize(p),r); // API rows are ordered by id ascending; the last row is the deterministic winner.
+    const p=clean(productGetter(r));if(!p)return;
+    const key=normalize(p),d=dateGetter?dateOnly(dateGetter(r)):"";
+    const prior=latest.get(key),priorDate=prior&&dateGetter?dateOnly(dateGetter(prior)):"";
+    if(!prior || !dateGetter || d>=priorDate)latest.set(key,r);
   });
   return [...latest.values()];
 }
 function latestFeedRows(){
   if(PERF_CACHE.latestFeed)return PERF_CACHE.latestFeed;
-  PERF_CACHE.latestFeed=latestUniqueRows(selectedFeedRows().filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product);
+  PERF_CACHE.latestFeed=latestUniqueRows(
+    selectedFeedRows().filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),
+    r=>r.Product||r.product,
+    r=>r.Report_Date||r.report_date||r.date||r.DATE
+  );
   return PERF_CACHE.latestFeed;
 }
 function latestTotal(key){
