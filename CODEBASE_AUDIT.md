@@ -137,3 +137,21 @@ These are source-data spot checks, not browser end-to-end tests. The flagged dif
 - [ ] The hidden duplicate row in the source Excel/import workflow cannot be repaired by frontend code alone; the import/upsert key and source-row handling must be checked separately.
 
 **Important:** The fixes are committed on the audit branch only. They should be reviewed and tested against known plant reports before merging into `main`. The code-level checks do not prove that every live-data calculation is correct.
+
+### Live-data spot checks — 2026-10-16
+
+Read-only SQL checks were run against the connected Supabase project for duplicate product/date rows, production percentage arithmetic, and latest available balance records. These are targeted spot checks, not a full source-MIS reconciliation.
+
+- No duplicate product/date groups were found in the current `feed_unit_data`, `pp_bags_data`, or `production_data` tables during the duplicate check.
+- No production output-percentage arithmetic mismatches above 0.5 percentage points were found in that check.
+- PP-bag balances on the latest report date reconciled in the query.
+- **Feed Unit:** `BROILER FINISHER PELLETS` had a 0.90 MT difference between calculated closing (32.55 MT) and reported closing (31.15 MT) on 2026-10-16. `CATTLE FEED` had a missing daily production value. These are source-data exceptions; no database values were changed.
+- **Raw material stock:** `MAIZE SILO2` has two `CL. STOCK` records for 2026-10-16, one with `for_day = -1.62759` and one with `for_day = 29.40951`. The app now marks this reconciliation as NO DATA until the duplicate is reviewed instead of silently choosing one. The correct record cannot safely be inferred by frontend logic alone.
+- **Premix stock fields:** `BFP PREMIX`, `PSC PREMIX`, and `STARTER PREMIX` had null daily quantities on the latest date while monthly/yearly values existed. The app now treats missing daily quantities as NO DATA instead of treating them as zero.
+- `DE OILED C DOC` uses the source transaction label `CL. STOCK IN M.T`; the closing-stock label matcher now recognizes this variant.
+
+### Additional calculation safeguards
+
+- Daily stock balances now preserve their sign; a negative closing is not converted to a positive value.
+- Duplicate opening/closing rows and missing daily quantities are reported as NO DATA/review-needed rather than producing a misleading MATCH.
+- Stock display/status logic distinguishes NO DATA and NEGATIVE STOCK from a real zero balance.
