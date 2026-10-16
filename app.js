@@ -954,7 +954,7 @@ function openDataHealth(){
 }
 function buildDailyReportText(){
   const m=dailyControlMetrics(),pd=latestTotal("Production_Day_MT"),dd=latestTotal("Dispatch_Day_MT");
-  const reorder=getMaterials().filter(x=>stockStatus(num(getMaterial(x)?.closing)||0,avgConsumption(x)).status==="REORDER");
+  const reorder=getMaterials().filter(x=>stockStatus(num(getMaterial(x)?.closing),avgConsumption(x)).status==="REORDER");
   const rec=reconciliationItems().filter(x=>x.r.status==="MISMATCH");
   const abnormal=abnormalConsumptionItems();
   return `FEED PLANT DAILY REPORT
@@ -1434,19 +1434,20 @@ function dacStockItems(targetDate){
   return getMaterials().map(material=>{
     const rows=transactions(material).filter(t=>dateOnly(rowDate(t))===targetDate);
     if(!rows.length)return {name:material,date:targetDate,status:"NO DATA",message:"No stock transactions for this date."};
-    let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false;const unclassified=[];
+    let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
     rows.forEach(t=>{
       const type=tType(t);
       const value=dacValue(t,["for_day","value","quantity","qty"]);
-      if(type==="OPENING STOCK"){if(value===null)invalid=true;else opening=value;}
-      else if(type==="CL. STOCK"||type.startsWith("CL. STOCK ")){if(value===null)invalid=true;else closing=value;}
+      if(type==="OPENING STOCK"){openingCount++;if(value===null)invalid=true;else opening=value;}
+      else if(isClosingStockMovement(type)){closingCount++;if(value===null)invalid=true;else closing=value;}
       else if(isConsumptionMovement(type)){if(value===null)invalid=true;else recorded+=Math.abs(value);}
       else if(type==="PURCHASE"||type==="RECEIVED"||type==="GAIN"||type.includes("TRANSFER FROM")){if(value===null)invalid=true;else inflow+=Math.abs(value);}
       else if(type.includes("TRANSFER TO")||type.includes("SALE")||type.includes("SHORTAGE")||type==="DAMAGE"||type==="ISSUE"||type.includes("RETURN TO")){if(value===null)invalid=true;else outflow+=Math.abs(value);}
       else if(type)unclassified.push(type);
     });
     if(unclassified.length)return {name:material,date:targetDate,status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm whether each is inward or outward before reconciling."};
-    if(invalid)return {name:material,date:targetDate,status:"NO DATA",message:"One or more relevant transaction quantities are missing."};
+    if(openingCount>1||closingCount>1)return {name:material,date:targetDate,status:"NO DATA",message:"Duplicate opening/closing balance rows exist. Review source records before reconciling."};
+    if(invalid)return {name:material,date:targetDate,status:"NO DATA",message:"One or more relevant daily transaction quantities are missing."};
     if(opening===null||closing===null)return {name:material,date:targetDate,status:"NO DATA",message:"Opening stock or closing stock is missing."};
     const calculated=opening+inflow-outflow-closing;
     const diff=calculated-recorded;
@@ -1589,7 +1590,7 @@ function renderDashboard(){
 
 function attentionReorderMaterials(){
   return getMaterials().map(m=>{
-    const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
+    const x=getMaterial(m), c=num(x?.closing), avg=avgConsumption(m), s=stockStatus(c,avg);
     return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
   }).filter(x=>x.s.status==="REORDER");
 }
@@ -1601,7 +1602,7 @@ function attentionReorderPremixes(){
 }
 function attentionUnder3Materials(){
   return getMaterials().map(m=>{
-    const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
+    const x=getMaterial(m), c=num(x?.closing), avg=avgConsumption(m), s=stockStatus(c,avg);
     return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
   }).filter(x=>x.s.cover!==null && x.s.cover<3 && x.s.status!=="REORDER");
 }
@@ -1847,7 +1848,7 @@ function renderAlerts(){
   });
   if(!reorder.length){
     getMaterials().forEach(m=>{
-      const x=getMaterial(m),s=stockStatus(num(x?.closing)||0,avgConsumption(m));
+      const x=getMaterial(m),s=stockStatus(num(x?.closing),avgConsumption(m));
       if(s.status==="REORDER")items.push({title:m,msg:"Stock is at/below reorder level",type:"critical",icon:"🔴"});
       else if(s.status==="WATCH")items.push({title:m,msg:"Stock coverage is getting low",type:"warning",icon:"🟠"});
     });
@@ -1907,7 +1908,7 @@ function closeModal(){document.getElementById("modal").classList.remove("show")}
 function outsideClose(e){if(e.target.id==="modal")closeModal()}
 function detail(label,value){return `<div class="detail-row"><span>${esc(label)}</span><strong>${esc(value??"--")}</strong></div>`}
 function openMaterialDetails(material){
-  const x=getMaterial(material),rows=transactions(material),closing=num(x?.closing)||0,avg=avgConsumption(material),s=stockStatus(closing,avg),reorder=avg*DEFAULT_SAFETY_DAYS;
+  const x=getMaterial(material),rows=transactions(material),closing=num(x?.closing),avg=avgConsumption(material),s=stockStatus(closing,avg),reorder=avg*DEFAULT_SAFETY_DAYS;
   const groups=["OPENING STOCK","PURCHASE","TRANSFER FROM SOYA DIVISION","GAIN","SALE","SHORTAGE","CONSUMPTION","CL. STOCK"];
   const unit=materialUnit(material,x?.unit||"MT");
   const rec=materialReconciliation(material);
@@ -2474,7 +2475,7 @@ function renderQuick(){
   setText("qReceived",fmt(received)+" MT");setText("qConsumption",fmt(cons)+" MT");setText("qClosing",fmt(closing)+" MT");
   setText("qFeedClosing",fmtMT(latestFeedClosingTotal()));setText("qFeedClosingBagsMini",fmt(latestFeedClosingBagEquivalent())+" Bags");
   setText("reportDate",VIEW_DATE||DATA.report_date||"Latest");
-  const reorderCount=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER").length;
+  const reorderCount=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing),avgConsumption(m)).status==="REORDER").length;
   const issueCount=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length+feedUnitReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+ppBagReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+abnormalConsumptionItems().length+duplicateTransactionCount();
   const premixKg=premixBommakalTransfers().reduce((a,r)=>a+r.value,0);
   const damage=selectedBags().reduce((a,r)=>a+(num(r.damage)||0),0);
@@ -2530,7 +2531,7 @@ function renderPPBags(){
 function renderStock(){
   const list=document.getElementById("stockList"),premixList=document.getElementById("premixStockList"),mats=getMaterials();
   const renderRows=(rows)=>rows.slice().sort((a,b)=>{const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;return (bv>0)-(av>0)||bv-av;}).map(m=>{
-    const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),st=stockStatus(closing,avg),unit=materialUnit(m,x?.unit||"MT");
+    const x=getMaterial(m),closing=num(x?.closing),avg=avgConsumption(m),st=stockStatus(closing,avg),unit=materialUnit(m,x?.unit||"MT");
     const dot=st.status==="REORDER"?"🔴":st.status==="WATCH"?"🟡":st.status==="OK"?"🟢":"⚪";
     return `<div class="stock-row reorder-card" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-card-top"><strong class="reorder-material">${esc(m)}</strong><span class="status-dot ${st.cls}" title="${esc(st.status)}" aria-label="${esc(st.status)}"></span></div><div class="reorder-card-metrics"><span><b>Stock</b><strong>${fmt(closing)} ${esc(unit)}</strong></span><span><b>Avg/day</b><strong>${avg?fmt(avg):"--"} ${esc(unit)}</strong></span><span><b>Cover</b><strong>${st.cover!==null?fmt(st.cover)+" d":"--"}</strong></span></div></div>`;
   }).join("")||"<div class='empty'>No stock data for this date</div>";
@@ -2563,7 +2564,7 @@ function weightedOutputPercentage(rows){
   return reported.length?reported.reduce((a,b)=>a+b,0)/reported.length:null;
 }
 function dailyControlMetrics(){
-  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER").length;
+  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing),avgConsumption(m)).status==="REORDER").length;
   const mismatches=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length;
   const abnormal=abnormalConsumptionItems().length;
   const rows=selectedProduction(),outs=rows.map(r=>num(r.output_percentage)).filter(v=>v!==null),losses=rows.map(r=>num(r.process_loss)).filter(v=>v!==null);
@@ -2594,8 +2595,8 @@ function completedComparisonDates(d){
 }
 function managerAttentionItems(){
   const items=[];
-  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER");
-  reorder.slice(0,8).forEach(m=>items.push({level:"critical",title:m,msg:`Stock ${fmtMaterial(num(getMaterial(m)?.closing)||0,m,getMaterial(m)?.unit||"MT")} • coverage ${(()=>{const s=stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m));return s.cover===null?"--":fmt(s.cover)+" days"})()}`,action:`openMaterialDetails('${jsq(m)}')`}));
+  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing),avgConsumption(m)).status==="REORDER");
+  reorder.slice(0,8).forEach(m=>items.push({level:"critical",title:m,msg:`Stock ${fmtMaterial(num(getMaterial(m)?.closing),m,getMaterial(m)?.unit||"MT")} • coverage ${(()=>{const s=stockStatus(num(getMaterial(m)?.closing),avgConsumption(m));return s.cover===null?"--":fmt(s.cover)+" days"})()}`,action:`openMaterialDetails('${jsq(m)}')`}));
   reconciliationItems().filter(x=>x.r.status==="MISMATCH").slice(0,8).forEach(x=>items.push({level:"warning",title:x.m,msg:"Stock reconciliation mismatch — check transactions",action:`openMaterialDetails('${jsq(x.m)}')`}));
   abnormalConsumptionItems().slice(0,8).forEach(x=>items.push({level:"warning",title:x.material,msg:`Consumption ${fmt(x.current)} vs avg ${fmt(x.avg)} • ${fmt(Math.abs(x.ratio*100-100))}% ${x.direction==="LOW"?"below":"above"} average`,action:`openMaterialDetails('${jsq(x.material)}')`}));
   DATA.production.forEach(r=>{
@@ -2618,7 +2619,7 @@ function renderManagerIntelligence(){
   const d=selectedDateForIntelligence(), items=managerAttentionItems();
   setText("intelDate",d||"Latest");
   setText("intelAttention",String(items.length));
-  const low=getMaterials().filter(m=>{const c=num(getMaterial(m)?.closing)||0,s=stockStatus(c,avgConsumption(m));return s.cover!==null&&s.cover<3}).length;
+  const low=getMaterials().filter(m=>{const c=num(getMaterial(m)?.closing),s=stockStatus(c,avgConsumption(m));return s.cover!==null&&s.cover<3}).length;
   setText("intelCoverage",String(low));
   const cmp=completedComparisonDates(d),latestCompleted=cmp[0],previousCompleted=cmp[1];
   const lc=latestCompleted?dateFeedMetrics(latestCompleted):null,pc=previousCompleted?dateFeedMetrics(previousCompleted):null;
@@ -2628,7 +2629,7 @@ function renderManagerIntelligence(){
   if(pill){pill.className="attention-pill"+(items.some(x=>x.level==="critical")?" hot":items.length?" warn":"");pill.textContent=items.some(x=>x.level==="critical")?"🔴 ACTION NEEDED":items.length?"🟠 CHECK":"✓ NORMAL";}
 }
 function openStockForecast(){
-  const rows=getMaterials().map(m=>{const x=getMaterial(m),c=num(x?.closing)||0,avg=avgConsumption(m),s=stockStatus(c,avg);return {m,c,avg,s,unit:x?.unit||"MT"}}).filter(x=>x.s.cover!==null).sort((a,b)=>a.s.cover-b.s.cover);
+  const rows=getMaterials().map(m=>{const x=getMaterial(m),c=num(x?.closing),avg=avgConsumption(m),s=stockStatus(c,avg);return {m,c,avg,s,unit:x?.unit||"MT"}}).filter(x=>x.s.cover!==null).sort((a,b)=>a.s.cover-b.s.cover);
   const html=`<div class="detail-section"><h3>📦 Stock Coverage Forecast • ${esc(selectedDateForIntelligence()||"Latest")}</h3><div class="small-note">Coverage is based on the available recorded consumption history. It is a planning estimate, not a guaranteed depletion date.</div>${rows.slice(0,20).map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${fmt(x.s.cover)} days</strong><small>≈ ${esc(x.s.cover<3?"Low coverage":"Covered")}</small></div></div>`).join("")||"<div class='empty'>No consumption history available.</div>"}</div>`;
   showModal("📦 Stock Forecast",html);
 }
@@ -3661,7 +3662,7 @@ function plantAIMetrics(){
   const critical=attention.filter(x=>x.level==="critical").reduce((n,x)=>n+(Number(x.count)||0),0);
   const warning=attention.filter(x=>x.level==="warning").reduce((n,x)=>n+(Number(x.count)||0),0);
   const stockRows=viewStockRows();
-  const stockTotal=stockRows.reduce((n,x)=>n+materialValueInMT(x.closing,x.material),0);
+  const stockTotal=stockRows.reduce((n,x)=>num(x.closing)===null?n:n+materialValueInMT(x.closing,x.material),0);
   const lowStock=stockRows.filter(x=>x.status&&x.status!=='OK').sort((a,b)=>(Number(a.cover??999)-Number(b.cover??999)));
   const prodRows=selectedProduction();
   const outputs=prodRows.map(r=>num(r.output_percentage??r.outputPercent??r.output_percentage_value)).filter(v=>v!==null);
