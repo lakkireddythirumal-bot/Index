@@ -47,7 +47,7 @@ async function loadProductionForDate(){
  const rows=await res.json();
  const total=rows.reduce((sum,r)=>sum+Number(r.Production_Day_MT??r.production_day_mt??r.Production_Day??r.production_day??r.Production??r.production??0),0);
  const hasValue=rows.some(r=>{const v=r.Production_Day_MT??r.production_day_mt??r.Production_Day??r.production_day??r.Production??r.production;return v!==null&&v!==undefined&&v!==''});
- if(hasValue){$('feedMt').value=String(total);$('productionMsg').textContent='Loaded automatically from Dashboard for '+date+'.'}
+ if(hasValue){$('feedMt').value=String(Number(total.toFixed(2)));$('productionMsg').textContent='Loaded automatically from Dashboard for '+date+'.'}
  else{$('feedMt').value='';$('productionMsg').textContent='No Day Production found in Dashboard for '+date+'. Units/MT will not be calculated.'}
 }
 async function loadRows(){
@@ -62,7 +62,7 @@ $('powerForm').addEventListener('submit',async e=>{
  e.preventDefault();$('saveBtn').disabled=true;message('Saving…');
  try{
  const date=$('entryDate').value;if(!date)throw new Error('Please select a date');
- const power=num('powerUnits'),solar=num('solarUnits'),feed=num('feedMt');if(feed===null)throw new Error('Day Production is not available in Dashboard for the selected date.');const combined=(power===null?0:power)+(solar===null?0:solar);const row={date,power_units_consumption:power,solar_units_consumption:solar,feed_mt:feed,units_per_mt:feed>0&&(power!==null||solar!==null)?combined/feed:null,source_sheet:'POWER',updated_at:new Date().toISOString()};
+ const power=num('powerUnits'),solar=num('solarUnits'),feed=num('feedMt');if(feed===null)throw new Error('Day Production is not available in Dashboard for the selected date.');const combined=(power===null?0:power)+(solar===null?0:solar);const row={date,power_units_consumption:power,solar_units_consumption:solar,feed_mt:feed,units_per_mt:feed>0&&(power!==null||solar!==null)?Number((combined/feed).toFixed(4)):null,source_sheet:'POWER',updated_at:new Date().toISOString()};
  const res=await fetch(URL+'/rest/v1/power_consumption?on_conflict=date',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(row)});
  if(!res.ok){const detail=await res.text();throw new Error('Save failed ('+res.status+'): '+detail.slice(0,180))}
  message('Saved successfully.');await loadRows();
