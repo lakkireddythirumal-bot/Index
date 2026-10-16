@@ -493,11 +493,11 @@ function isPremixProduct(name){
   if(!value)return false;
   // Premix names vary across MIS sheets: full names, PSC (Prestarter Premix),
   // and BFP (Finisher Premix). Use this shared classifier for every site section.
-  return /\\bPRE ?MIX\\b/.test(value)
-    || /\\bPRE ?STARTER\\b/.test(value)
-    || /\\bFINISHER\\b/.test(value)
-    || /\\bPSC\\b/.test(value)
-    || /\\bBFP\\b/.test(value);
+  return /\bPRE ?MIX\b/.test(value)
+    || /\bPRE ?STARTER\b/.test(value)
+    || /\bFINISHER\b/.test(value)
+    || /\bPSC\b/.test(value)
+    || /\bBFP\b/.test(value);
 }
 function isPremixMaterial(name){return isPremixProduct(name);}
 function fmtFeed(v,product){return v===null||v===undefined||v===""?"--":isPremixProduct(product)?fmt(v)+" KG":fmt(v)+" MT"}
