@@ -553,7 +553,7 @@ function txName(v){return clean(v).replace(/\s+/g," ")}
 
 function tType(t){return normalize(t.transaction||t.type||t.movement||"")}
 function isClosingStockMovement(type){const s=normalize(type);return s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
-function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return v;}return null;}
+function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return Math.abs(v)<1e-9?0:v;}return null;}
 function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
 function rowDate(t){return clean(t.report_date||t.date||t.Report_Date||"")}
 function feedField(r,key){
@@ -3868,7 +3868,7 @@ function renderRawCategory(tab){
     const body=list.map(({m,v})=>{
       if(tab==="STOCK"){
         const x=getMaterial(m);
-        return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for details</small></div></div>`;
+        return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing),m,x?.unit||"MT")}</strong><small>Tap for details</small></div></div>`;
       }
       const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;
       return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • details</small></div></div>`;
