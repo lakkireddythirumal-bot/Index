@@ -155,3 +155,7 @@ Read-only SQL checks were run against the connected Supabase project for duplica
 - Daily stock balances now preserve their sign; a negative closing is not converted to a positive value.
 - Duplicate opening/closing rows and missing daily quantities are reported as NO DATA/review-needed rather than producing a misleading MATCH.
 - Stock display/status logic distinguishes NO DATA and NEGATIVE STOCK from a real zero balance.
+
+### Separate security finding (not changed)
+
+The connected Supabase advisor reports that `public.stock_data_dedup_backup` has Row Level Security disabled. That means the table may be readable/writable through roles granted Data API access, including public client roles, depending on grants. I did not change its RLS setting or policies because enabling RLS without an intentional policy could block needed access. Decide whether this backup table should remain exposed; if not, define the intended access policy and then enable RLS.
