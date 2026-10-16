@@ -273,7 +273,8 @@ function dcLatestRawReconciliation(material){
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else{cons+=v;otherActivity+=v}}
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else{add+=v;otherActivity+=v}}
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else{out+=v;otherActivity+=v}}
-    else if(ty)unclassified.push(ty);
+    else if(ty && raw===null)invalid=true;
+    else if(ty && Math.abs(v)>0.01)unclassified.push(ty);
   });
   if(unclassified.length)return {status:"NO DATA",date:latest,message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling."};
   if(openingCount>1||closingCount>1)return {status:"NO DATA",date:latest,message:"Duplicate opening/closing balance rows require source review.",openingCount,closingCount};
@@ -895,7 +896,8 @@ function materialReconciliation(material, requestedDate=""){
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else recorded+=v;}
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else otherOut+=v;}
-    else if(ty)unclassified.push(ty);
+    else if(ty && raw===null)invalid=true;
+    else if(ty && Math.abs(v)>0.01)unclassified.push(ty);
   });
   if(unclassified.length)return {status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling.",date:targetDate};
   if(openingCount>1||closingCount>1)return {status:"NO DATA",message:"Duplicate opening/closing balance rows exist for the latest date. Review the source records before reconciling.",date:targetDate,openingCount,closingCount};
@@ -934,6 +936,11 @@ function openDataHealth(){
   const abnormal=abnormalConsumptionItems();
   const dupCount=duplicateTransactionCount();
   let html=`<div class="detail-section"><h3>⚠ Data Issues</h3>${detail("Materials checked",rec.length)}${detail("Stock mismatches",bad.length)}${detail("Feed Unit / Dispatch mismatches",feedBad.length)}${detail("PP Bags mismatches",bagBad.length)}${detail("Duplicate transactions",dupCount)}${detail("Abnormal consumption",abnormal.length)}${detail("Materials without daily pair",no.length)}</div>`;
+  if(no.length){
+    html+='<div class="detail-section reconcile-warn"><h3>⚠ Reconciliation needs source review</h3>';
+    no.forEach(x=>{html+='<div class="transaction" onclick="closeModal();openMaterialDetails(\''+jsq(x.material)+'\')"><div class="transaction-title"><strong>'+esc(x.material)+'</strong><span>'+esc(x.r.date||'--')+'</span></div><div class="small-note">'+esc(x.r.message||'Daily opening/closing data is incomplete or ambiguous.')+'</div></div>'});
+    html+='</div>';
+  }
   if(bad.length){
     html+=`<div class="detail-section"><h3>⚠ Stock Reconciliation</h3>`;
     bad.forEach(x=>{const u=materialUnit(x.material,getMaterial(x.material)?.unit||"MT");html+=`<div class="transaction" onclick="closeModal();openMaterialDetails('${jsq(x.material)}')"><div class="transaction-title"><strong>${esc(x.material)}</strong><span>${esc(x.r.date||"--")}</span></div>${detail("Calculated consumption",fmt(x.r.calculated)+" "+u)}${detail("Recorded consumption",fmt(x.r.recorded)+" "+u)}${detail("Difference",fmt(x.r.diff)+" "+u)}</div>`});
@@ -954,7 +961,7 @@ function openDataHealth(){
     abnormal.slice(0,10).forEach(a=>{html+=`<div class="transaction" onclick="closeModal();openMaterialDetails('${jsq(a.material)}')">${detail("Material",a.material)}${detail("Latest consumption",fmt(a.current)+" "+materialUnit(a.material,getMaterial(a.material)?.unit||"MT"))}${detail("Average",fmt(a.avg)+" "+materialUnit(a.material,getMaterial(a.material)?.unit||"MT")+"/day")}${detail(a.direction==="LOW"?"Below average":"Above average",fmt(Math.abs(a.ratio*100-100))+" %")}</div>`});
     html+="</div>";
   }
-  if(!bad.length&&!feedBad.length&&!bagBad.length&&!abnormal.length)html+=`<div class="detail-section reconcile-ok"><h3>✓ Data Issues</h3><div class="empty">No reconciliation or abnormal-consumption issues detected in the available data.</div></div>`;
+  if(!bad.length&&!no.length&&!feedBad.length&&!bagBad.length&&!abnormal.length)html+=`<div class="detail-section reconcile-ok"><h3>✓ Data Issues</h3><div class="empty">No reconciliation or abnormal-consumption issues detected in the available data.</div></div>`;
   showModal("Data Issues",html);
 }
 function buildDailyReportText(){
