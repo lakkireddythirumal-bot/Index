@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f5f6f8">
+<title>Power Consumption | Feed Plant Control Center</title>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3"></script>
+<style>
+:root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f3f5f9}*{box-sizing:border-box}body{margin:0;padding:18px}.wrap{max-width:1050px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0 18px}.top h1{margin:0;font-size:clamp(23px,4vw,32px)}.top p{color:#64748b;margin:6px 0}.btn{border:0;border-radius:10px;padding:11px 15px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#e6ebf3;color:#1e293b}.primary{background:#155eef;color:white}.card{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 5px 18px #0f172a08}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.field label{display:block;font-size:13px;font-weight:700;margin-bottom:7px;color:#475569}.field input{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;font:inherit;background:white;color:#0f172a}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:15px}.msg{font-size:14px;margin-top:10px;color:#475569}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.metric{background:#f8fafc;border-radius:12px;padding:14px}.metric span{display:block;font-size:12px;color:#64748b}.metric strong{display:block;font-size:21px;margin-top:5px;overflow-wrap:anywhere}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:13px}th,td{text-align:right;padding:11px 10px;border-bottom:1px solid #edf0f5}th:first-child,td:first-child{text-align:left}th{color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.04em}h2{font-size:18px;margin:0 0 14px}.hint{font-size:12px;color:#64748b;margin-top:8px}.empty{padding:20px;text-align:center;color:#64748b}@media(max-width:600px){body{padding:11px}.grid{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}.card{padding:14px}.metric:last-child{grid-column:1/-1}}
+</style>
+</head>
+<body><main class="wrap">
+<div class="top"><div><h1>⚡ Power Consumption</h1><p>Daily power and solar units entry</p></div><a class="btn" href="./index.html">← Dashboard</a></div>
+<section class="card"><div class="metrics"><div class="metric"><span>Latest Date</span><strong id="latestDate">—</strong></div><div class="metric"><span>Power Units</span><strong id="latestPower">—</strong></div><div class="metric"><span>Solar Units</span><strong id="latestSolar">—</strong></div></div></section>
+<section class="card"><h2>Daily Entry</h2><form id="powerForm">
+<div class="grid">
+<div class="field"><label for="entryDate">Date *</label><input id="entryDate" type="date" required></div>
+<div class="field"><label for="powerUnits">Power Units Consumption</label><input id="powerUnits" type="number" min="0" step="0.001" placeholder="Enter power units"></div>
+<div class="field"><label for="solarUnits">Solar Power Units Consumption</label><input id="solarUnits" type="number" min="0" step="0.001" placeholder="Enter solar units"></div>
+<div class="field"><label for="feedMt">Feed Production (MT)</label><input id="feedMt" type="number" min="0" step="0.001" placeholder="Enter feed MT"></div>
+<div class="field"><label for="unitsPerMt">Units per MT</label><input id="unitsPerMt" type="number" min="0" step="0.0001" placeholder="Enter units per MT"></div>
+</div>
+<div class="hint">An existing date will be updated; a new date will be inserted. Leave unavailable values blank.</div>
+<div class="actions"><button class="btn primary" id="saveBtn" type="submit">Save Entry</button><button class="btn" type="button" id="clearBtn">Clear</button><span id="formMsg" class="msg" role="status"></span></div>
+</form></section>
+<section class="card"><h2>Recent Records</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Power Units</th><th>Solar Units</th><th>Feed MT</th><th>Units / MT</th></tr></thead><tbody id="historyBody"><tr><td colspan="5" class="empty">Loading records…</td></tr></tbody></table></div></section>
+</main>
+<script>
+(function(){
+const URL="https://iqxprkmainafqjodpfdk.supabase.co";
+const KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxeHBya21haW5hZnFqb2RwZmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMDQ4MTgsImV4cCI6MjEwNjc4MDgxOH0.RMYxXCnpdsz25SC6uzN6yjykUf1InbmxE9s2wXJDHc8";
+const $=id=>document.getElementById(id);
+const today=new Date();$('entryDate').value=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
+let client;
+function fmt(v,d=3){return v===null||v===undefined||v===''?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d})}
+function num(id){const v=$(id).value.trim();return v===''?null:Number(v)}
+function message(s,err=false){$('formMsg').textContent=s;$('formMsg').style.color=err?'#b42318':'#475569'}
+async function loadRows(){
+ const res=await fetch(URL+'/rest/v1/power_consumption?select=date,power_units_consumption,solar_units_consumption,feed_mt,units_per_mt&order=date.desc&limit=30',{headers:{apikey:KEY,Authorization:'Bearer '+KEY},cache:'no-store'});
+ if(!res.ok)throw new Error('Could not load records ('+res.status+')');
+ const rows=await res.json();
+ const first=rows[0];
+ $('latestDate').textContent=first?first.date:'—';$('latestPower').textContent=first?fmt(first.power_units_consumption):'—';$('latestSolar').textContent=first?fmt(first.solar_units_consumption):'—';
+ $('historyBody').innerHTML=rows.length?rows.map(r=>'<tr><td>'+r.date+'</td><td>'+fmt(r.power_units_consumption)+'</td><td>'+fmt(r.solar_units_consumption)+'</td><td>'+fmt(r.feed_mt)+'</td><td>'+fmt(r.units_per_mt,4)+'</td></tr>').join(''):'<tr><td colspan="5" class="empty">No records found</td></tr>';
+}
+$('powerForm').addEventListener('submit',async e=>{
+ e.preventDefault();$('saveBtn').disabled=true;message('Saving…');
+ try{
+ const date=$('entryDate').value;if(!date)throw new Error('Please select a date');
+ const row={date,power_units_consumption:num('powerUnits'),solar_units_consumption:num('solarUnits'),feed_mt:num('feedMt'),units_per_mt:num('unitsPerMt'),source_sheet:'POWER',updated_at:new Date().toISOString()};
+ const res=await fetch(URL+'/rest/v1/power_consumption?on_conflict=date',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(row)});
+ if(!res.ok){const detail=await res.text();throw new Error('Save failed ('+res.status+'): '+detail.slice(0,180))}
+ message('Saved successfully.');await loadRows();
+ }catch(err){console.error(err);message(err.message||'Could not save entry',true)}
+ finally{$('saveBtn').disabled=false}
+});
+$('clearBtn').addEventListener('click',()=>{$('powerForm').reset();$('entryDate').value=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');message('')});
+loadRows().catch(err=>{console.error(err);$('historyBody').innerHTML='<tr><td colspan="5" class="empty">Could not load records. Check connection and Supabase permissions.</td></tr>';message(err.message,true)});
+})();
+</script></body></html>
