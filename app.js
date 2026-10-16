@@ -265,19 +265,22 @@ function dcLatestRawReconciliation(material){
   const rows=dcRawTransactions(material); if(!rows.length)return {status:"NO DATA",message:"No transaction history available."};
   const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort(); const latest=dates[dates.length-1]||"";
   const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows;
-  let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0;
+  let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0,invalid=false,openingCount=0,closingCount=0;
   dayRows.forEach(t=>{
-    const ty=tType(t),v=tVal(t); if(ty==="OPENING STOCK")opening=v; else if(ty==="CL. STOCK")closing=v;
-    else if(isConsumptionMovement(ty)){cons+=v;otherActivity+=v}
-    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){add+=v;otherActivity+=v}
-    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){out+=v;otherActivity+=v}
+    const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
+    if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
+    else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
+    else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else{cons+=v;otherActivity+=v}}
+    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else{add+=v;otherActivity+=v}}
+    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else{out+=v;otherActivity+=v}}
   });
-  if(opening===null&&closing===null)return {status:"NO DATA",date:latest};
+  if(openingCount>1||closingCount>1)return {status:"NO DATA",date:latest,message:"Duplicate opening/closing balance rows require source review.",openingCount,closingCount};
+  if(invalid||opening===null||closing===null)return {status:"NO DATA",date:latest,message:"Required daily quantities or opening/closing balances are missing."};
   const unexplained=cons>0 && opening<=0 && add<=0;
-  const calculated=(opening||0)+add-out-(closing===null?0:closing);
+  const calculated=opening+add-out-closing;
   const diff=calculated-cons;
-  const match=closing!==null && Math.abs(diff)<=0.01;
-  return {status:match?"MATCH":"MISMATCH",date:latest,opening:opening||0,closing,add,out,cons,otherActivity,calculated,diff,unexplained};
+  const match=Math.abs(diff)<=0.01;
+  return {status:match?"MATCH":"MISMATCH",date:latest,opening,closing,add,out,cons,otherActivity,calculated,diff,unexplained};
 }
 function dcReviewItems(){
   const items=[];
@@ -549,7 +552,9 @@ function txName(v){return clean(v).replace(/\s+/g," ")}
 
 
 function tType(t){return normalize(t.transaction||t.type||t.movement||"")}
-function tVal(t){return Math.abs(num(t.for_day??t.value??t.quantity??t.qty??0)||0)}
+function isClosingStockMovement(type){const s=normalize(type);return s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
+function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return v;}return null;}
+function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
 function rowDate(t){return clean(t.report_date||t.date||t.Report_Date||"")}
 function feedField(r,key){
   const map={
@@ -879,23 +884,21 @@ function materialReconciliation(material){
   const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
   const latest=dates.length?dates[dates.length-1]:"";
   const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows.slice();
-  let opening=null,closing=null,add=0,otherOut=0,recorded=0;
+  let opening=null,closing=null,add=0,otherOut=0,recorded=0,invalid=false,openingCount=0,closingCount=0;
   dayRows.forEach(t=>{
-    const ty=tType(t),v=tVal(t);
-    // One opening/closing balance represents the stock balance for the day.
-    // If the source contains a duplicate balance row, use the latest value instead of double-counting it.
-    if(ty==="OPENING STOCK") opening=v;
-    else if(ty==="CL. STOCK") closing=v;
-    // Preserve source transaction names; recognize the known MIS spelling variant as consumption.
-    else if(isConsumptionMovement(ty)) recorded+=v;
-    // Keep existing transaction names and classify only clear inbound/outbound movements.
-    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")) add+=v;
-    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")) otherOut+=v;
+    const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
+    if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
+    else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
+    else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else recorded+=v;}
+    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
+    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else otherOut+=v;}
   });
+  if(openingCount>1||closingCount>1)return {status:"NO DATA",message:"Duplicate opening/closing balance rows exist for the latest date. Review the source records before reconciling.",date:latest,openingCount,closingCount};
+  if(invalid)return {status:"NO DATA",message:"One or more required daily quantities are missing. Monthly/yearly values cannot substitute for daily quantities.",date:latest};
   if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the latest transaction date.",date:latest};
   const calculated=opening+add-otherOut-closing;
   const diff=calculated-recorded;
-  const tol=isPremixMaterial(material)?0.01:0.01;
+  const tol=0.01;
   return {status:Math.abs(diff)<=tol?"MATCH":"MISMATCH",date:latest,opening,add,otherOut,closing,calculated,recorded,diff,tolerance:tol};
 }
 function reconciliationItems(){
@@ -1818,6 +1821,8 @@ function shiftViewDate(dir){
 
 
 function stockStatus(closing,avg){
+  if(closing===null||closing===undefined||!Number.isFinite(Number(closing)))return {cover:null,status:"NO DATA",cls:"warn"};
+  if(Number(closing)<0)return {cover:null,status:"NEGATIVE STOCK",cls:"bad"};
   if(!avg)return {cover:null,status:"NO HISTORY",cls:"warn"};
   const cover=closing/avg;
   const reorder=avg*DEFAULT_SAFETY_DAYS;
@@ -2189,9 +2194,9 @@ function historyStockRowsForDate(date){
   const current=new Map((DATA.stock||[]).map(x=>[normalize(x.material),x]));
   const result=[...grouped.values()].map(g=>{
     const base=current.get(normalize(g.material))||{};
-    const closingRows=g.transactions.filter(t=>tType(t)==="CL. STOCK");
-    const latestClosing=closingRows.length?closingRows[closingRows.length-1]:null;
-    return {...base,material:g.material,transactions:g.transactions,closing:latestClosing?tVal(latestClosing):null};
+    const closingRows=g.transactions.filter(t=>isClosingStockMovement(tType(t)));
+    const latestClosing=closingRows.length===1?closingRows[0]:null;
+    return {...base,material:g.material,transactions:g.transactions,closing:latestClosing?tRawVal(latestClosing):null};
   });
   PERF_CACHE.historyStock.set(d,result);
   return result;
@@ -2207,9 +2212,9 @@ function viewStockRows(){
     const tx=Array.isArray(x.transactions)?x.transactions:[];
     // Supabase rows are ordered by id, not report date. Never use the last
     // transaction as the latest closing; explicitly select the latest report date.
-    const closingRows=tx.filter(t=>tType(t)==="CL. STOCK" && (!latestDate || dateOnly(rowDate(t))===latestDate));
-    const latestClosing=closingRows.length?closingRows[closingRows.length-1]:null;
-    return {...x,transactions:tx,closing:latestClosing?tVal(latestClosing):num(x.closing)};
+    const closingRows=tx.filter(t=>isClosingStockMovement(tType(t)) && (!latestDate || dateOnly(rowDate(t))===latestDate));
+    const latestClosing=closingRows.length===1?closingRows[0]:null;
+    return {...x,transactions:tx,closing:latestClosing?tRawVal(latestClosing):null};
   }).filter(x=>x.material);
   return PERF_CACHE.viewStock;
 }
