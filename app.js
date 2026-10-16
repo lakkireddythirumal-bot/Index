@@ -499,9 +499,19 @@ function isPremixProduct(name){
     || /\bPSC\b/.test(value)
     || /\bBFP\b/.test(value);
 }
-function isPremixMaterial(name){return isPremixProduct(name);}
-function fmtFeed(v,product){return v===null||v===undefined||v===""?"--":isPremixProduct(product)?fmt(v)+" KG":fmt(v)+" MT"}
-function feedValueInMT(v,product){const n=num(v)||0;return isPremixProduct(product)?n/1000:n;}
+function isPremixMaterial(name){
+  const value=clean(name).toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
+  if(!value)return false;
+  // KG classification is only for raw-material inventory. PSC and BFP are raw-material premix aliases.
+  return /\bPRE ?MIX\b/.test(value)
+    || /\bPRE ?STARTER\b/.test(value)
+    || /\bFINISHER\b/.test(value)
+    || /\bPSC\b/.test(value)
+    || /\bBFP\b/.test(value);
+}
+// Feed Unit / Production records are reported in MT regardless of product name.
+function fmtFeed(v,product){return v===null||v===undefined||v===""?"--":fmt(v)+" MT"}
+function feedValueInMT(v,product){return num(v)||0;}
 function materialUnit(material,fallback="MT"){return isPremixMaterial(material)?"KG":fallback}
 function fmtMaterial(v,material,fallback="MT"){return v===null||v===undefined||v===""?"--":fmt(v)+" "+materialUnit(material,fallback)}
 function materialValueInMT(v,material){const n=num(v)||0;return isPremixMaterial(material)?n/1000:n;}
