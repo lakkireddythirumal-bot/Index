@@ -110,3 +110,52 @@ A read-only SQL spot check was run against the latest available report date:
 - **Raw material stock:** 34 materials on the latest date. Some key transaction rows have missing daily quantities, and the source contains generic or variant transaction labels. The center therefore marks missing or unclassified rows as NO DATA rather than claiming a false match.
 
 These are source-data spot checks, not browser end-to-end tests. The flagged differences are observations to reconcile with the plant's original MIS, not automatic edits to the database.
+
+## Calculation accuracy follow-up — 2026-10-16
+
+**Working branch:** `audit/calculation-fixes-2026-10-16`  
+**Scope:** Frontend calculation consistency fixes in `app.js`. No database rows, Supabase policies, source Excel files, or credentials were changed.
+
+### Fixes applied
+
+- Removed the non-negative clamp from raw-material reconciliation so an impossible/negative calculated balance remains visible as a mismatch instead of being converted to zero.
+- Centralized consumption movement spelling recognition and reused it in reconciliation, abnormal-consumption checks, history charts, comparisons, Data Control, and reports.
+- Applied the existing premix KG-to-MT conversion consistently to feed production/dispatch trends, selected-date feed metrics, and Plant AI feed totals.
+- Converted raw-material stock totals to MT before displaying them as a plant-wide total.
+- Changed the production trend alert volume to use Feed Unit production in MT; production output and process-loss percentages continue to use production-quality records, whose actual output is in bags.
+- Added deterministic one-row-per-product/date selection for feed-unit history calculations, and aligned duplicate product selection across feed-unit and PP-bag summaries.
+- Reused the production display's duplicate-product selection rule for selected production rows.
+- Changed plant-level output efficiency from a simple mean of product percentages to total actual output divided by total standard output, with a reported-percentage average only as a fallback when standard/actual quantities are unavailable.
+
+### Verification performed
+
+- [x] Parsed the full updated JavaScript source successfully using a JavaScript syntax parser.
+- [x] Ran source-level regression assertions for the unit conversions, unclamped reconciliation, centralized consumption recognition, dated-product deduplication, and weighted output calculation.
+- [x] Confirmed the updated branch file can be fetched from GitHub after each commit.
+- [ ] Browser/device regression testing has not been run.
+- [ ] The calculations have not yet been reconciled against a fresh live Supabase export and manually verified source MIS.
+- [ ] The hidden duplicate row in the source Excel/import workflow cannot be repaired by frontend code alone; the import/upsert key and source-row handling must be checked separately.
+
+**Important:** The fixes are committed on the audit branch only. They should be reviewed and tested against known plant reports before merging into `main`. The code-level checks do not prove that every live-data calculation is correct.
+
+### Live-data spot checks — 2026-10-16
+
+Read-only SQL checks were run against the connected Supabase project for duplicate product/date rows, production percentage arithmetic, and latest available balance records. These are targeted spot checks, not a full source-MIS reconciliation.
+
+- No duplicate product/date groups were found in the current `feed_unit_data`, `pp_bags_data`, or `production_data` tables during the duplicate check.
+- No production output-percentage arithmetic mismatches above 0.5 percentage points were found in that check.
+- PP-bag balances on the latest report date reconciled in the query.
+- **Feed Unit:** `BROILER FINISHER PELLETS` had a 1.40 MT difference between calculated closing (32.55 MT) and reported closing (31.15 MT) on 2026-10-16. `CATTLE FEED` had a missing daily production value. These are source-data exceptions; no database values were changed.
+- **Raw material stock:** `MAIZE SILO2` has two `CL. STOCK` records for 2026-10-16, one with `for_day = -1.62759` and one with `for_day = 29.40951`. The app now marks this reconciliation as NO DATA until the duplicate is reviewed instead of silently choosing one. The correct record cannot safely be inferred by frontend logic alone.
+- **Premix stock fields:** `BFP PREMIX`, `PSC PREMIX`, and `STARTER PREMIX` had null daily quantities on the latest date while monthly/yearly values existed. The app now treats missing daily quantities as NO DATA instead of treating them as zero.
+- `DE OILED C DOC` uses the source transaction label `CL. STOCK IN M.T`; the closing-stock label matcher now recognizes this variant.
+
+### Additional calculation safeguards
+
+- Daily stock balances now preserve their sign; a negative closing is not converted to a positive value.
+- Duplicate opening/closing rows and missing daily quantities are reported as NO DATA/review-needed rather than producing a misleading MATCH.
+- Stock display/status logic distinguishes NO DATA and NEGATIVE STOCK from a real zero balance.
+
+### Separate security finding (not changed)
+
+The connected Supabase advisor reports that `public.stock_data_dedup_backup` has Row Level Security disabled. That means the table may be readable/writable through roles granted Data API access, including public client roles, depending on grants. I did not change its RLS setting or policies because enabling RLS without an intentional policy could block needed access. Decide whether this backup table should remain exposed; if not, define the intended access policy and then enable RLS.

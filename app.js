@@ -265,19 +265,24 @@ function dcLatestRawReconciliation(material){
   const rows=dcRawTransactions(material); if(!rows.length)return {status:"NO DATA",message:"No transaction history available."};
   const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort(); const latest=dates[dates.length-1]||"";
   const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows;
-  let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0;
+  let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
-    const ty=tType(t),v=tVal(t); if(ty==="OPENING STOCK")opening=v; else if(ty==="CL. STOCK")closing=v;
-    else if(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")){cons+=v;otherActivity+=v}
-    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){add+=v;otherActivity+=v}
-    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){out+=v;otherActivity+=v}
+    const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
+    if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
+    else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
+    else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else{cons+=v;otherActivity+=v}}
+    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else{add+=v;otherActivity+=v}}
+    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else{out+=v;otherActivity+=v}}
+    else if(ty)unclassified.push(ty);
   });
-  if(opening===null&&closing===null)return {status:"NO DATA",date:latest};
+  if(unclassified.length)return {status:"NO DATA",date:latest,message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling."};
+  if(openingCount>1||closingCount>1)return {status:"NO DATA",date:latest,message:"Duplicate opening/closing balance rows require source review.",openingCount,closingCount};
+  if(invalid||opening===null||closing===null)return {status:"NO DATA",date:latest,message:"Required daily quantities or opening/closing balances are missing."};
   const unexplained=cons>0 && opening<=0 && add<=0;
-  const calculated=(opening||0)+add-out-(closing===null?0:closing);
+  const calculated=opening+add-out-closing;
   const diff=calculated-cons;
-  const match=closing!==null && Math.abs(diff)<=0.01;
-  return {status:match?"MATCH":"MISMATCH",date:latest,opening:opening||0,closing,add,out,cons,otherActivity,calculated,diff,unexplained};
+  const match=Math.abs(diff)<=0.01;
+  return {status:match?"MATCH":"MISMATCH",date:latest,opening,closing,add,out,cons,otherActivity,calculated,diff,unexplained};
 }
 function dcReviewItems(){
   const items=[];
@@ -335,7 +340,7 @@ function dcApplyUnexplainedDecision(item,action){
     rows.forEach(t=>{
       if(dateOnly(rowDate(t))!==rec.date)return;
       const ty=tType(t);
-      if(!(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI")))return;
+      if(!isConsumptionMovement(ty))return;
       const k=dcRecordKey(m,t);
       DATA_CONTROL.records[k]={status:action==="EXCLUDED"?"EXCLUDED":"KEPT",reason:action==="EXCLUDED"?"Unexplained consumption — excluded by manager":"Unexplained consumption — reviewed and kept",updatedAt:new Date().toISOString(),reviewAck:action==="EXCLUDED"?"":""};
     });
@@ -407,7 +412,7 @@ function renderDcReport(){
   if(sub)sub.textContent=isMat?"Material control, reconciliation and transaction history":"Product control and activity history";
   if(isMat){
     const raw=dcRawTransactions(name),approved=dcApprovedTransactions(name),rec=dcLatestRawReconciliation(name);
-    const totalCons=approved.filter(t=>tType(t).includes("CONSUMPTION")||tType(t).includes("CONSUMPION")).reduce((a,t)=>a+tVal(t),0);
+    const totalCons=approved.filter(t=>isConsumptionMovement(tType(t))).reduce((a,t)=>a+tVal(t),0);
     body.innerHTML=`<div class="dc-report-summary"><div class="dc-report-summary-main"><div class="dc-report-eyebrow">CONTROL STATUS</div><div>${dcReportStatusBadge(st.status)}</div><p>${esc(st.reason||"No manager decision recorded.")}</p></div><div class="dc-report-summary-actions"><button class="dc-report-action primary" onclick="dcAction('material','${jsq(name)}')">${st.status==='HIDDEN'?'Unhide Material':'Hide Material'}</button><button class="dc-report-action" onclick="closeDcReport();dcReviewModal()">🔔 Review</button></div></div>
       <div class="dc-report-grid"><section class="dc-report-section"><div class="dc-report-section-head"><span>🔎</span><div><h4>Latest Reconciliation</h4><small>${esc(rec.date||"No date")}</small></div></div><div class="dc-report-kv-grid">${dcReportRow("Result",rec.status)}${dcReportRow("Opening",fmt(rec.opening))}${dcReportRow("Additions",fmt(rec.add))}${dcReportRow("Other Out",fmt(rec.out))}${dcReportRow("Consumption",fmt(rec.cons))}${dcReportRow("Closing",fmt(rec.closing))}${dcReportRow("Difference",fmt(rec.diff))}${dcReportRow("Unexplained",rec.unexplained?"YES":"NO",rec.unexplained?"danger":"")}</div></section><section class="dc-report-section"><div class="dc-report-section-head"><span>📊</span><div><h4>Data Summary</h4><small>Current control state</small></div></div><div class="dc-report-kv-grid">${dcReportRow("Raw records",raw.length)}${dcReportRow("Approved records",approved.length)}${dcReportRow("Excluded records",raw.length-approved.length)}${dcReportRow("Approved consumption",fmt(totalCons))}${dcReportRow("Last decision",st.updatedAt?new Date(st.updatedAt).toLocaleString("en-IN"):"--")}</div></section></div>
       <section class="dc-report-section"><div class="dc-report-section-head"><span>📋</span><div><h4>Source Records</h4><small>Every record and its current decision</small></div></div>${dcReportRecordsTable(name,raw)}</section>`;
@@ -526,7 +531,7 @@ function rawTotal(material,tab){
     if(selectedDay && dateOnly(rowDate(t))!==selectedDay)return sum;
     const ty=tType(t);
     let matches=false;
-    if(tab==="CONSUMPTION")matches=ty.includes("CONSUMPTION") || ty.includes("CONSUMPION");
+    if(tab==="CONSUMPTION")matches=isConsumptionMovement(ty);
     else if(tab==="PURCHASE")matches=ty==="PURCHASE" || ty==="RECEIVED";
     else if(tab==="TRANSFER")matches=ty==="TRANSFER" || ty.includes("TRANSFER FROM") || ty.includes("TRANSFER TO");
     else if(tab==="GAIN")matches=ty==="GAIN";
@@ -549,7 +554,9 @@ function txName(v){return clean(v).replace(/\s+/g," ")}
 
 
 function tType(t){return normalize(t.transaction||t.type||t.movement||"")}
-function tVal(t){return Math.abs(num(t.for_day??t.value??t.quantity??t.qty??0)||0)}
+function isClosingStockMovement(type){const s=normalize(type);return s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
+function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return Math.abs(v)<1e-9?0:v;}return null;}
+function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
 function rowDate(t){return clean(t.report_date||t.date||t.Report_Date||"")}
 function feedField(r,key){
   const map={
@@ -873,30 +880,31 @@ function dateOnly(v){
   const m=s.match(/(\d{4}-\d{2}-\d{2})/);
   return m?m[1]:s.slice(0,10);
 }
-function materialReconciliation(material){
+function materialReconciliation(material, requestedDate=""){
   const rows=transactions(material);
   if(!rows.length)return {status:"NO DATA",message:"No transaction history available."};
   const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
   const latest=dates.length?dates[dates.length-1]:"";
-  const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows.slice();
-  let opening=null,closing=null,add=0,otherOut=0,recorded=0;
+  const targetDate=dateOnly(requestedDate)||latest;
+  const dayRows=targetDate?rows.filter(t=>dateOnly(rowDate(t))===targetDate):rows.slice();
+  let opening=null,closing=null,add=0,otherOut=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
-    const ty=tType(t),v=tVal(t);
-    // One opening/closing balance represents the stock balance for the day.
-    // If the source contains a duplicate balance row, use the latest value instead of double-counting it.
-    if(ty==="OPENING STOCK") opening=v;
-    else if(ty==="CL. STOCK") closing=v;
-    // Preserve source transaction names; recognize the known MIS spelling variant as consumption.
-    else if(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")) recorded+=v;
-    // Keep existing transaction names and classify only clear inbound/outbound movements.
-    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")) add+=v;
-    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")) otherOut+=v;
+    const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
+    if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
+    else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
+    else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else recorded+=v;}
+    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
+    else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else otherOut+=v;}
+    else if(ty)unclassified.push(ty);
   });
-  if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the latest transaction date.",date:latest};
-  const calculated=Math.max(0,opening+add-otherOut-closing);
+  if(unclassified.length)return {status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling.",date:targetDate};
+  if(openingCount>1||closingCount>1)return {status:"NO DATA",message:"Duplicate opening/closing balance rows exist for the latest date. Review the source records before reconciling.",date:targetDate,openingCount,closingCount};
+  if(invalid)return {status:"NO DATA",message:"One or more required daily quantities are missing. Monthly/yearly values cannot substitute for daily quantities.",date:targetDate};
+  if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the selected report date.",date:targetDate};
+  const calculated=opening+add-otherOut-closing;
   const diff=calculated-recorded;
-  const tol=isPremixMaterial(material)?0.01:0.01;
-  return {status:Math.abs(diff)<=tol?"MATCH":"MISMATCH",date:latest,opening,add,otherOut,closing,calculated,recorded,diff,tolerance:tol};
+  const tol=0.01;
+  return {status:Math.abs(diff)<=tol?"MATCH":"MISMATCH",date:targetDate,opening,add,otherOut,closing,calculated,recorded,diff,tolerance:tol};
 }
 function reconciliationItems(){
   return getMaterials().map(material=>({material,r:materialReconciliation(material)}));
@@ -906,7 +914,7 @@ function abnormalConsumptionItems(){
   getMaterials().forEach(m=>{
     const avg=avgConsumption(m);
     if(!avg)return;
-    const rows=transactions(m).filter(t=>tType(t).includes("CONSUMPTION"));
+    const rows=transactions(m).filter(t=>isConsumptionMovement(tType(t)));
     if(!rows.length)return;
     const latestDate=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||"";
     const today=rows.filter(t=>!latestDate||dateOnly(rowDate(t))===latestDate).reduce((a,t)=>a+tVal(t),0);
@@ -951,7 +959,7 @@ function openDataHealth(){
 }
 function buildDailyReportText(){
   const m=dailyControlMetrics(),pd=latestTotal("Production_Day_MT"),dd=latestTotal("Dispatch_Day_MT");
-  const reorder=getMaterials().filter(x=>stockStatus(num(getMaterial(x)?.closing)||0,avgConsumption(x)).status==="REORDER");
+  const reorder=getMaterials().filter(x=>stockStatus(num(getMaterial(x)?.closing),avgConsumption(x)).status==="REORDER");
   const rec=reconciliationItems().filter(x=>x.r.status==="MISMATCH");
   const abnormal=abnormalConsumptionItems();
   return `FEED PLANT DAILY REPORT
@@ -1035,7 +1043,7 @@ function mixAvailableMonths(){
   return [...s].filter(Boolean).sort().reverse();
 }
 function mixDefaultMonth(){return monthKey(VIEW_DATE||DATA.report_date)||mixAvailableMonths()[0]||""}
-function isConsumptionMovement(ty){return ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI")}
+function isConsumptionMovement(ty){return dqIsConsumption(ty)}
 function allMixMaterialTransactions(){
   const out=[];
   (DATA.stock||[]).forEach(x=>{
@@ -1079,7 +1087,7 @@ function monthlyRMConsumption(m){
 function monthlyFeedMix(m,key){
   const cacheKey=[m,key].join("|");
   if(PERF_CACHE.monthlyFeed.has(cacheKey))return PERF_CACHE.monthlyFeed.get(cacheKey);
-  const rows=(DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m);
+  const rows=uniqueDatedProductRows((DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m),r=>r.Product||r.product,r=>r.report_date||r.Report_Date);
   const latest=new Map(), byProduct=new Map();
   rows.forEach((r,i)=>{
     const p=clean(r.Product||r.product); if(!p)return;
@@ -1297,7 +1305,7 @@ function rmHistoryValue(rows,kind){
   return rows.filter(t=>{
     const type=tType(t);
     if(kind==="received")return type==="PURCHASE";
-    if(kind==="consumption")return type.includes("CONSUMPTION");
+    if(kind==="consumption")return isConsumptionMovement(type);
     if(kind==="transfer")return type.includes("TRANSFER");
     return type==="CL. STOCK";
   }).reduce((sum,t)=>sum+tVal(t),0);
@@ -1431,19 +1439,20 @@ function dacStockItems(targetDate){
   return getMaterials().map(material=>{
     const rows=transactions(material).filter(t=>dateOnly(rowDate(t))===targetDate);
     if(!rows.length)return {name:material,date:targetDate,status:"NO DATA",message:"No stock transactions for this date."};
-    let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false;const unclassified=[];
+    let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
     rows.forEach(t=>{
       const type=tType(t);
       const value=dacValue(t,["for_day","value","quantity","qty"]);
-      if(type==="OPENING STOCK"){if(value===null)invalid=true;else opening=value;}
-      else if(type==="CL. STOCK"||type.startsWith("CL. STOCK ")){if(value===null)invalid=true;else closing=value;}
-      else if(type.includes("CONSUMPTION")||type.includes("CONSUMPION")){if(value===null)invalid=true;else recorded+=Math.abs(value);}
+      if(type==="OPENING STOCK"){openingCount++;if(value===null)invalid=true;else opening=value;}
+      else if(isClosingStockMovement(type)){closingCount++;if(value===null)invalid=true;else closing=value;}
+      else if(isConsumptionMovement(type)){if(value===null)invalid=true;else recorded+=Math.abs(value);}
       else if(type==="PURCHASE"||type==="RECEIVED"||type==="GAIN"||type.includes("TRANSFER FROM")){if(value===null)invalid=true;else inflow+=Math.abs(value);}
       else if(type.includes("TRANSFER TO")||type.includes("SALE")||type.includes("SHORTAGE")||type==="DAMAGE"||type==="ISSUE"||type.includes("RETURN TO")){if(value===null)invalid=true;else outflow+=Math.abs(value);}
       else if(type)unclassified.push(type);
     });
     if(unclassified.length)return {name:material,date:targetDate,status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm whether each is inward or outward before reconciling."};
-    if(invalid)return {name:material,date:targetDate,status:"NO DATA",message:"One or more relevant transaction quantities are missing."};
+    if(openingCount>1||closingCount>1)return {name:material,date:targetDate,status:"NO DATA",message:"Duplicate opening/closing balance rows exist. Review source records before reconciling."};
+    if(invalid)return {name:material,date:targetDate,status:"NO DATA",message:"One or more relevant daily transaction quantities are missing."};
     if(opening===null||closing===null)return {name:material,date:targetDate,status:"NO DATA",message:"Opening stock or closing stock is missing."};
     const calculated=opening+inflow-outflow-closing;
     const diff=calculated-recorded;
@@ -1452,8 +1461,7 @@ function dacStockItems(targetDate){
 }
 function dacFeedItems(targetDate){
   const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===targetDate&&!dcIsHiddenProduct(clean(r.Product||r.product)));
-  const seen=new Set();
-  return rows.filter(r=>{const key=normalize(r.Product||r.product);if(!key||seen.has(key))return false;seen.add(key);return true;}).map(r=>{
+  return latestUniqueRows(rows,r=>r.Product||r.product).map(r=>{
     const product=clean(r.Product||r.product);
     const opening=dacValue(r,["Opening_Day_MT","opening_day_mt","Opening_Day","opening_day","Opening","opening"]);
     const production=dacValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]);
@@ -1468,8 +1476,7 @@ function dacFeedItems(targetDate){
 }
 function dacBagItems(targetDate){
   const rows=(Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[]).filter(r=>dateOnly(r.report_date||r.Report_Date||r.date)===targetDate&&!dcIsHiddenProduct(clean(r.product||r.Product)));
-  const seen=new Set();
-  return rows.filter(r=>{const key=normalize(r.product||r.Product||"PP Bags");if(seen.has(key))return false;seen.add(key);return true;}).map(r=>{
+  return latestUniqueRows(rows,r=>r.product||r.Product||"PP Bags").map(r=>{
     const product=clean(r.product||r.Product||"PP Bags");
     const opening=dacValue(r,["opening","Opening"]),received=dacValue(r,["received","Received"]),issue=dacValue(r,["issue","Issue"]),damage=dacValue(r,["damage","Damage"]),closing=dacValue(r,["closing","Closing"]);
     if(opening===null||closing===null||received===null||issue===null||damage===null)return {name:product,date:targetDate,status:"NO DATA",message:"One or more PP-bag balance fields are missing."};
@@ -1588,7 +1595,7 @@ function renderDashboard(){
 
 function attentionReorderMaterials(){
   return getMaterials().map(m=>{
-    const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
+    const x=getMaterial(m), c=num(x?.closing), avg=avgConsumption(m), s=stockStatus(c,avg);
     return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
   }).filter(x=>x.s.status==="REORDER");
 }
@@ -1600,7 +1607,7 @@ function attentionReorderPremixes(){
 }
 function attentionUnder3Materials(){
   return getMaterials().map(m=>{
-    const x=getMaterial(m), c=num(x?.closing)||0, avg=avgConsumption(m), s=stockStatus(c,avg);
+    const x=getMaterial(m), c=num(x?.closing), avg=avgConsumption(m), s=stockStatus(c,avg);
     return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
   }).filter(x=>x.s.cover!==null && x.s.cover<3 && x.s.status!=="REORDER");
 }
@@ -1820,6 +1827,8 @@ function shiftViewDate(dir){
 
 
 function stockStatus(closing,avg){
+  if(closing===null||closing===undefined||!Number.isFinite(Number(closing)))return {cover:null,status:"NO DATA",cls:"warn"};
+  if(Number(closing)<0)return {cover:null,status:"NEGATIVE STOCK",cls:"bad"};
   if(!avg)return {cover:null,status:"NO HISTORY",cls:"warn"};
   const cover=closing/avg;
   const reorder=avg*DEFAULT_SAFETY_DAYS;
@@ -1844,7 +1853,7 @@ function renderAlerts(){
   });
   if(!reorder.length){
     getMaterials().forEach(m=>{
-      const x=getMaterial(m),s=stockStatus(num(x?.closing)||0,avgConsumption(m));
+      const x=getMaterial(m),s=stockStatus(num(x?.closing),avgConsumption(m));
       if(s.status==="REORDER")items.push({title:m,msg:"Stock is at/below reorder level",type:"critical",icon:"🔴"});
       else if(s.status==="WATCH")items.push({title:m,msg:"Stock coverage is getting low",type:"warning",icon:"🟠"});
     });
@@ -1904,10 +1913,16 @@ function closeModal(){document.getElementById("modal").classList.remove("show")}
 function outsideClose(e){if(e.target.id==="modal")closeModal()}
 function detail(label,value){return `<div class="detail-row"><span>${esc(label)}</span><strong>${esc(value??"--")}</strong></div>`}
 function openMaterialDetails(material){
-  const x=getMaterial(material),rows=transactions(material),closing=num(x?.closing)||0,avg=avgConsumption(material),s=stockStatus(closing,avg),reorder=avg*DEFAULT_SAFETY_DAYS;
+  const x=getMaterial(material),rows=transactions(material);
+  const availableDates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
+  const detailDate=effectiveViewDate()||availableDates[availableDates.length-1]||"";
+  const dayRows=detailDate?rows.filter(t=>dateOnly(rowDate(t))===detailDate):[];
+  const closingRow=dayRows.filter(t=>isClosingStockMovement(tType(t)));
+  const closing=closingRow.length===1?tRawVal(closingRow[0]):(effectiveViewDate()?num(x?.closing):null);
+  const avg=avgConsumption(material),s=stockStatus(closing,avg),reorder=avg*DEFAULT_SAFETY_DAYS;
   const groups=["OPENING STOCK","PURCHASE","TRANSFER FROM SOYA DIVISION","GAIN","SALE","SHORTAGE","CONSUMPTION","CL. STOCK"];
   const unit=materialUnit(material,x?.unit||"MT");
-  const rec=materialReconciliation(material);
+  const rec=materialReconciliation(material,detailDate);
   let html=`<div class="detail-section"><h3>${esc(material)}</h3>${detail("Current Stock",fmt(closing)+" "+unit)}${detail("Average Daily Consumption",avg?fmt(avg)+" "+unit+"/day":"Insufficient history")}${detail("Safety Days",DEFAULT_SAFETY_DAYS+" days")}${detail("Stock Coverage",s.cover!==null?fmt(s.cover)+" days":"--")}${detail("Calculated Reorder Level",fmt(reorder)+" "+unit)}${detail("Status",s.status)}</div>`;
   if(rec.status==="MATCH"||rec.status==="MISMATCH"){
     const cls=rec.status==="MATCH"?"reconcile-ok":"reconcile-bad";
@@ -1915,15 +1930,42 @@ function openMaterialDetails(material){
   }else{
     html+=`<div class="detail-section reconcile-warn"><h3>🔎 Stock Reconciliation</h3><div class="empty">${esc(rec.message||"Insufficient data for reconciliation.")}</div></div>`;
   }
-  html+=`<div class="detail-section"><h3>Material-wise Movement</h3>`;
-  groups.forEach(g=>{const total=rows.filter(t=>tType(t)===normalize(g)).reduce((a,t)=>a+tVal(t),0);if(total)html+=detail(g,fmt(total)+" "+unit)});
-  const namedConsumption=rows.filter(t=>tType(t).includes("CONSUMPTION")).reduce((a,t)=>a+tVal(t),0);
-  if(namedConsumption)html+=detail("All Consumption Activities",fmt(namedConsumption)+" "+unit);
+  // Show only the selected/latest day's movements. Do not add stock balances
+  // from multiple dates: opening/closing are snapshots, not movement quantities.
+  const movementDate=detailDate;
+  const movementRows=dayRows;
+  html+=`<div class="detail-section"><h3>Material-wise Movement • ${esc(movementDate||"No date available")}</h3>`;
+  if(movementRows.length){
+    const openingRows=movementRows.filter(t=>tType(t)==="OPENING STOCK");
+    const closingRows=movementRows.filter(t=>isClosingStockMovement(tType(t)));
+    if(openingRows.length===1)html+=detail("Opening Stock",fmt(tRawVal(openingRows[0]))+" "+unit);
+    else if(openingRows.length>1)html+=detail("Opening Stock","Duplicate records — review source");
+    const movementGroups=[
+      ["PURCHASE",t=>tType(t)==="PURCHASE"||tType(t)==="RECEIVED"],
+      ["TRANSFER FROM SOYA DIVISION",t=>tType(t)==="TRANSFER FROM SOYA DIVISION"],
+      ["GAIN",t=>tType(t)==="GAIN"],
+      ["SALE",t=>tType(t).includes("SALE")],
+      ["SHORTAGE",t=>tType(t).includes("SHORTAGE")],
+      ["CONSUMPTION",t=>isConsumptionMovement(tType(t))],
+      ["TRANSFER",t=>tType(t).includes("TRANSFER")&&!tType(t).includes("TRANSFER FROM SOYA DIVISION")]
+    ];
+    movementGroups.forEach(([label,matches])=>{
+      const matching=movementRows.filter(matches);
+      if(!matching.length)return;
+      html+=detail(label,fmt(matching.reduce((sum,t)=>sum+tVal(t),0))+" "+unit);
+    });
+    if(closingRows.length===1)html+=detail("Closing Stock",fmt(tRawVal(closingRows[0]))+" "+unit);
+    else if(closingRows.length>1)html+=detail("Closing Stock","Duplicate records — review source");
+  }else{
+    html+=`<div class="empty">No transaction movements available for this date.</div>`;
+  }
   html+="</div>";
-  if(rows.length){
-    html+=`<div class="detail-section"><h3>Transactions</h3>`;
-    rows.forEach(t=>{html+=`<div class="transaction"><div class="transaction-title"><strong>${esc(txName(t.transaction||t.type||"Movement"))}</strong><span>${esc(rowDate(t))}</span></div><div class="transaction-values"><div class="transaction-value"><span>FOR DAY</span><strong>${fmt(t.for_day)}</strong></div><div class="transaction-value"><span>FOR MONTH</span><strong>${fmt(t.for_month)}</strong></div><div class="transaction-value"><span>FOR YEAR</span><strong>${fmt(t.for_year)}</strong></div></div></div>`});
+  if(dayRows.length){
+    html+=`<div class="detail-section"><h3>Transactions • ${esc(detailDate||"Selected day")}</h3>`;
+    dayRows.forEach(t=>{html+=`<div class="transaction"><div class="transaction-title"><strong>${esc(txName(t.transaction||t.type||"Movement"))}</strong><span>${esc(rowDate(t))}</span></div><div class="transaction-values"><div class="transaction-value"><span>FOR DAY</span><strong>${fmt(t.for_day)}</strong></div><div class="transaction-value"><span>FOR MONTH</span><strong>${fmt(t.for_month)}</strong></div><div class="transaction-value"><span>FOR YEAR</span><strong>${fmt(t.for_year)}</strong></div></div></div>`});
     html+="</div>";
+  }else{
+    html+=`<div class="detail-section"><h3>Transactions • ${esc(detailDate||"Selected day")}</h3><div class="empty">No transactions available for this date.</div></div>`;
   }
   showModal(material,html);
 }
@@ -1963,7 +2005,7 @@ function ppBagReconciliationItems(){
   return selectedBags().map(r=>r.product||"PP Bags").filter((v,i,a)=>a.findIndex(x=>normalize(x)===normalize(v))===i).map(product=>({product,r:ppBagReconciliation(product)}));
 }
 function openProductDetails(product){
-  const r=selectedProduction().find(x=>normalize(x.product)===normalize(product));
+  const r=selectedProduction().find(x=>normalize(x.product||x.Product)===normalize(product));
   if(!r){showModal(product,"<div class='empty'>No data</div>");return}
   const rec=productionReconciliation(product);
   let html="";
@@ -1974,7 +2016,7 @@ function openProductDetails(product){
     html+=`<div class="detail-section reconcile-warn"><h3>🔎 Production / Dispatch Reconciliation</h3><div class="empty">${esc(rec.message||"Insufficient data for reconciliation.")}</div></div>`;
   }
   html+=`<div class="detail-section"><h3>${esc(product)}</h3>${detail("Standard Output",fmtBags(r.standard_output))}${detail("Actual Output",fmtBags(r.actual_output))}${detail("Output %",fmt(r.output_percentage)+" %")}${detail("Process Loss %",fmt(r.process_loss)+" %")}${detail("Remarks / Packing",packingFromRemarks(r.remarks))}</div>`;
-  const fr=selectedFeedRows().find(x=>normalize(x.Product||x.product)===normalize(product));
+  const fr=latestUniqueRows(selectedFeedRows().filter(x=>normalize(x.Product||x.product)===normalize(product)),x=>x.Product||x.product).slice(-1)[0];
   if(fr){
     html+=`<div class="detail-section"><h3>🌾 Feed Unit Details</h3>${detail("Opening Day",fmtFeed(fr.Opening_Day_MT??fr.opening_day_mt??fr.Opening_Day??fr.opening_day??fr.Opening??fr.opening,product))}${detail("Production Day",fmtFeed(fr.Production_Day_MT??fr.production_day_mt??fr.Production_Day??fr.production_day??fr.Production??fr.production,product))}${detail("Dispatch Day",fmtFeed(fr.Dispatch_Day_MT??fr.dispatch_day_mt??fr.Dispatch_Day??fr.dispatch_day??fr.Dispatch??fr.dispatch,product))}${detail("Transfer Day",fmtFeed(fr.Transfer_Day_MT??fr.transfer_day_mt??fr.Transfer_Day??fr.transfer_day??fr.Transfer??fr.transfer,product))}${detail("Closing Day",fmtFeed(fr.Closing_Day_MT??fr.closing_day_mt??fr.Closing_Day??fr.closing_day??fr.Closing??fr.closing,product))}${detail("Production Month",fmtFeed(fr.Production_Month_MT??fr.production_month_mt??fr.Production_Month??fr.production_month,product))}${detail("Dispatch Month",fmtFeed(fr.Dispatch_Month_MT??fr.dispatch_month_mt??fr.Dispatch_Month??fr.dispatch_month,product))}</div>`;
   }
@@ -1982,7 +2024,7 @@ function openProductDetails(product){
 }
 function openPPBagDetails(){showModal("PP Bags",selectedBags().map(r=>`<div class="detail-section"><h3>${esc(r.product||"PP Bags")}</h3>${detail("Opening",fmt(r.opening))}${detail("Received",fmt(r.received))}${detail("Issue",fmt(r.issue))}${detail("Damage",fmt(r.damage))}${detail("Closing",fmt(r.closing))}</div>`).join("")||"<div class='empty'>No PP Bag data</div>")}
 function openBagProduct(product){
-  const r=selectedBags().find(x=>normalize(x.product||"PP Bags")===normalize(product));
+  const r=latestUniqueRows(selectedBags().filter(x=>normalize(x.product||"PP Bags")===normalize(product)),x=>x.product||"PP Bags").slice(-1)[0];
   if(!r)return;
   const rec=ppBagReconciliation(product);
   let html="";
@@ -2005,7 +2047,7 @@ function openFeedTotals(type){
 function openFeedProductDetails(product){
   const rows=selectedFeedRows().filter(r=>normalize(r.Product||r.product)===normalize(product));
   if(!rows.length){showModal(product,"<div class='empty'>No Feed Unit product data available for this date.</div>");return}
-  const r=rows[rows.length-1];
+  const r=latestUniqueRows(rows,x=>x.Product||x.product).slice(-1)[0];
   const rec=productionReconciliation(product);
   let html="";
   if(rec.status==="MATCH"||rec.status==="MISMATCH"){
@@ -2085,7 +2127,7 @@ function drawMaterialChart(material){
   const map={};
   transactions(material).forEach(t=>{
     const type=tType(t);
-    if(!(type.includes("CONSUMPTION")||type.includes("CONSUMPION")||type.includes("CONSUMPTON")||type.includes("CONSUMPTI")))return;
+    if(!isConsumptionMovement(type))return;
     const d=rowDate(t);if(!trendDateInRange(d))return;
     map[d]=(map[d]||0)+tVal(t);
   });
@@ -2191,9 +2233,9 @@ function historyStockRowsForDate(date){
   const current=new Map((DATA.stock||[]).map(x=>[normalize(x.material),x]));
   const result=[...grouped.values()].map(g=>{
     const base=current.get(normalize(g.material))||{};
-    const closingRows=g.transactions.filter(t=>tType(t)==="CL. STOCK");
-    const latestClosing=closingRows.length?closingRows[closingRows.length-1]:null;
-    return {...base,material:g.material,transactions:g.transactions,closing:latestClosing?tVal(latestClosing):null};
+    const closingRows=g.transactions.filter(t=>isClosingStockMovement(tType(t)));
+    const latestClosing=closingRows.length===1?closingRows[0]:null;
+    return {...base,material:g.material,transactions:g.transactions,closing:latestClosing?tRawVal(latestClosing):null};
   });
   PERF_CACHE.historyStock.set(d,result);
   return result;
@@ -2209,9 +2251,9 @@ function viewStockRows(){
     const tx=Array.isArray(x.transactions)?x.transactions:[];
     // Supabase rows are ordered by id, not report date. Never use the last
     // transaction as the latest closing; explicitly select the latest report date.
-    const closingRows=tx.filter(t=>tType(t)==="CL. STOCK" && (!latestDate || dateOnly(rowDate(t))===latestDate));
-    const latestClosing=closingRows.length?closingRows[closingRows.length-1]:null;
-    return {...x,transactions:tx,closing:latestClosing?tVal(latestClosing):num(x.closing)};
+    const closingRows=tx.filter(t=>isClosingStockMovement(tType(t)) && (!latestDate || dateOnly(rowDate(t))===latestDate));
+    const latestClosing=closingRows.length===1?closingRows[0]:null;
+    return {...x,transactions:tx,closing:latestClosing?tRawVal(latestClosing):null};
   }).filter(x=>x.material);
   return PERF_CACHE.viewStock;
 }
@@ -2237,18 +2279,18 @@ function transactions(material){
 }
 function selectedProduction(){
   if(PERF_CACHE.production)return PERF_CACHE.production;
-  if(!effectiveViewDate()){PERF_CACHE.production=(Array.isArray(DATA.production)?DATA.production:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));return PERF_CACHE.production;}
+  if(!effectiveViewDate()){PERF_CACHE.production=__uniqueProductRows((Array.isArray(DATA.production)?DATA.production:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product)),r=>r.product||r.Product);return PERF_CACHE.production;}
   const d=dateOnly(VIEW_DATE);
   const history=Array.isArray(DATA.productionHistory)?DATA.productionHistory:[];
-  PERF_CACHE.production=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product||r.Product));
+  PERF_CACHE.production=__uniqueProductRows(history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product||r.Product)),r=>r.product||r.Product);
   return PERF_CACHE.production;
 }
 function selectedBags(){
   if(PERF_CACHE.bags)return PERF_CACHE.bags;
-  if(!effectiveViewDate()){PERF_CACHE.bags=(Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product));return PERF_CACHE.bags;}
+  if(!effectiveViewDate()){PERF_CACHE.bags=latestUniqueRows((Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product)),r=>r.product||"PP Bags");return PERF_CACHE.bags;}
   const d=effectiveViewDate();
   const history=Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[];
-  PERF_CACHE.bags=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product));
+  PERF_CACHE.bags=latestUniqueRows(history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product)),r=>r.product||"PP Bags");
   return PERF_CACHE.bags;
 }
 function selectedFeedRows(){
@@ -2256,17 +2298,35 @@ function selectedFeedRows(){
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
   const d=effectiveViewDate();
   const dateRows=d?rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
-  PERF_CACHE.feedRows=dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  PERF_CACHE.feedRows=uniqueDatedProductRows(dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.Report_Date||r.report_date||r.date||r.DATE);
   return PERF_CACHE.feedRows;
+}
+function uniqueDatedProductRows(rows,productGetter,dateGetter){
+  const latest=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    const p=clean(productGetter(r));if(!p)return;
+    const d=dateOnly(dateGetter(r))||"NO_DATE";
+    latest.set(d+"|"+normalize(p),r); // One summary row per product/date; last source row wins deterministically.
+  });
+  return [...latest.values()];
+}
+function latestUniqueRows(rows,productGetter,dateGetter){
+  const latest=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    const p=clean(productGetter(r));if(!p)return;
+    const key=normalize(p),d=dateGetter?dateOnly(dateGetter(r)):"";
+    const prior=latest.get(key),priorDate=prior&&dateGetter?dateOnly(dateGetter(prior)):"";
+    if(!prior || !dateGetter || d>=priorDate)latest.set(key,r);
+  });
+  return [...latest.values()];
 }
 function latestFeedRows(){
   if(PERF_CACHE.latestFeed)return PERF_CACHE.latestFeed;
-  const rows=selectedFeedRows(),latest={};
-  rows.forEach(r=>{
-    const p=clean(r.Product||r.product);
-    if(p)latest[normalize(p)]=r;
-  });
-  PERF_CACHE.latestFeed=Object.values(latest);
+  PERF_CACHE.latestFeed=latestUniqueRows(
+    selectedFeedRows().filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),
+    r=>r.Product||r.product,
+    r=>r.Report_Date||r.report_date||r.date||r.DATE
+  );
   return PERF_CACHE.latestFeed;
 }
 function latestTotal(key){
@@ -2288,7 +2348,7 @@ function avgConsumption(material){
   const history=Array.isArray(DATA.stockHistory)?DATA.stockHistory:[];
   const dated=new Map();
   history.forEach(t=>{
-    if(normalize(t.material)!==key || !tType(t).includes("CONSUMPTION"))return;
+    if(normalize(t.material)!==key || !isConsumptionMovement(tType(t)))return;
     const d=dateOnly(rowDate(t));
     const v=num(t.for_day);
     if(!d || v===null || v<=0)return;
@@ -2342,7 +2402,7 @@ function cmpDailyFromMap(map,anchor){
 }
 function cmpFeedDailyMap(key){
   const map=new Map();
-  (DATA.feedUnitData||[]).forEach(r=>{
+  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
     const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
     const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
     const v=feedValueInMT(feedField(r,key),p);
@@ -2352,7 +2412,7 @@ function cmpFeedDailyMap(key){
 }
 function cmpFeedClosingMap(){
   const map=new Map();
-  (DATA.feedUnitData||[]).forEach(r=>{
+  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
     const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
     const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
     const v=num(r.Closing_Day_MT??r.closing_day_mt??r.Closing_Day??r.closing_day??r.Closing??r.closing);
@@ -2364,7 +2424,7 @@ function cmpStockMovementMap(types){
   const set=new Set(types.map(normalize)),map=new Map();
   (DATA.stockHistory||[]).forEach(t=>{
     const m=clean(t.material);if(!m||dcIsHiddenMaterial(m))return;
-    const ty=tType(t);if(![...set].some(x=>ty===x||ty.includes(x)))return;
+    const ty=tType(t);if(![...set].some(x=>x==="CONSUMPTION"?isConsumptionMovement(ty):(ty===x||ty.includes(x))))return;
     const d=dateOnly(rowDate(t));if(!d)return;
     const v=materialValueInMT(tVal(t),m);if(v===null||v<0)return;
     map.set(d,(map.get(d)||0)+v);
@@ -2388,7 +2448,7 @@ function cmpLastMonthFromFeedTotals(field,anchor){
   const v=num(row?.[field]);return v!==null&&v>=0?v:null;
 }
 function cmpLastMonthFromStock(fieldTypes,field,anchor){
-  const rows=(DATA.stockHistory||[]).filter(t=>fieldTypes.includes(tType(t)));
+  const rows=(DATA.stockHistory||[]).filter(t=>fieldTypes.some(x=>x==="CONSUMPTION"?isConsumptionMovement(tType(t)):tType(t)===x));
   const d=cmpPrevMonthLastDate(rows,anchor);if(!d)return null;
   let total=0,found=false;
   rows.filter(t=>dateOnly(rowDate(t))===d).forEach(t=>{
@@ -2447,13 +2507,13 @@ function renderQuick(){
     (x.transactions||[]).filter(t=>!quickDate || dateOnly(rowDate(t))===quickDate).forEach(t=>{
       const ty=tType(t),v=materialValueInMT(tVal(t),material);
       if(ty==="PURCHASE"||ty==="RECEIVED"||ty.includes("TRANSFER FROM"))received+=v;
-      if(ty.includes("CONSUMPTION"))cons+=v;
+      if(isConsumptionMovement(ty))cons+=v;
     });
   });
   setText("qReceived",fmt(received)+" MT");setText("qConsumption",fmt(cons)+" MT");setText("qClosing",fmt(closing)+" MT");
   setText("qFeedClosing",fmtMT(latestFeedClosingTotal()));setText("qFeedClosingBagsMini",fmt(latestFeedClosingBagEquivalent())+" Bags");
   setText("reportDate",VIEW_DATE||DATA.report_date||"Latest");
-  const reorderCount=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER").length;
+  const reorderCount=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing),avgConsumption(m)).status==="REORDER").length;
   const issueCount=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length+feedUnitReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+ppBagReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+abnormalConsumptionItems().length+duplicateTransactionCount();
   const premixKg=premixBommakalTransfers().reduce((a,r)=>a+r.value,0);
   const damage=selectedBags().reduce((a,r)=>a+(num(r.damage)||0),0);
@@ -2485,13 +2545,7 @@ function toggleFeedUnitMore(){feedUnitExpanded=!feedUnitExpanded;renderFeedUnit(
 function renderPPBags(){
   const rows=selectedBags(),el=document.getElementById("bagGrid");
   if(!el)return;
-  const seen=new Set();
-  const uniqueRows=rows.filter(r=>{
-    const key=normalize(r.product||"PP Bags");
-    if(seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const uniqueRows=latestUniqueRows(rows,r=>r.product||"PP Bags");
   const sorted=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0));
   el.innerHTML=sorted.map(r=>{
     const p=r.product||"PP Bags";
@@ -2515,7 +2569,7 @@ function renderPPBags(){
 function renderStock(){
   const list=document.getElementById("stockList"),premixList=document.getElementById("premixStockList"),mats=getMaterials();
   const renderRows=(rows)=>rows.slice().sort((a,b)=>{const av=num(getMaterial(a)?.closing)||0,bv=num(getMaterial(b)?.closing)||0;return (bv>0)-(av>0)||bv-av;}).map(m=>{
-    const x=getMaterial(m),closing=num(x?.closing)||0,avg=avgConsumption(m),st=stockStatus(closing,avg),unit=materialUnit(m,x?.unit||"MT");
+    const x=getMaterial(m),closing=num(x?.closing),avg=avgConsumption(m),st=stockStatus(closing,avg),unit=materialUnit(m,x?.unit||"MT");
     const dot=st.status==="REORDER"?"🔴":st.status==="WATCH"?"🟡":st.status==="OK"?"🟢":"⚪";
     return `<div class="stock-row reorder-card" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-card-top"><strong class="reorder-material">${esc(m)}</strong><span class="status-dot ${st.cls}" title="${esc(st.status)}" aria-label="${esc(st.status)}"></span></div><div class="reorder-card-metrics"><span><b>Stock</b><strong>${fmt(closing)} ${esc(unit)}</strong></span><span><b>Avg/day</b><strong>${avg?fmt(avg):"--"} ${esc(unit)}</strong></span><span><b>Cover</b><strong>${st.cover!==null?fmt(st.cover)+" d":"--"}</strong></span></div></div>`;
   }).join("")||"<div class='empty'>No stock data for this date</div>";
@@ -2536,26 +2590,37 @@ function renderControlCenter(){
   if(problems===0){if(h)h.textContent="✓";if(t)t.textContent="Data Issues • No issues detected";}
   else {if(h)h.textContent="⚠";if(t)t.textContent=`Data Issues • ${problems} item${problems===1?"":"s"} need checking`;}
 }
+function weightedOutputPercentage(rows){
+  const source=Array.isArray(rows)?rows:[];
+  let actualTotal=0,standardTotal=0;
+  source.forEach(r=>{
+    const actual=num(r.actual_output??r.Actual_Output),standard=num(r.standard_output??r.Standard_Output);
+    if(actual!==null&&standard!==null&&actual>=0&&standard>0){actualTotal+=actual;standardTotal+=standard;}
+  });
+  if(standardTotal>0)return actualTotal/standardTotal*100;
+  const reported=source.map(r=>num(r.output_percentage??r.Output_Percentage)).filter(v=>v!==null);
+  return reported.length?reported.reduce((a,b)=>a+b,0)/reported.length:null;
+}
 function dailyControlMetrics(){
-  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER").length;
+  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing),avgConsumption(m)).status==="REORDER").length;
   const mismatches=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length;
   const abnormal=abnormalConsumptionItems().length;
   const rows=selectedProduction(),outs=rows.map(r=>num(r.output_percentage)).filter(v=>v!==null),losses=rows.map(r=>num(r.process_loss)).filter(v=>v!==null);
   const premix=premixBommakalTransfers().reduce((a,r)=>a+r.value,0)/1000;
   const damage=selectedBags().reduce((a,r)=>a+(num(r.damage)||0),0);
-  return {reorder,mismatches,abnormal,efficiency:outs.length?outs.reduce((a,b)=>a+b,0)/outs.length:null,loss:losses.length?losses.reduce((a,b)=>a+b,0)/losses.length:null,premix,damage};
+  return {reorder,mismatches,abnormal,efficiency:weightedOutputPercentage(rows),loss:losses.length?losses.reduce((a,b)=>a+b,0)/losses.length:null,premix,damage};
 }
 function currentViewKey(){return VIEW_DATE?dateOnly(VIEW_DATE):dateOnly(DATA.report_date)||"latest"}
 function allAvailableDates(){return getAvailableDates()}
 function feedRowsForDate(d){
-  return (DATA.feedUnitData||[]).filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(d));
+  return uniqueDatedProductRows((DATA.feedUnitData||[]).filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(d)),r=>r.Product||r.product,r=>r.Report_Date||r.report_date);
 }
 function dateFeedMetrics(d){
   const rows=feedRowsForDate(d);
   return {
-    production:rows.reduce((a,r)=>a+(num(r.Production_Day_MT??r.production_day_mt??r.Production??r.production)||0),0),
-    dispatch:rows.reduce((a,r)=>a+(num(r.Dispatch_Day_MT??r.dispatch_day_mt??r.Dispatch??r.dispatch)||0),0),
-    closing:rows.reduce((a,r)=>a+(num(r.Closing_Day_MT??r.closing_day_mt??r.Closing??r.closing)||0),0),
+    production:rows.reduce((a,r)=>a+feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product),0),
+    dispatch:rows.reduce((a,r)=>a+feedValueInMT(feedField(r,"Dispatch_Day_MT"),r.Product||r.product),0),
+    closing:rows.reduce((a,r)=>a+feedValueInMT(num(r.Closing_Day_MT??r.closing_day_mt??r.Closing_Day??r.closing_day??r.Closing??r.closing),r.Product||r.product),0),
     rows:rows.length
   };
 }
@@ -2568,8 +2633,8 @@ function completedComparisonDates(d){
 }
 function managerAttentionItems(){
   const items=[];
-  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER");
-  reorder.slice(0,8).forEach(m=>items.push({level:"critical",title:m,msg:`Stock ${fmtMaterial(num(getMaterial(m)?.closing)||0,m,getMaterial(m)?.unit||"MT")} • coverage ${(()=>{const s=stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m));return s.cover===null?"--":fmt(s.cover)+" days"})()}`,action:`openMaterialDetails('${jsq(m)}')`}));
+  const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing),avgConsumption(m)).status==="REORDER");
+  reorder.slice(0,8).forEach(m=>items.push({level:"critical",title:m,msg:`Stock ${fmtMaterial(num(getMaterial(m)?.closing),m,getMaterial(m)?.unit||"MT")} • coverage ${(()=>{const s=stockStatus(num(getMaterial(m)?.closing),avgConsumption(m));return s.cover===null?"--":fmt(s.cover)+" days"})()}`,action:`openMaterialDetails('${jsq(m)}')`}));
   reconciliationItems().filter(x=>x.r.status==="MISMATCH").slice(0,8).forEach(x=>items.push({level:"warning",title:x.m,msg:"Stock reconciliation mismatch — check transactions",action:`openMaterialDetails('${jsq(x.m)}')`}));
   abnormalConsumptionItems().slice(0,8).forEach(x=>items.push({level:"warning",title:x.material,msg:`Consumption ${fmt(x.current)} vs avg ${fmt(x.avg)} • ${fmt(Math.abs(x.ratio*100-100))}% ${x.direction==="LOW"?"below":"above"} average`,action:`openMaterialDetails('${jsq(x.material)}')`}));
   DATA.production.forEach(r=>{
@@ -2592,7 +2657,7 @@ function renderManagerIntelligence(){
   const d=selectedDateForIntelligence(), items=managerAttentionItems();
   setText("intelDate",d||"Latest");
   setText("intelAttention",String(items.length));
-  const low=getMaterials().filter(m=>{const c=num(getMaterial(m)?.closing)||0,s=stockStatus(c,avgConsumption(m));return s.cover!==null&&s.cover<3}).length;
+  const low=getMaterials().filter(m=>{const c=num(getMaterial(m)?.closing),s=stockStatus(c,avgConsumption(m));return s.cover!==null&&s.cover<3}).length;
   setText("intelCoverage",String(low));
   const cmp=completedComparisonDates(d),latestCompleted=cmp[0],previousCompleted=cmp[1];
   const lc=latestCompleted?dateFeedMetrics(latestCompleted):null,pc=previousCompleted?dateFeedMetrics(previousCompleted):null;
@@ -2602,7 +2667,7 @@ function renderManagerIntelligence(){
   if(pill){pill.className="attention-pill"+(items.some(x=>x.level==="critical")?" hot":items.length?" warn":"");pill.textContent=items.some(x=>x.level==="critical")?"🔴 ACTION NEEDED":items.length?"🟠 CHECK":"✓ NORMAL";}
 }
 function openStockForecast(){
-  const rows=getMaterials().map(m=>{const x=getMaterial(m),c=num(x?.closing)||0,avg=avgConsumption(m),s=stockStatus(c,avg);return {m,c,avg,s,unit:x?.unit||"MT"}}).filter(x=>x.s.cover!==null).sort((a,b)=>a.s.cover-b.s.cover);
+  const rows=getMaterials().map(m=>{const x=getMaterial(m),c=num(x?.closing),avg=avgConsumption(m),s=stockStatus(c,avg);return {m,c,avg,s,unit:x?.unit||"MT"}}).filter(x=>x.s.cover!==null).sort((a,b)=>a.s.cover-b.s.cover);
   const html=`<div class="detail-section"><h3>📦 Stock Coverage Forecast • ${esc(selectedDateForIntelligence()||"Latest")}</h3><div class="small-note">Coverage is based on the available recorded consumption history. It is a planning estimate, not a guaranteed depletion date.</div>${rows.slice(0,20).map(x=>`<div class="feed-row" onclick="closeModal();openMaterialDetails('${jsq(x.m)}')"><div><div class="row-name">${esc(x.m)}</div><div class="prod-meta">Avg ${fmt(x.avg)} ${esc(x.unit)}/day</div></div><div class="row-right"><strong>${fmt(x.s.cover)} days</strong><small>≈ ${esc(x.s.cover<3?"Low coverage":"Covered")}</small></div></div>`).join("")||"<div class='empty'>No consumption history available.</div>"}</div>`;
   showModal("📦 Stock Forecast",html);
 }
@@ -2640,13 +2705,20 @@ function openDateSelector(){
 
 function renderTrendAlerts(){
   const root=document.getElementById("trendAlerts");if(!root)return;
-  const rows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  // Feed production is measured in MT; PRODUCTION_DATA actual_output is bag count.
+  // Keep volume trends and production-quality percentages on their correct sources.
   const byDate={};
-  rows.forEach(r=>{
+  (Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product)).forEach(r=>{
+    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!d||!trendDateInRange(d))return;
+    const value=feedField(r,"Production_Day_MT");if(value===null)return;
+    const x=byDate[d]||(byDate[d]={production:0,productionCount:0,outputSum:0,outputCount:0,lossSum:0,lossCount:0});
+    x.production+=feedValueInMT(value,r.Product||r.product);x.productionCount++;
+  });
+  const qualityRows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  qualityRows.forEach(r=>{
     const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!d||!trendDateInRange(d))return;
     const x=byDate[d]||(byDate[d]={production:0,productionCount:0,outputSum:0,outputCount:0,lossSum:0,lossCount:0});
-    const p=num(r.actual_output??r.actual??r.value),o=num(r.output_percentage??r.outputPercent),l=num(r.process_loss??r.processLoss);
-    if(p!==null){x.production+=p;x.productionCount++;}
+    const o=num(r.output_percentage??r.outputPercent),l=num(r.process_loss??r.processLoss);
     if(o!==null){x.outputSum+=o;x.outputCount++;}
     if(l!==null){x.lossSum+=l;x.lossCount++;}
   });
@@ -2670,7 +2742,7 @@ function renderTrendAlerts(){
   const recent=alerts.slice(-4).reverse();
   if(!dates.length){root.innerHTML='<div class="trend-alert-empty">No dated production history in the selected period.</div>';return;}
   if(!recent.length){root.innerHTML='<div class="trend-alert-empty"><strong>✓ No unusual production pattern detected</strong><span>Checks require at least 5 earlier dated records. This is an early-warning indicator, not a quality guarantee.</span></div>';return;}
-  root.innerHTML='<div class="trend-alert-head"><strong>⚠ Trend Alerts</strong><span>Latest unusual changes</span></div><div class="trend-alert-list">'+recent.map(x=>'<div class="trend-alert-item '+x.type+'"><div><strong>'+esc(x.title)+'</strong><small>'+esc(x.date)+'</small></div><span>'+esc(x.detail)+'</span></div>').join("")+'</div><div class="trend-alert-foot">Compared with up to the previous 7 available production dates; at least 5 earlier dates required.</div>';
+  root.innerHTML='<div class="trend-alert-head"><strong>⚠ Trend Alerts</strong><span>Latest unusual changes</span></div><div class="trend-alert-list">'+recent.map(x=>'<div class="trend-alert-item '+x.type+'"><div><strong>'+esc(x.title)+'</strong><small>'+esc(x.date)+'</small></div><span>'+esc(x.detail)+'</span></div>').join("")+'</div><div class="trend-alert-foot">Volume compares feed-unit MT; output and process-loss percentages use production records. At least 5 earlier available dates required.</div>';
 }
 
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
@@ -2729,7 +2801,7 @@ function renderTrends(){
   if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(sel?.value||mats[0]);
   // Production chart uses FEED UNIT tonnes; PRODUCTION_DATA actual_output is bag-count data.
-  const feedProductionRows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const feedProductionRows=uniqueDatedProductRows((Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.Report_Date||r.report_date||r.date||r.DATE);
   const byDate={};
   feedProductionRows.forEach(r=>{
     const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
@@ -2758,14 +2830,14 @@ function renderTrends(){
     wrap.onscroll=function(){const i=Math.round(this.scrollLeft/Math.max(1,this.clientWidth));[...dots.children].forEach((d,j)=>d.classList.toggle("active",i===j))};}
 }
 function feedTrend(){
-  const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const rows=uniqueDatedProductRows((Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.Report_Date||r.report_date||r.date||r.DATE);
   const map={};
   rows.forEach(r=>{
     const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
     const item=map[d]||(map[d]={production:0,productionCount:0,dispatch:0,dispatchCount:0});
     const production=feedField(r,"Production_Day_MT"),dispatch=feedField(r,"Dispatch_Day_MT");
-    if(production!==null){item.production+=production;item.productionCount++;}
-    if(dispatch!==null){item.dispatch+=dispatch;item.dispatchCount++;}
+    if(production!==null){item.production+=feedValueInMT(production,r.Product||r.product);item.productionCount++;}
+    if(dispatch!==null){item.dispatch+=feedValueInMT(dispatch,r.Product||r.product);item.dispatchCount++;}
   });
   const labels=Object.keys(map).sort();
   return {labels,values:labels.map(d=>map[d].productionCount&&map[d].dispatchCount?map[d].production-map[d].dispatch:null)};
@@ -3235,7 +3307,7 @@ function reportRawRows(from,to){
     const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
     const r=map.get(k),ty=tType(t),v=tVal(t);
     if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;
-    else if(ty.includes('CONSUMPTION')||ty.includes('CONSUMPION'))r.Consumption+=v;
+    else if(isConsumptionMovement(ty))r.Consumption+=v;
     else if(ty.includes('TRANSFER'))r.Transfer+=v;
     if(ty==='CL. STOCK')r.Closing=v;
   });
@@ -3243,7 +3315,7 @@ function reportRawRows(from,to){
     (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{
       const d=reportDate(rowDate(t)),m=clean(x.material||t.material);if(!m||!reportInRange(d,from,to))return;
       const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
-      const r=map.get(k),ty=tType(t),v=tVal(t);if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;else if(ty.includes('CONSUMPTION')||ty.includes('CONSUMPION'))r.Consumption+=v;else if(ty.includes('TRANSFER'))r.Transfer+=v;if(ty==='CL. STOCK')r.Closing=v;
+      const r=map.get(k),ty=tType(t),v=tVal(t);if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;else if(isConsumptionMovement(ty))r.Consumption+=v;else if(ty.includes('TRANSFER'))r.Transfer+=v;if(ty==='CL. STOCK')r.Closing=v;
     }));
   }
   return [...map.values()].sort((a,b)=>a.Date.localeCompare(b.Date)||a.Material.localeCompare(b.Material));
@@ -3628,14 +3700,14 @@ function plantAIMetrics(){
   const critical=attention.filter(x=>x.level==="critical").reduce((n,x)=>n+(Number(x.count)||0),0);
   const warning=attention.filter(x=>x.level==="warning").reduce((n,x)=>n+(Number(x.count)||0),0);
   const stockRows=viewStockRows();
-  const stockTotal=stockRows.reduce((n,x)=>n+(num(x.closing)||0),0);
+  const stockTotal=stockRows.reduce((n,x)=>num(x.closing)===null?n:n+materialValueInMT(x.closing,x.material),0);
   const lowStock=stockRows.filter(x=>x.status&&x.status!=='OK').sort((a,b)=>(Number(a.cover??999)-Number(b.cover??999)));
   const prodRows=selectedProduction();
   const outputs=prodRows.map(r=>num(r.output_percentage??r.outputPercent??r.output_percentage_value)).filter(v=>v!==null);
-  const avgOutput=outputs.length?outputs.reduce((a,b)=>a+b,0)/outputs.length:null;
+  const avgOutput=weightedOutputPercentage(prodRows);
   const feedRows=selectedFeedRows();
-  const production=feedRows.reduce((n,r)=>n+(feedField(r,"Production_Day_MT")||0),0);
-  const dispatch=feedRows.reduce((n,r)=>n+(feedField(r,"Dispatch_Day_MT")||0),0);
+  const production=feedRows.reduce((n,r)=>n+feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product),0);
+  const dispatch=feedRows.reduce((n,r)=>n+feedValueInMT(feedField(r,"Dispatch_Day_MT"),r.Product||r.product),0);
   const products=feedRows.length;
   return {date,attention,critical,warning,stockRows,stockTotal,lowStock,prodRows,avgOutput,feedRows,production,dispatch,products};
 }
@@ -3834,7 +3906,7 @@ function renderRawCategory(tab){
     const body=list.map(({m,v})=>{
       if(tab==="STOCK"){
         const x=getMaterial(m);
-        return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing)||0,m,x?.unit||"MT")}</strong><small>Tap for details</small></div></div>`;
+        return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(num(x?.closing),m,x?.unit||"MT")}</strong><small>Tap for details</small></div></div>`;
       }
       const label=tab==="TRANSFER"?"Transfer / Bommakal":tab;
       return `<div class="feed-row raw-movement-row" onclick="openMaterialDetails('${jsq(m)}')"><div class="row-name">${esc(m)}</div><div class="row-right"><strong>${fmtMaterial(v,m,"MT")}</strong><small>${esc(label)} • details</small></div></div>`;
