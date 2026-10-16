@@ -1660,3 +1660,63 @@ body.dc-page-open{overflow:hidden}
 }
 
 
+
+
+/* Home dashboard mobile polish — scoped visual-only overrides */
+.manager-quick-grid .quick{
+  min-width:0!important;
+  padding:9px 8px!important;
+  border:1px solid #e5eaf1!important;
+  background:#f8fafc!important;
+  box-shadow:none!important;
+}
+.manager-quick-grid .quick:after{background:rgba(100,116,139,.055)!important}
+.manager-quick-grid .quick:nth-child(n){background:#f8fafc!important;border-color:#e5eaf1!important}
+.manager-quick-grid .quick p{
+  line-height:1.2!important;
+  min-height:2.2em;
+  margin-bottom:4px!important;
+  overflow-wrap:anywhere;
+}
+.manager-quick-grid .quick strong{
+  display:block!important;
+  max-width:100%;
+  white-space:nowrap!important;
+  overflow:hidden;
+  text-overflow:clip;
+  font-size:clamp(12px,3.6vw,16px)!important;
+  letter-spacing:-.35px;
+  line-height:1.2!important;
+  font-variant-numeric:tabular-nums;
+}
+.manager-quick-grid .quick .quick-context{
+  margin-top:5px!important;
+  line-height:1.2!important;
+  white-space:normal;
+}
+.manager-quick-grid .quick small{
+  font-size:9px!important;
+  line-height:1.2!important;
+}
+.attention-card{padding:12px!important;margin-bottom:9px!important}
+.attention-head{margin-bottom:7px!important}
+.attention-meta{margin-bottom:3px!important}
+.attention-summary-list{gap:0!important}
+.attention-summary-row{min-height:41px!important;padding:7px 2px!important;gap:5px!important}
+.attention-summary-icon{font-size:13px!important}
+.attention-summary-copy strong{font-size:11px!important;line-height:1.22!important}
+.attention-summary-copy small{margin-top:2px!important;line-height:1.2!important}
+@media(max-width:520px){
+  .manager-quick-grid{gap:6px!important}
+  .manager-quick-grid .quick{min-height:61px!important;padding:8px 7px!important;border-radius:13px!important}
+  .manager-quick-grid .quick strong{font-size:clamp(11px,3.25vw,14px)!important;letter-spacing:-.45px}
+  .manager-quick-grid .quick p{font-size:9px!important;min-height:2.25em}
+  .manager-quick-grid .quick .quick-context{font-size:8px!important}
+  .attention-card{padding:11px!important}
+  .attention-summary-row{grid-template-columns:22px minmax(0,1fr) 12px!important;min-height:39px!important}
+}
+@media(max-width:360px){
+  .manager-quick-grid{gap:5px!important}
+  .manager-quick-grid .quick{padding:7px 5px!important}
+  .manager-quick-grid .quick strong{font-size:11px!important}
+}
