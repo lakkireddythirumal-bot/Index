@@ -2898,8 +2898,10 @@ function dqIsKnownTransaction(t){
   const s=normalize(t);
   if(!s)return false;
   if(dqIsConsumption(s))return true;
-  if(s.includes("OPENING STOCK")||s.includes("CL. STOCK")||s.includes("CLOSING STOCK"))return true;
-  const known=["PURCHASE","RECEIVED","RECEV","GAIN","SALE","SHORTAGE","DAMAGE","ISSUE","TRANSFER","RETURN","PRODUCTION","DESPATCH","DISPATCH","DILUTED","REPROCESS","BOMMAKAL","BMKL"];
+  if(s==="OPENING"||s.includes("OPENING STOCK")||s==="CLOSING"||s.includes("CL. STOCK")||s.includes("CLOSING STOCK"))return true;
+  // Real transaction labels found in the current MIS data; classify them as known
+  // without changing their names or how quantities are calculated.
+  const known=["PURCHASE","RECEIPT","RECEIVED","RECEV","GAIN","SALE","SHORTAGE","DAMAGE","ISSUE","TRANSFER","RETURN","PRODUCTION","DESPATCH","DISPATCH","DILUTED","REPROCESS","BOMMAKAL","BMKL","PELLET MILL USE"];
   return known.some(k=>s.includes(k));
 }
 function dqLatestDateRows(material){
