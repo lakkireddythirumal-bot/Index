@@ -1079,7 +1079,7 @@ function monthlyRMConsumption(m){
 function monthlyFeedMix(m,key){
   const cacheKey=[m,key].join("|");
   if(PERF_CACHE.monthlyFeed.has(cacheKey))return PERF_CACHE.monthlyFeed.get(cacheKey);
-  const rows=(DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m);
+  const rows=uniqueDatedProductRows((DATA.feedUnitData||[]).filter(r=>monthKey(r.report_date||r.Report_Date)===m),r=>r.Product||r.product,r=>r.report_date||r.Report_Date);
   const latest=new Map(), byProduct=new Map();
   rows.forEach((r,i)=>{
     const p=clean(r.Product||r.product); if(!p)return;
@@ -1961,7 +1961,7 @@ function ppBagReconciliationItems(){
   return selectedBags().map(r=>r.product||"PP Bags").filter((v,i,a)=>a.findIndex(x=>normalize(x)===normalize(v))===i).map(product=>({product,r:ppBagReconciliation(product)}));
 }
 function openProductDetails(product){
-  const r=selectedProduction().find(x=>normalize(x.product)===normalize(product));
+  const r=selectedProduction().find(x=>normalize(x.product||x.Product)===normalize(product));
   if(!r){showModal(product,"<div class='empty'>No data</div>");return}
   const rec=productionReconciliation(product);
   let html="";
@@ -1972,7 +1972,7 @@ function openProductDetails(product){
     html+=`<div class="detail-section reconcile-warn"><h3>🔎 Production / Dispatch Reconciliation</h3><div class="empty">${esc(rec.message||"Insufficient data for reconciliation.")}</div></div>`;
   }
   html+=`<div class="detail-section"><h3>${esc(product)}</h3>${detail("Standard Output",fmtBags(r.standard_output))}${detail("Actual Output",fmtBags(r.actual_output))}${detail("Output %",fmt(r.output_percentage)+" %")}${detail("Process Loss %",fmt(r.process_loss)+" %")}${detail("Remarks / Packing",packingFromRemarks(r.remarks))}</div>`;
-  const fr=selectedFeedRows().filter(x=>normalize(x.Product||x.product)===normalize(product)).slice(-1)[0];
+  const fr=latestUniqueRows(selectedFeedRows().filter(x=>normalize(x.Product||x.product)===normalize(product)),x=>x.Product||x.product).slice(-1)[0];
   if(fr){
     html+=`<div class="detail-section"><h3>🌾 Feed Unit Details</h3>${detail("Opening Day",fmtFeed(fr.Opening_Day_MT??fr.opening_day_mt??fr.Opening_Day??fr.opening_day??fr.Opening??fr.opening,product))}${detail("Production Day",fmtFeed(fr.Production_Day_MT??fr.production_day_mt??fr.Production_Day??fr.production_day??fr.Production??fr.production,product))}${detail("Dispatch Day",fmtFeed(fr.Dispatch_Day_MT??fr.dispatch_day_mt??fr.Dispatch_Day??fr.dispatch_day??fr.Dispatch??fr.dispatch,product))}${detail("Transfer Day",fmtFeed(fr.Transfer_Day_MT??fr.transfer_day_mt??fr.Transfer_Day??fr.transfer_day??fr.Transfer??fr.transfer,product))}${detail("Closing Day",fmtFeed(fr.Closing_Day_MT??fr.closing_day_mt??fr.Closing_Day??fr.closing_day??fr.Closing??fr.closing,product))}${detail("Production Month",fmtFeed(fr.Production_Month_MT??fr.production_month_mt??fr.Production_Month??fr.production_month,product))}${detail("Dispatch Month",fmtFeed(fr.Dispatch_Month_MT??fr.dispatch_month_mt??fr.Dispatch_Month??fr.dispatch_month,product))}</div>`;
   }
@@ -1980,7 +1980,7 @@ function openProductDetails(product){
 }
 function openPPBagDetails(){showModal("PP Bags",selectedBags().map(r=>`<div class="detail-section"><h3>${esc(r.product||"PP Bags")}</h3>${detail("Opening",fmt(r.opening))}${detail("Received",fmt(r.received))}${detail("Issue",fmt(r.issue))}${detail("Damage",fmt(r.damage))}${detail("Closing",fmt(r.closing))}</div>`).join("")||"<div class='empty'>No PP Bag data</div>")}
 function openBagProduct(product){
-  const r=selectedBags().filter(x=>normalize(x.product||"PP Bags")===normalize(product)).slice(-1)[0];
+  const r=latestUniqueRows(selectedBags().filter(x=>normalize(x.product||"PP Bags")===normalize(product)),x=>x.product||"PP Bags").slice(-1)[0];
   if(!r)return;
   const rec=ppBagReconciliation(product);
   let html="";
@@ -2003,7 +2003,7 @@ function openFeedTotals(type){
 function openFeedProductDetails(product){
   const rows=selectedFeedRows().filter(r=>normalize(r.Product||r.product)===normalize(product));
   if(!rows.length){showModal(product,"<div class='empty'>No Feed Unit product data available for this date.</div>");return}
-  const r=rows[rows.length-1];
+  const r=latestUniqueRows(rows,x=>x.Product||x.product).slice(-1)[0];
   const rec=productionReconciliation(product);
   let html="";
   if(rec.status==="MATCH"||rec.status==="MISMATCH"){
@@ -2235,18 +2235,18 @@ function transactions(material){
 }
 function selectedProduction(){
   if(PERF_CACHE.production)return PERF_CACHE.production;
-  if(!effectiveViewDate()){PERF_CACHE.production=(Array.isArray(DATA.production)?DATA.production:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));return PERF_CACHE.production;}
+  if(!effectiveViewDate()){PERF_CACHE.production=__uniqueProductRows((Array.isArray(DATA.production)?DATA.production:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product)),r=>r.product||r.Product);return PERF_CACHE.production;}
   const d=dateOnly(VIEW_DATE);
   const history=Array.isArray(DATA.productionHistory)?DATA.productionHistory:[];
-  PERF_CACHE.production=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product||r.Product));
+  PERF_CACHE.production=__uniqueProductRows(history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product||r.Product)),r=>r.product||r.Product);
   return PERF_CACHE.production;
 }
 function selectedBags(){
   if(PERF_CACHE.bags)return PERF_CACHE.bags;
-  if(!effectiveViewDate()){PERF_CACHE.bags=(Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product));return PERF_CACHE.bags;}
+  if(!effectiveViewDate()){PERF_CACHE.bags=latestUniqueRows((Array.isArray(DATA.bags)?DATA.bags:[]).filter(r=>!dcIsHiddenProduct(r.product)),r=>r.product||"PP Bags");return PERF_CACHE.bags;}
   const d=effectiveViewDate();
   const history=Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[];
-  PERF_CACHE.bags=history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product));
+  PERF_CACHE.bags=latestUniqueRows(history.filter(r=>dateOnly(r.report_date||r.Report_Date)===d&&!dcIsHiddenProduct(r.product)),r=>r.product||"PP Bags");
   return PERF_CACHE.bags;
 }
 function selectedFeedRows(){
@@ -2254,8 +2254,17 @@ function selectedFeedRows(){
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
   const d=effectiveViewDate();
   const dateRows=d?rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
-  PERF_CACHE.feedRows=dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  PERF_CACHE.feedRows=uniqueDatedProductRows(dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.Report_Date||r.report_date||r.date||r.DATE);
   return PERF_CACHE.feedRows;
+}
+function uniqueDatedProductRows(rows,productGetter,dateGetter){
+  const latest=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    const p=clean(productGetter(r));if(!p)return;
+    const d=dateOnly(dateGetter(r))||"NO_DATE";
+    latest.set(d+"|"+normalize(p),r); // One summary row per product/date; last source row wins deterministically.
+  });
+  return [...latest.values()];
 }
 function latestUniqueRows(rows,productGetter){
   const latest=new Map();
@@ -2343,7 +2352,7 @@ function cmpDailyFromMap(map,anchor){
 }
 function cmpFeedDailyMap(key){
   const map=new Map();
-  (DATA.feedUnitData||[]).forEach(r=>{
+  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
     const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
     const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
     const v=feedValueInMT(feedField(r,key),p);
@@ -2353,7 +2362,7 @@ function cmpFeedDailyMap(key){
 }
 function cmpFeedClosingMap(){
   const map=new Map();
-  (DATA.feedUnitData||[]).forEach(r=>{
+  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
     const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
     const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
     const v=num(r.Closing_Day_MT??r.closing_day_mt??r.Closing_Day??r.closing_day??r.Closing??r.closing);
@@ -2543,7 +2552,7 @@ function dailyControlMetrics(){
 function currentViewKey(){return VIEW_DATE?dateOnly(VIEW_DATE):dateOnly(DATA.report_date)||"latest"}
 function allAvailableDates(){return getAvailableDates()}
 function feedRowsForDate(d){
-  return (DATA.feedUnitData||[]).filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(d));
+  return uniqueDatedProductRows((DATA.feedUnitData||[]).filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(d)),r=>r.Product||r.product,r=>r.Report_Date||r.report_date);
 }
 function dateFeedMetrics(d){
   const rows=feedRowsForDate(d);
@@ -2731,7 +2740,7 @@ function renderTrends(){
   if(sel)sel.innerHTML=mats.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
   if(mats.length)drawMaterialChart(sel?.value||mats[0]);
   // Production chart uses FEED UNIT tonnes; PRODUCTION_DATA actual_output is bag-count data.
-  const feedProductionRows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const feedProductionRows=uniqueDatedProductRows((Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.Report_Date||r.report_date||r.date||r.DATE);
   const byDate={};
   feedProductionRows.forEach(r=>{
     const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
@@ -2760,7 +2769,7 @@ function renderTrends(){
     wrap.onscroll=function(){const i=Math.round(this.scrollLeft/Math.max(1,this.clientWidth));[...dots.children].forEach((d,j)=>d.classList.toggle("active",i===j))};}
 }
 function feedTrend(){
-  const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const rows=uniqueDatedProductRows((Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.Report_Date||r.report_date||r.date||r.DATE);
   const map={};
   rows.forEach(r=>{
     const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
