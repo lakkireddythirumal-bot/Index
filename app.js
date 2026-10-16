@@ -488,7 +488,17 @@ function normalize(v){return clean(v).replace(/\s+/g," ").toUpperCase()}
 function num(v){const n=Number(v);return Number.isFinite(n)?n:null}
 function fmt(v){if(v===null||v===undefined||v==="")return"--";const n=Number(v);return Number.isFinite(n)?n.toLocaleString("en-IN",{maximumFractionDigits:2}):String(v)}
 function fmtMT(v){return v===null||v===undefined||v===""?"--":fmt(v)+" MT"}
-function isPremixProduct(name){return /PREMIX/i.test(clean(name));}
+function isPremixProduct(name){
+  const value=clean(name).toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
+  if(!value)return false;
+  // Premix names vary across MIS sheets: full names, PSC (Prestarter Premix),
+  // and BFP (Finisher Premix). Use this shared classifier for every site section.
+  return /\\bPRE ?MIX\\b/.test(value)
+    || /\\bPRE ?STARTER\\b/.test(value)
+    || /\\bFINISHER\\b/.test(value)
+    || /\\bPSC\\b/.test(value)
+    || /\\bBFP\\b/.test(value);
+}
 function isPremixMaterial(name){return isPremixProduct(name);}
 function fmtFeed(v,product){return v===null||v===undefined||v===""?"--":isPremixProduct(product)?fmt(v)+" KG":fmt(v)+" MT"}
 function feedValueInMT(v,product){const n=num(v)||0;return isPremixProduct(product)?n/1000:n;}
