@@ -19,12 +19,12 @@
 <div class="field"><label for="powerUnits">Power Units Consumption</label><input id="powerUnits" type="number" min="0" step="0.001" placeholder="Enter power units"></div>
 <div class="field"><label for="solarUnits">Solar Power Units Consumption</label><input id="solarUnits" type="number" min="0" step="0.001" placeholder="Enter solar units"></div>
 <div class="field"><label for="feedMt">Feed Production (MT)</label><input id="feedMt" type="number" min="0" step="0.001" placeholder="Enter feed MT"></div>
-<div class="field"><label for="unitsPerMt">Units per MT</label><input id="unitsPerMt" type="number" min="0" step="0.0001" placeholder="Enter units per MT"></div>
+
 </div>
 <div class="hint">An existing date will be updated; a new date will be inserted. Leave unavailable values blank.</div>
 <div class="actions"><button class="btn primary" id="saveBtn" type="submit">Save Entry</button><button class="btn" type="button" id="clearBtn">Clear</button><span id="formMsg" class="msg" role="status"></span></div>
 </form></section>
-<section class="card"><h2>Recent Records</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Power Units</th><th>Solar Units</th><th>Feed MT</th><th>Units / MT</th></tr></thead><tbody id="historyBody"><tr><td colspan="5" class="empty">Loading records…</td></tr></tbody></table></div></section>
+<section class="card"><h2>Recent Records</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Power Units</th><th>Solar Units</th><th>Feed MT</th><th>Combined Units</th><th>Units / MT</th></tr></thead><tbody id="historyBody"><tr><td colspan="6" class="empty">Loading records…</td></tr></tbody></table></div></section>
 </main>
 <script>
 (function(){
@@ -37,18 +37,18 @@ function fmt(v,d=3){return v===null||v===undefined||v===''?'—':Number(v).toLoc
 function num(id){const v=$(id).value.trim();return v===''?null:Number(v)}
 function message(s,err=false){$('formMsg').textContent=s;$('formMsg').style.color=err?'#b42318':'#475569'}
 async function loadRows(){
- const res=await fetch(URL+'/rest/v1/power_consumption?select=date,power_units_consumption,solar_units_consumption,feed_mt,units_per_mt&order=date.desc&limit=30',{headers:{apikey:KEY,Authorization:'Bearer '+KEY},cache:'no-store'});
+ const res=await fetch(URL+'/rest/v1/power_consumption?select=date,power_units_consumption,solar_units_consumption,feed_mt&order=date.desc&limit=30',{headers:{apikey:KEY,Authorization:'Bearer '+KEY},cache:'no-store'});
  if(!res.ok)throw new Error('Could not load records ('+res.status+')');
  const rows=await res.json();
  const first=rows[0];
  $('latestDate').textContent=first?first.date:'—';$('latestPower').textContent=first?fmt(first.power_units_consumption):'—';$('latestSolar').textContent=first?fmt(first.solar_units_consumption):'—';
- $('historyBody').innerHTML=rows.length?rows.map(r=>'<tr><td>'+r.date+'</td><td>'+fmt(r.power_units_consumption)+'</td><td>'+fmt(r.solar_units_consumption)+'</td><td>'+fmt(r.feed_mt)+'</td><td>'+fmt(r.units_per_mt,4)+'</td></tr>').join(''):'<tr><td colspan="5" class="empty">No records found</td></tr>';
+ $('historyBody').innerHTML=rows.length?rows.map(r=>{const combined=(r.power_units_consumption==null?0:Number(r.power_units_consumption))+(r.solar_units_consumption==null?0:Number(r.solar_units_consumption));const totalKnown=r.power_units_consumption!=null||r.solar_units_consumption!=null;const perMt=Number(r.feed_mt)>0&&totalKnown?combined/Number(r.feed_mt):null;return '<tr><td>'+r.date+'</td><td>'+fmt(r.power_units_consumption)+'</td><td>'+fmt(r.solar_units_consumption)+'</td><td>'+fmt(r.feed_mt)+'</td><td>'+fmt(totalKnown?combined:null)+'</td><td>'+fmt(perMt,4)+'</td></tr>'}).join(''):'<tr><td colspan="5" class="empty">No records found</td></tr>';
 }
 $('powerForm').addEventListener('submit',async e=>{
  e.preventDefault();$('saveBtn').disabled=true;message('Saving…');
  try{
  const date=$('entryDate').value;if(!date)throw new Error('Please select a date');
- const row={date,power_units_consumption:num('powerUnits'),solar_units_consumption:num('solarUnits'),feed_mt:num('feedMt'),units_per_mt:num('unitsPerMt'),source_sheet:'POWER',updated_at:new Date().toISOString()};
+ const power=num('powerUnits'),solar=num('solarUnits'),feed=num('feedMt');const combined=(power===null?0:power)+(solar===null?0:solar);const row={date,power_units_consumption:power,solar_units_consumption:solar,feed_mt:feed,units_per_mt:feed>0&&(power!==null||solar!==null)?combined/feed:null,source_sheet:'POWER',updated_at:new Date().toISOString()};
  const res=await fetch(URL+'/rest/v1/power_consumption?on_conflict=date',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(row)});
  if(!res.ok){const detail=await res.text();throw new Error('Save failed ('+res.status+'): '+detail.slice(0,180))}
  message('Saved successfully.');await loadRows();
