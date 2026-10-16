@@ -268,7 +268,7 @@ function dcLatestRawReconciliation(material){
   let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0;
   dayRows.forEach(t=>{
     const ty=tType(t),v=tVal(t); if(ty==="OPENING STOCK")opening=v; else if(ty==="CL. STOCK")closing=v;
-    else if(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")){cons+=v;otherActivity+=v}
+    else if(isConsumptionMovement(ty)){cons+=v;otherActivity+=v}
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){add+=v;otherActivity+=v}
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){out+=v;otherActivity+=v}
   });
@@ -335,7 +335,7 @@ function dcApplyUnexplainedDecision(item,action){
     rows.forEach(t=>{
       if(dateOnly(rowDate(t))!==rec.date)return;
       const ty=tType(t);
-      if(!(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI")))return;
+      if(!isConsumptionMovement(ty))return;
       const k=dcRecordKey(m,t);
       DATA_CONTROL.records[k]={status:action==="EXCLUDED"?"EXCLUDED":"KEPT",reason:action==="EXCLUDED"?"Unexplained consumption — excluded by manager":"Unexplained consumption — reviewed and kept",updatedAt:new Date().toISOString(),reviewAck:action==="EXCLUDED"?"":""};
     });
@@ -1297,7 +1297,7 @@ function rmHistoryValue(rows,kind){
   return rows.filter(t=>{
     const type=tType(t);
     if(kind==="received")return type==="PURCHASE";
-    if(kind==="consumption")return type.includes("CONSUMPTION");
+    if(kind==="consumption")return isConsumptionMovement(type);
     if(kind==="transfer")return type.includes("TRANSFER");
     return type==="CL. STOCK";
   }).reduce((sum,t)=>sum+tVal(t),0);
@@ -2083,7 +2083,7 @@ function drawMaterialChart(material){
   const map={};
   transactions(material).forEach(t=>{
     const type=tType(t);
-    if(!(type.includes("CONSUMPTION")||type.includes("CONSUMPION")||type.includes("CONSUMPTON")||type.includes("CONSUMPTI")))return;
+    if(!isConsumptionMovement(type))return;
     const d=rowDate(t);if(!trendDateInRange(d))return;
     map[d]=(map[d]||0)+tVal(t);
   });
@@ -2540,6 +2540,17 @@ function renderControlCenter(){
   if(problems===0){if(h)h.textContent="✓";if(t)t.textContent="Data Issues • No issues detected";}
   else {if(h)h.textContent="⚠";if(t)t.textContent=`Data Issues • ${problems} item${problems===1?"":"s"} need checking`;}
 }
+function weightedOutputPercentage(rows){
+  const source=Array.isArray(rows)?rows:[];
+  let actualTotal=0,standardTotal=0;
+  source.forEach(r=>{
+    const actual=num(r.actual_output??r.Actual_Output),standard=num(r.standard_output??r.Standard_Output);
+    if(actual!==null&&standard!==null&&actual>=0&&standard>0){actualTotal+=actual;standardTotal+=standard;}
+  });
+  if(standardTotal>0)return actualTotal/standardTotal*100;
+  const reported=source.map(r=>num(r.output_percentage??r.Output_Percentage)).filter(v=>v!==null);
+  return reported.length?reported.reduce((a,b)=>a+b,0)/reported.length:null;
+}
 function dailyControlMetrics(){
   const reorder=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing)||0,avgConsumption(m)).status==="REORDER").length;
   const mismatches=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length;
@@ -2547,7 +2558,7 @@ function dailyControlMetrics(){
   const rows=selectedProduction(),outs=rows.map(r=>num(r.output_percentage)).filter(v=>v!==null),losses=rows.map(r=>num(r.process_loss)).filter(v=>v!==null);
   const premix=premixBommakalTransfers().reduce((a,r)=>a+r.value,0)/1000;
   const damage=selectedBags().reduce((a,r)=>a+(num(r.damage)||0),0);
-  return {reorder,mismatches,abnormal,efficiency:outs.length?outs.reduce((a,b)=>a+b,0)/outs.length:null,loss:losses.length?losses.reduce((a,b)=>a+b,0)/losses.length:null,premix,damage};
+  return {reorder,mismatches,abnormal,efficiency:weightedOutputPercentage(rows),loss:losses.length?losses.reduce((a,b)=>a+b,0)/losses.length:null,premix,damage};
 }
 function currentViewKey(){return VIEW_DATE?dateOnly(VIEW_DATE):dateOnly(DATA.report_date)||"latest"}
 function allAvailableDates(){return getAvailableDates()}
@@ -3246,7 +3257,7 @@ function reportRawRows(from,to){
     const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
     const r=map.get(k),ty=tType(t),v=tVal(t);
     if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;
-    else if(ty.includes('CONSUMPTION')||ty.includes('CONSUMPION'))r.Consumption+=v;
+    else if(isConsumptionMovement(ty))r.Consumption+=v;
     else if(ty.includes('TRANSFER'))r.Transfer+=v;
     if(ty==='CL. STOCK')r.Closing=v;
   });
@@ -3254,7 +3265,7 @@ function reportRawRows(from,to){
     (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{
       const d=reportDate(rowDate(t)),m=clean(x.material||t.material);if(!m||!reportInRange(d,from,to))return;
       const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
-      const r=map.get(k),ty=tType(t),v=tVal(t);if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;else if(ty.includes('CONSUMPTION')||ty.includes('CONSUMPION'))r.Consumption+=v;else if(ty.includes('TRANSFER'))r.Transfer+=v;if(ty==='CL. STOCK')r.Closing=v;
+      const r=map.get(k),ty=tType(t),v=tVal(t);if(ty==='PURCHASE'||ty==='RECEIVED')r.Received+=v;else if(isConsumptionMovement(ty))r.Consumption+=v;else if(ty.includes('TRANSFER'))r.Transfer+=v;if(ty==='CL. STOCK')r.Closing=v;
     }));
   }
   return [...map.values()].sort((a,b)=>a.Date.localeCompare(b.Date)||a.Material.localeCompare(b.Material));
@@ -3643,7 +3654,7 @@ function plantAIMetrics(){
   const lowStock=stockRows.filter(x=>x.status&&x.status!=='OK').sort((a,b)=>(Number(a.cover??999)-Number(b.cover??999)));
   const prodRows=selectedProduction();
   const outputs=prodRows.map(r=>num(r.output_percentage??r.outputPercent??r.output_percentage_value)).filter(v=>v!==null);
-  const avgOutput=outputs.length?outputs.reduce((a,b)=>a+b,0)/outputs.length:null;
+  const avgOutput=weightedOutputPercentage(prodRows);
   const feedRows=selectedFeedRows();
   const production=feedRows.reduce((n,r)=>n+feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product),0);
   const dispatch=feedRows.reduce((n,r)=>n+feedValueInMT(feedField(r,"Dispatch_Day_MT"),r.Product||r.product),0);
