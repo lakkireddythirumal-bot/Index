@@ -265,7 +265,7 @@ function dcLatestRawReconciliation(material){
   const rows=dcRawTransactions(material); if(!rows.length)return {status:"NO DATA",message:"No transaction history available."};
   const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort(); const latest=dates[dates.length-1]||"";
   const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows;
-  let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0,invalid=false,openingCount=0,closingCount=0;
+  let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
     const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
     if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
@@ -273,7 +273,9 @@ function dcLatestRawReconciliation(material){
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else{cons+=v;otherActivity+=v}}
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else{add+=v;otherActivity+=v}}
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else{out+=v;otherActivity+=v}}
+    else if(ty)unclassified.push(ty);
   });
+  if(unclassified.length)return {status:"NO DATA",date:latest,message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling."};
   if(openingCount>1||closingCount>1)return {status:"NO DATA",date:latest,message:"Duplicate opening/closing balance rows require source review.",openingCount,closingCount};
   if(invalid||opening===null||closing===null)return {status:"NO DATA",date:latest,message:"Required daily quantities or opening/closing balances are missing."};
   const unexplained=cons>0 && opening<=0 && add<=0;
@@ -884,7 +886,7 @@ function materialReconciliation(material){
   const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
   const latest=dates.length?dates[dates.length-1]:"";
   const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows.slice();
-  let opening=null,closing=null,add=0,otherOut=0,recorded=0,invalid=false,openingCount=0,closingCount=0;
+  let opening=null,closing=null,add=0,otherOut=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
     const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
     if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
@@ -892,7 +894,9 @@ function materialReconciliation(material){
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else recorded+=v;}
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else otherOut+=v;}
+    else if(ty)unclassified.push(ty);
   });
+  if(unclassified.length)return {status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling.",date:latest};
   if(openingCount>1||closingCount>1)return {status:"NO DATA",message:"Duplicate opening/closing balance rows exist for the latest date. Review the source records before reconciling.",date:latest,openingCount,closingCount};
   if(invalid)return {status:"NO DATA",message:"One or more required daily quantities are missing. Monthly/yearly values cannot substitute for daily quantities.",date:latest};
   if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the latest transaction date.",date:latest};
