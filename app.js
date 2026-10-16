@@ -407,7 +407,7 @@ function renderDcReport(){
   if(sub)sub.textContent=isMat?"Material control, reconciliation and transaction history":"Product control and activity history";
   if(isMat){
     const raw=dcRawTransactions(name),approved=dcApprovedTransactions(name),rec=dcLatestRawReconciliation(name);
-    const totalCons=approved.filter(t=>tType(t).includes("CONSUMPTION")||tType(t).includes("CONSUMPION")).reduce((a,t)=>a+tVal(t),0);
+    const totalCons=approved.filter(t=>isConsumptionMovement(tType(t))).reduce((a,t)=>a+tVal(t),0);
     body.innerHTML=`<div class="dc-report-summary"><div class="dc-report-summary-main"><div class="dc-report-eyebrow">CONTROL STATUS</div><div>${dcReportStatusBadge(st.status)}</div><p>${esc(st.reason||"No manager decision recorded.")}</p></div><div class="dc-report-summary-actions"><button class="dc-report-action primary" onclick="dcAction('material','${jsq(name)}')">${st.status==='HIDDEN'?'Unhide Material':'Hide Material'}</button><button class="dc-report-action" onclick="closeDcReport();dcReviewModal()">🔔 Review</button></div></div>
       <div class="dc-report-grid"><section class="dc-report-section"><div class="dc-report-section-head"><span>🔎</span><div><h4>Latest Reconciliation</h4><small>${esc(rec.date||"No date")}</small></div></div><div class="dc-report-kv-grid">${dcReportRow("Result",rec.status)}${dcReportRow("Opening",fmt(rec.opening))}${dcReportRow("Additions",fmt(rec.add))}${dcReportRow("Other Out",fmt(rec.out))}${dcReportRow("Consumption",fmt(rec.cons))}${dcReportRow("Closing",fmt(rec.closing))}${dcReportRow("Difference",fmt(rec.diff))}${dcReportRow("Unexplained",rec.unexplained?"YES":"NO",rec.unexplained?"danger":"")}</div></section><section class="dc-report-section"><div class="dc-report-section-head"><span>📊</span><div><h4>Data Summary</h4><small>Current control state</small></div></div><div class="dc-report-kv-grid">${dcReportRow("Raw records",raw.length)}${dcReportRow("Approved records",approved.length)}${dcReportRow("Excluded records",raw.length-approved.length)}${dcReportRow("Approved consumption",fmt(totalCons))}${dcReportRow("Last decision",st.updatedAt?new Date(st.updatedAt).toLocaleString("en-IN"):"--")}</div></section></div>
       <section class="dc-report-section"><div class="dc-report-section-head"><span>📋</span><div><h4>Source Records</h4><small>Every record and its current decision</small></div></div>${dcReportRecordsTable(name,raw)}</section>`;
@@ -526,7 +526,7 @@ function rawTotal(material,tab){
     if(selectedDay && dateOnly(rowDate(t))!==selectedDay)return sum;
     const ty=tType(t);
     let matches=false;
-    if(tab==="CONSUMPTION")matches=ty.includes("CONSUMPTION") || ty.includes("CONSUMPION");
+    if(tab==="CONSUMPTION")matches=isConsumptionMovement(ty);
     else if(tab==="PURCHASE")matches=ty==="PURCHASE" || ty==="RECEIVED";
     else if(tab==="TRANSFER")matches=ty==="TRANSFER" || ty.includes("TRANSFER FROM") || ty.includes("TRANSFER TO");
     else if(tab==="GAIN")matches=ty==="GAIN";
@@ -887,13 +887,13 @@ function materialReconciliation(material){
     if(ty==="OPENING STOCK") opening=v;
     else if(ty==="CL. STOCK") closing=v;
     // Preserve source transaction names; recognize the known MIS spelling variant as consumption.
-    else if(ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")) recorded+=v;
+    else if(isConsumptionMovement(ty)) recorded+=v;
     // Keep existing transaction names and classify only clear inbound/outbound movements.
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")) add+=v;
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")) otherOut+=v;
   });
   if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the latest transaction date.",date:latest};
-  const calculated=Math.max(0,opening+add-otherOut-closing);
+  const calculated=opening+add-otherOut-closing;
   const diff=calculated-recorded;
   const tol=isPremixMaterial(material)?0.01:0.01;
   return {status:Math.abs(diff)<=tol?"MATCH":"MISMATCH",date:latest,opening,add,otherOut,closing,calculated,recorded,diff,tolerance:tol};
@@ -906,7 +906,7 @@ function abnormalConsumptionItems(){
   getMaterials().forEach(m=>{
     const avg=avgConsumption(m);
     if(!avg)return;
-    const rows=transactions(m).filter(t=>tType(t).includes("CONSUMPTION"));
+    const rows=transactions(m).filter(t=>isConsumptionMovement(tType(t)));
     if(!rows.length)return;
     const latestDate=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||"";
     const today=rows.filter(t=>!latestDate||dateOnly(rowDate(t))===latestDate).reduce((a,t)=>a+tVal(t),0);
@@ -1035,7 +1035,7 @@ function mixAvailableMonths(){
   return [...s].filter(Boolean).sort().reverse();
 }
 function mixDefaultMonth(){return monthKey(VIEW_DATE||DATA.report_date)||mixAvailableMonths()[0]||""}
-function isConsumptionMovement(ty){return ty.includes("CONSUMPTION")||ty.includes("CONSUMPION")||ty.includes("CONSUMPTON")||ty.includes("CONSUMPTI")}
+function isConsumptionMovement(ty){return dqIsConsumption(ty)}
 function allMixMaterialTransactions(){
   const out=[];
   (DATA.stock||[]).forEach(x=>{
@@ -1437,7 +1437,7 @@ function dacStockItems(targetDate){
       const value=dacValue(t,["for_day","value","quantity","qty"]);
       if(type==="OPENING STOCK"){if(value===null)invalid=true;else opening=value;}
       else if(type==="CL. STOCK"||type.startsWith("CL. STOCK ")){if(value===null)invalid=true;else closing=value;}
-      else if(type.includes("CONSUMPTION")||type.includes("CONSUMPION")){if(value===null)invalid=true;else recorded+=Math.abs(value);}
+      else if(isConsumptionMovement(type)){if(value===null)invalid=true;else recorded+=Math.abs(value);}
       else if(type==="PURCHASE"||type==="RECEIVED"||type==="GAIN"||type.includes("TRANSFER FROM")){if(value===null)invalid=true;else inflow+=Math.abs(value);}
       else if(type.includes("TRANSFER TO")||type.includes("SALE")||type.includes("SHORTAGE")||type==="DAMAGE"||type==="ISSUE"||type.includes("RETURN TO")){if(value===null)invalid=true;else outflow+=Math.abs(value);}
       else if(type)unclassified.push(type);
@@ -1917,7 +1917,7 @@ function openMaterialDetails(material){
   }
   html+=`<div class="detail-section"><h3>Material-wise Movement</h3>`;
   groups.forEach(g=>{const total=rows.filter(t=>tType(t)===normalize(g)).reduce((a,t)=>a+tVal(t),0);if(total)html+=detail(g,fmt(total)+" "+unit)});
-  const namedConsumption=rows.filter(t=>tType(t).includes("CONSUMPTION")).reduce((a,t)=>a+tVal(t),0);
+  const namedConsumption=rows.filter(t=>isConsumptionMovement(tType(t))).reduce((a,t)=>a+tVal(t),0);
   if(namedConsumption)html+=detail("All Consumption Activities",fmt(namedConsumption)+" "+unit);
   html+="</div>";
   if(rows.length){
@@ -2288,7 +2288,7 @@ function avgConsumption(material){
   const history=Array.isArray(DATA.stockHistory)?DATA.stockHistory:[];
   const dated=new Map();
   history.forEach(t=>{
-    if(normalize(t.material)!==key || !tType(t).includes("CONSUMPTION"))return;
+    if(normalize(t.material)!==key || !isConsumptionMovement(tType(t)))return;
     const d=dateOnly(rowDate(t));
     const v=num(t.for_day);
     if(!d || v===null || v<=0)return;
@@ -2364,7 +2364,7 @@ function cmpStockMovementMap(types){
   const set=new Set(types.map(normalize)),map=new Map();
   (DATA.stockHistory||[]).forEach(t=>{
     const m=clean(t.material);if(!m||dcIsHiddenMaterial(m))return;
-    const ty=tType(t);if(![...set].some(x=>ty===x||ty.includes(x)))return;
+    const ty=tType(t);if(![...set].some(x=>x==="CONSUMPTION"?isConsumptionMovement(ty):(ty===x||ty.includes(x))))return;
     const d=dateOnly(rowDate(t));if(!d)return;
     const v=materialValueInMT(tVal(t),m);if(v===null||v<0)return;
     map.set(d,(map.get(d)||0)+v);
@@ -2388,7 +2388,7 @@ function cmpLastMonthFromFeedTotals(field,anchor){
   const v=num(row?.[field]);return v!==null&&v>=0?v:null;
 }
 function cmpLastMonthFromStock(fieldTypes,field,anchor){
-  const rows=(DATA.stockHistory||[]).filter(t=>fieldTypes.includes(tType(t)));
+  const rows=(DATA.stockHistory||[]).filter(t=>fieldTypes.some(x=>x==="CONSUMPTION"?isConsumptionMovement(tType(t)):tType(t)===x));
   const d=cmpPrevMonthLastDate(rows,anchor);if(!d)return null;
   let total=0,found=false;
   rows.filter(t=>dateOnly(rowDate(t))===d).forEach(t=>{
@@ -2447,7 +2447,7 @@ function renderQuick(){
     (x.transactions||[]).filter(t=>!quickDate || dateOnly(rowDate(t))===quickDate).forEach(t=>{
       const ty=tType(t),v=materialValueInMT(tVal(t),material);
       if(ty==="PURCHASE"||ty==="RECEIVED"||ty.includes("TRANSFER FROM"))received+=v;
-      if(ty.includes("CONSUMPTION"))cons+=v;
+      if(isConsumptionMovement(ty))cons+=v;
     });
   });
   setText("qReceived",fmt(received)+" MT");setText("qConsumption",fmt(cons)+" MT");setText("qClosing",fmt(closing)+" MT");
@@ -2553,9 +2553,9 @@ function feedRowsForDate(d){
 function dateFeedMetrics(d){
   const rows=feedRowsForDate(d);
   return {
-    production:rows.reduce((a,r)=>a+(num(r.Production_Day_MT??r.production_day_mt??r.Production??r.production)||0),0),
-    dispatch:rows.reduce((a,r)=>a+(num(r.Dispatch_Day_MT??r.dispatch_day_mt??r.Dispatch??r.dispatch)||0),0),
-    closing:rows.reduce((a,r)=>a+(num(r.Closing_Day_MT??r.closing_day_mt??r.Closing??r.closing)||0),0),
+    production:rows.reduce((a,r)=>a+feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product),0),
+    dispatch:rows.reduce((a,r)=>a+feedValueInMT(feedField(r,"Dispatch_Day_MT"),r.Product||r.product),0),
+    closing:rows.reduce((a,r)=>a+feedValueInMT(num(r.Closing_Day_MT??r.closing_day_mt??r.Closing_Day??r.closing_day??r.Closing??r.closing),r.Product||r.product),0),
     rows:rows.length
   };
 }
@@ -2640,13 +2640,20 @@ function openDateSelector(){
 
 function renderTrendAlerts(){
   const root=document.getElementById("trendAlerts");if(!root)return;
-  const rows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  // Feed production is measured in MT; PRODUCTION_DATA actual_output is bag count.
+  // Keep volume trends and production-quality percentages on their correct sources.
   const byDate={};
-  rows.forEach(r=>{
+  (Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product)).forEach(r=>{
+    const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!d||!trendDateInRange(d))return;
+    const value=feedField(r,"Production_Day_MT");if(value===null)return;
+    const x=byDate[d]||(byDate[d]={production:0,productionCount:0,outputSum:0,outputCount:0,lossSum:0,lossCount:0});
+    x.production+=feedValueInMT(value,r.Product||r.product);x.productionCount++;
+  });
+  const qualityRows=(Array.isArray(DATA.productionHistory)&&DATA.productionHistory.length?DATA.productionHistory:DATA.production||[]).filter(r=>!dcIsHiddenProduct(r.product||r.Product));
+  qualityRows.forEach(r=>{
     const d=dateOnly(r.report_date||r.Report_Date||r.date);if(!d||!trendDateInRange(d))return;
     const x=byDate[d]||(byDate[d]={production:0,productionCount:0,outputSum:0,outputCount:0,lossSum:0,lossCount:0});
-    const p=num(r.actual_output??r.actual??r.value),o=num(r.output_percentage??r.outputPercent),l=num(r.process_loss??r.processLoss);
-    if(p!==null){x.production+=p;x.productionCount++;}
+    const o=num(r.output_percentage??r.outputPercent),l=num(r.process_loss??r.processLoss);
     if(o!==null){x.outputSum+=o;x.outputCount++;}
     if(l!==null){x.lossSum+=l;x.lossCount++;}
   });
@@ -2670,7 +2677,7 @@ function renderTrendAlerts(){
   const recent=alerts.slice(-4).reverse();
   if(!dates.length){root.innerHTML='<div class="trend-alert-empty">No dated production history in the selected period.</div>';return;}
   if(!recent.length){root.innerHTML='<div class="trend-alert-empty"><strong>✓ No unusual production pattern detected</strong><span>Checks require at least 5 earlier dated records. This is an early-warning indicator, not a quality guarantee.</span></div>';return;}
-  root.innerHTML='<div class="trend-alert-head"><strong>⚠ Trend Alerts</strong><span>Latest unusual changes</span></div><div class="trend-alert-list">'+recent.map(x=>'<div class="trend-alert-item '+x.type+'"><div><strong>'+esc(x.title)+'</strong><small>'+esc(x.date)+'</small></div><span>'+esc(x.detail)+'</span></div>').join("")+'</div><div class="trend-alert-foot">Compared with up to the previous 7 available production dates; at least 5 earlier dates required.</div>';
+  root.innerHTML='<div class="trend-alert-head"><strong>⚠ Trend Alerts</strong><span>Latest unusual changes</span></div><div class="trend-alert-list">'+recent.map(x=>'<div class="trend-alert-item '+x.type+'"><div><strong>'+esc(x.title)+'</strong><small>'+esc(x.date)+'</small></div><span>'+esc(x.detail)+'</span></div>').join("")+'</div><div class="trend-alert-foot">Volume compares feed-unit MT; output and process-loss percentages use production records. At least 5 earlier available dates required.</div>';
 }
 
 /* Trend charts use historical rows; the dashboard's selected date remains independent. */
@@ -2764,8 +2771,8 @@ function feedTrend(){
     const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);if(!trendDateInRange(d))return;
     const item=map[d]||(map[d]={production:0,productionCount:0,dispatch:0,dispatchCount:0});
     const production=feedField(r,"Production_Day_MT"),dispatch=feedField(r,"Dispatch_Day_MT");
-    if(production!==null){item.production+=production;item.productionCount++;}
-    if(dispatch!==null){item.dispatch+=dispatch;item.dispatchCount++;}
+    if(production!==null){item.production+=feedValueInMT(production,r.Product||r.product);item.productionCount++;}
+    if(dispatch!==null){item.dispatch+=feedValueInMT(dispatch,r.Product||r.product);item.dispatchCount++;}
   });
   const labels=Object.keys(map).sort();
   return {labels,values:labels.map(d=>map[d].productionCount&&map[d].dispatchCount?map[d].production-map[d].dispatch:null)};
@@ -3628,14 +3635,14 @@ function plantAIMetrics(){
   const critical=attention.filter(x=>x.level==="critical").reduce((n,x)=>n+(Number(x.count)||0),0);
   const warning=attention.filter(x=>x.level==="warning").reduce((n,x)=>n+(Number(x.count)||0),0);
   const stockRows=viewStockRows();
-  const stockTotal=stockRows.reduce((n,x)=>n+(num(x.closing)||0),0);
+  const stockTotal=stockRows.reduce((n,x)=>n+materialValueInMT(x.closing,x.material),0);
   const lowStock=stockRows.filter(x=>x.status&&x.status!=='OK').sort((a,b)=>(Number(a.cover??999)-Number(b.cover??999)));
   const prodRows=selectedProduction();
   const outputs=prodRows.map(r=>num(r.output_percentage??r.outputPercent??r.output_percentage_value)).filter(v=>v!==null);
   const avgOutput=outputs.length?outputs.reduce((a,b)=>a+b,0)/outputs.length:null;
   const feedRows=selectedFeedRows();
-  const production=feedRows.reduce((n,r)=>n+(feedField(r,"Production_Day_MT")||0),0);
-  const dispatch=feedRows.reduce((n,r)=>n+(feedField(r,"Dispatch_Day_MT")||0),0);
+  const production=feedRows.reduce((n,r)=>n+feedValueInMT(feedField(r,"Production_Day_MT"),r.Product||r.product),0);
+  const dispatch=feedRows.reduce((n,r)=>n+feedValueInMT(feedField(r,"Dispatch_Day_MT"),r.Product||r.product),0);
   const products=feedRows.length;
   return {date,attention,critical,warning,stockRows,stockTotal,lowStock,prodRows,avgOutput,feedRows,production,dispatch,products};
 }
