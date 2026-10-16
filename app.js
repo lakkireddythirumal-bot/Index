@@ -1452,8 +1452,7 @@ function dacStockItems(targetDate){
 }
 function dacFeedItems(targetDate){
   const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===targetDate&&!dcIsHiddenProduct(clean(r.Product||r.product)));
-  const seen=new Set();
-  return rows.filter(r=>{const key=normalize(r.Product||r.product);if(!key||seen.has(key))return false;seen.add(key);return true;}).map(r=>{
+  return latestUniqueRows(rows,r=>r.Product||r.product).map(r=>{
     const product=clean(r.Product||r.product);
     const opening=dacValue(r,["Opening_Day_MT","opening_day_mt","Opening_Day","opening_day","Opening","opening"]);
     const production=dacValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]);
@@ -1468,8 +1467,7 @@ function dacFeedItems(targetDate){
 }
 function dacBagItems(targetDate){
   const rows=(Array.isArray(DATA.bagsHistory)?DATA.bagsHistory:[]).filter(r=>dateOnly(r.report_date||r.Report_Date||r.date)===targetDate&&!dcIsHiddenProduct(clean(r.product||r.Product)));
-  const seen=new Set();
-  return rows.filter(r=>{const key=normalize(r.product||r.Product||"PP Bags");if(seen.has(key))return false;seen.add(key);return true;}).map(r=>{
+  return latestUniqueRows(rows,r=>r.product||r.Product||"PP Bags").map(r=>{
     const product=clean(r.product||r.Product||"PP Bags");
     const opening=dacValue(r,["opening","Opening"]),received=dacValue(r,["received","Received"]),issue=dacValue(r,["issue","Issue"]),damage=dacValue(r,["damage","Damage"]),closing=dacValue(r,["closing","Closing"]);
     if(opening===null||closing===null||received===null||issue===null||damage===null)return {name:product,date:targetDate,status:"NO DATA",message:"One or more PP-bag balance fields are missing."};
@@ -1974,7 +1972,7 @@ function openProductDetails(product){
     html+=`<div class="detail-section reconcile-warn"><h3>🔎 Production / Dispatch Reconciliation</h3><div class="empty">${esc(rec.message||"Insufficient data for reconciliation.")}</div></div>`;
   }
   html+=`<div class="detail-section"><h3>${esc(product)}</h3>${detail("Standard Output",fmtBags(r.standard_output))}${detail("Actual Output",fmtBags(r.actual_output))}${detail("Output %",fmt(r.output_percentage)+" %")}${detail("Process Loss %",fmt(r.process_loss)+" %")}${detail("Remarks / Packing",packingFromRemarks(r.remarks))}</div>`;
-  const fr=selectedFeedRows().find(x=>normalize(x.Product||x.product)===normalize(product));
+  const fr=selectedFeedRows().filter(x=>normalize(x.Product||x.product)===normalize(product)).slice(-1)[0];
   if(fr){
     html+=`<div class="detail-section"><h3>🌾 Feed Unit Details</h3>${detail("Opening Day",fmtFeed(fr.Opening_Day_MT??fr.opening_day_mt??fr.Opening_Day??fr.opening_day??fr.Opening??fr.opening,product))}${detail("Production Day",fmtFeed(fr.Production_Day_MT??fr.production_day_mt??fr.Production_Day??fr.production_day??fr.Production??fr.production,product))}${detail("Dispatch Day",fmtFeed(fr.Dispatch_Day_MT??fr.dispatch_day_mt??fr.Dispatch_Day??fr.dispatch_day??fr.Dispatch??fr.dispatch,product))}${detail("Transfer Day",fmtFeed(fr.Transfer_Day_MT??fr.transfer_day_mt??fr.Transfer_Day??fr.transfer_day??fr.Transfer??fr.transfer,product))}${detail("Closing Day",fmtFeed(fr.Closing_Day_MT??fr.closing_day_mt??fr.Closing_Day??fr.closing_day??fr.Closing??fr.closing,product))}${detail("Production Month",fmtFeed(fr.Production_Month_MT??fr.production_month_mt??fr.Production_Month??fr.production_month,product))}${detail("Dispatch Month",fmtFeed(fr.Dispatch_Month_MT??fr.dispatch_month_mt??fr.Dispatch_Month??fr.dispatch_month,product))}</div>`;
   }
@@ -1982,7 +1980,7 @@ function openProductDetails(product){
 }
 function openPPBagDetails(){showModal("PP Bags",selectedBags().map(r=>`<div class="detail-section"><h3>${esc(r.product||"PP Bags")}</h3>${detail("Opening",fmt(r.opening))}${detail("Received",fmt(r.received))}${detail("Issue",fmt(r.issue))}${detail("Damage",fmt(r.damage))}${detail("Closing",fmt(r.closing))}</div>`).join("")||"<div class='empty'>No PP Bag data</div>")}
 function openBagProduct(product){
-  const r=selectedBags().find(x=>normalize(x.product||"PP Bags")===normalize(product));
+  const r=selectedBags().filter(x=>normalize(x.product||"PP Bags")===normalize(product)).slice(-1)[0];
   if(!r)return;
   const rec=ppBagReconciliation(product);
   let html="";
@@ -2259,14 +2257,17 @@ function selectedFeedRows(){
   PERF_CACHE.feedRows=dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product)));
   return PERF_CACHE.feedRows;
 }
+function latestUniqueRows(rows,productGetter){
+  const latest=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    const p=clean(productGetter(r));
+    if(p)latest.set(normalize(p),r); // API rows are ordered by id ascending; the last row is the deterministic winner.
+  });
+  return [...latest.values()];
+}
 function latestFeedRows(){
   if(PERF_CACHE.latestFeed)return PERF_CACHE.latestFeed;
-  const rows=selectedFeedRows(),latest={};
-  rows.forEach(r=>{
-    const p=clean(r.Product||r.product);
-    if(p)latest[normalize(p)]=r;
-  });
-  PERF_CACHE.latestFeed=Object.values(latest);
+  PERF_CACHE.latestFeed=latestUniqueRows(selectedFeedRows().filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product);
   return PERF_CACHE.latestFeed;
 }
 function latestTotal(key){
@@ -2485,13 +2486,7 @@ function toggleFeedUnitMore(){feedUnitExpanded=!feedUnitExpanded;renderFeedUnit(
 function renderPPBags(){
   const rows=selectedBags(),el=document.getElementById("bagGrid");
   if(!el)return;
-  const seen=new Set();
-  const uniqueRows=rows.filter(r=>{
-    const key=normalize(r.product||"PP Bags");
-    if(seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const uniqueRows=latestUniqueRows(rows,r=>r.product||"PP Bags");
   const sorted=uniqueRows.slice().sort((a,b)=>(num(b.closing)||0)-(num(a.closing)||0));
   el.innerHTML=sorted.map(r=>{
     const p=r.product||"PP Bags";
