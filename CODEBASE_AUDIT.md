@@ -145,7 +145,7 @@ Read-only SQL checks were run against the connected Supabase project for duplica
 - No duplicate product/date groups were found in the current `feed_unit_data`, `pp_bags_data`, or `production_data` tables during the duplicate check.
 - No production output-percentage arithmetic mismatches above 0.5 percentage points were found in that check.
 - PP-bag balances on the latest report date reconciled in the query.
-- **Feed Unit:** `BROILER FINISHER PELLETS` had a 0.90 MT difference between calculated closing (32.55 MT) and reported closing (31.15 MT) on 2026-10-16. `CATTLE FEED` had a missing daily production value. These are source-data exceptions; no database values were changed.
+- **Feed Unit:** `BROILER FINISHER PELLETS` had a 1.40 MT difference between calculated closing (32.55 MT) and reported closing (31.15 MT) on 2026-10-16. `CATTLE FEED` had a missing daily production value. These are source-data exceptions; no database values were changed.
 - **Raw material stock:** `MAIZE SILO2` has two `CL. STOCK` records for 2026-10-16, one with `for_day = -1.62759` and one with `for_day = 29.40951`. The app now marks this reconciliation as NO DATA until the duplicate is reviewed instead of silently choosing one. The correct record cannot safely be inferred by frontend logic alone.
 - **Premix stock fields:** `BFP PREMIX`, `PSC PREMIX`, and `STARTER PREMIX` had null daily quantities on the latest date while monthly/yearly values existed. The app now treats missing daily quantities as NO DATA instead of treating them as zero.
 - `DE OILED C DOC` uses the source transaction label `CL. STOCK IN M.T`; the closing-stock label matcher now recognizes this variant.
