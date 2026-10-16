@@ -880,12 +880,13 @@ function dateOnly(v){
   const m=s.match(/(\d{4}-\d{2}-\d{2})/);
   return m?m[1]:s.slice(0,10);
 }
-function materialReconciliation(material){
+function materialReconciliation(material, requestedDate=""){
   const rows=transactions(material);
   if(!rows.length)return {status:"NO DATA",message:"No transaction history available."};
   const dates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
   const latest=dates.length?dates[dates.length-1]:"";
-  const dayRows=latest?rows.filter(t=>dateOnly(rowDate(t))===latest):rows.slice();
+  const targetDate=dateOnly(requestedDate)||latest;
+  const dayRows=targetDate?rows.filter(t=>dateOnly(rowDate(t))===targetDate):rows.slice();
   let opening=null,closing=null,add=0,otherOut=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
     const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
@@ -896,9 +897,9 @@ function materialReconciliation(material){
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else otherOut+=v;}
     else if(ty)unclassified.push(ty);
   });
-  if(unclassified.length)return {status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling.",date:latest};
-  if(openingCount>1||closingCount>1)return {status:"NO DATA",message:"Duplicate opening/closing balance rows exist for the latest date. Review the source records before reconciling.",date:latest,openingCount,closingCount};
-  if(invalid)return {status:"NO DATA",message:"One or more required daily quantities are missing. Monthly/yearly values cannot substitute for daily quantities.",date:latest};
+  if(unclassified.length)return {status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm their stock effect before reconciling.",date:targetDate};
+  if(openingCount>1||closingCount>1)return {status:"NO DATA",message:"Duplicate opening/closing balance rows exist for the latest date. Review the source records before reconciling.",date:targetDate,openingCount,closingCount};
+  if(invalid)return {status:"NO DATA",message:"One or more required daily quantities are missing. Monthly/yearly values cannot substitute for daily quantities.",date:targetDate};
   if(opening===null||closing===null)return {status:"NO DATA",message:"Opening/closing pair is not available for the latest transaction date.",date:latest};
   const calculated=opening+add-otherOut-closing;
   const diff=calculated-recorded;
@@ -1912,10 +1913,16 @@ function closeModal(){document.getElementById("modal").classList.remove("show")}
 function outsideClose(e){if(e.target.id==="modal")closeModal()}
 function detail(label,value){return `<div class="detail-row"><span>${esc(label)}</span><strong>${esc(value??"--")}</strong></div>`}
 function openMaterialDetails(material){
-  const x=getMaterial(material),rows=transactions(material),closing=num(x?.closing),avg=avgConsumption(material),s=stockStatus(closing,avg),reorder=avg*DEFAULT_SAFETY_DAYS;
+  const x=getMaterial(material),rows=transactions(material);
+  const availableDates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
+  const detailDate=effectiveViewDate()||availableDates[availableDates.length-1]||"";
+  const dayRows=detailDate?rows.filter(t=>dateOnly(rowDate(t))===detailDate):[];
+  const closingRow=dayRows.filter(t=>isClosingStockMovement(tType(t)));
+  const closing=closingRow.length===1?tRawVal(closingRow[0]):(effectiveViewDate()?num(x?.closing):null);
+  const avg=avgConsumption(material),s=stockStatus(closing,avg),reorder=avg*DEFAULT_SAFETY_DAYS;
   const groups=["OPENING STOCK","PURCHASE","TRANSFER FROM SOYA DIVISION","GAIN","SALE","SHORTAGE","CONSUMPTION","CL. STOCK"];
   const unit=materialUnit(material,x?.unit||"MT");
-  const rec=materialReconciliation(material);
+  const rec=materialReconciliation(material,detailDate);
   let html=`<div class="detail-section"><h3>${esc(material)}</h3>${detail("Current Stock",fmt(closing)+" "+unit)}${detail("Average Daily Consumption",avg?fmt(avg)+" "+unit+"/day":"Insufficient history")}${detail("Safety Days",DEFAULT_SAFETY_DAYS+" days")}${detail("Stock Coverage",s.cover!==null?fmt(s.cover)+" days":"--")}${detail("Calculated Reorder Level",fmt(reorder)+" "+unit)}${detail("Status",s.status)}</div>`;
   if(rec.status==="MATCH"||rec.status==="MISMATCH"){
     const cls=rec.status==="MATCH"?"reconcile-ok":"reconcile-bad";
@@ -1925,8 +1932,8 @@ function openMaterialDetails(material){
   }
   // Show only the selected/latest day's movements. Do not add stock balances
   // from multiple dates: opening/closing are snapshots, not movement quantities.
-  const movementDate=effectiveViewDate()||rec.date||rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort().pop()||"";
-  const movementRows=movementDate?rows.filter(t=>dateOnly(rowDate(t))===movementDate):[];
+  const movementDate=detailDate;
+  const movementRows=dayRows;
   html+=`<div class="detail-section"><h3>Material-wise Movement • ${esc(movementDate||"No date available")}</h3>`;
   if(movementRows.length){
     const openingRows=movementRows.filter(t=>tType(t)==="OPENING STOCK");
@@ -1953,10 +1960,12 @@ function openMaterialDetails(material){
     html+=`<div class="empty">No transaction movements available for this date.</div>`;
   }
   html+="</div>";
-  if(rows.length){
-    html+=`<div class="detail-section"><h3>Transactions</h3>`;
-    rows.forEach(t=>{html+=`<div class="transaction"><div class="transaction-title"><strong>${esc(txName(t.transaction||t.type||"Movement"))}</strong><span>${esc(rowDate(t))}</span></div><div class="transaction-values"><div class="transaction-value"><span>FOR DAY</span><strong>${fmt(t.for_day)}</strong></div><div class="transaction-value"><span>FOR MONTH</span><strong>${fmt(t.for_month)}</strong></div><div class="transaction-value"><span>FOR YEAR</span><strong>${fmt(t.for_year)}</strong></div></div></div>`});
+  if(dayRows.length){
+    html+=`<div class="detail-section"><h3>Transactions • ${esc(detailDate||"Selected day")}</h3>`;
+    dayRows.forEach(t=>{html+=`<div class="transaction"><div class="transaction-title"><strong>${esc(txName(t.transaction||t.type||"Movement"))}</strong><span>${esc(rowDate(t))}</span></div><div class="transaction-values"><div class="transaction-value"><span>FOR DAY</span><strong>${fmt(t.for_day)}</strong></div><div class="transaction-value"><span>FOR MONTH</span><strong>${fmt(t.for_month)}</strong></div><div class="transaction-value"><span>FOR YEAR</span><strong>${fmt(t.for_year)}</strong></div></div></div>`});
     html+="</div>";
+  }else{
+    html+=`<div class="detail-section"><h3>Transactions • ${esc(detailDate||"Selected day")}</h3><div class="empty">No transactions available for this date.</div></div>`;
   }
   showModal(material,html);
 }
