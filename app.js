@@ -578,7 +578,7 @@ function tType(t){return normalize(t.transaction||t.type||t.movement||"")}
 function isClosingStockMovement(type){const s=normalize(type);return s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
 function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return Math.abs(v)<1e-9?0:v;}return null;}
 function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
-function rowDate(t){return clean(t.report_date||t.date||t.Report_Date||"")}
+function rowDate(t){return clean(t.activity_date||t.Activity_Date||t.report_date||t.date||t.Report_Date||"")}
 function feedField(r,key){
   const map={
     Production_Day_MT:["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"],
@@ -766,14 +766,15 @@ function sbMergeRecentRows(previous,fresh,cutoff){
   return retained.concat(Array.isArray(fresh)?fresh:[]);
 }
 function sbLatestDate(rows){
-  return rows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date)).filter(Boolean).sort().pop()||"";
+  // Prefer actual activity date; report_date is only the MIS/email receipt date.
+  return rows.map(r=>dateOnly(r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date)).filter(Boolean).sort().pop()||"";
 }
-function sbLatestByDate(rows,date){return rows.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date)===date)}
+function sbLatestByDate(rows,date){return rows.filter(r=>dateOnly(r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date)===date)}
 function sbBuildStock(rows){
   const all=rows.map(r=>sbNormalizeRow(r,"stock"));
   const latest=sbLatestDate(all);
   const grouped=new Map();
-  all.filter(r=>dateOnly(r.report_date)===latest).forEach(r=>{
+  all.filter(r=>dateOnly(r.activity_date||r.report_date)===latest).forEach(r=>{
     const k=normalize(r.material);
     if(!k)return;
     if(!grouped.has(k))grouped.set(k,{material:r.material,transactions:[]});
