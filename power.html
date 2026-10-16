@@ -69,7 +69,9 @@ $('powerForm').addEventListener('submit',async e=>{
  }catch(err){console.error(err);message(err.message||'Could not save entry',true)}
  finally{$('saveBtn').disabled=false}
 });
-$('entryDate').addEventListener('change',()=>loadProductionForDate().catch(err=>{$('productionMsg').textContent=err.message;message(err.message,true)}));\n$('clearBtn').addEventListener('click',()=>{$('powerForm').reset();$('entryDate').value=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');message('');loadProductionForDate().catch(err=>{$('productionMsg').textContent=err.message})});
-loadProductionForDate().catch(err=>{$('productionMsg').textContent=err.message;message(err.message,true)});\nloadRows().catch(err=>{console.error(err);$('historyBody').innerHTML='<tr><td colspan="5" class="empty">Could not load records. Check connection and Supabase permissions.</td></tr>';message(err.message,true)});
+$('entryDate').addEventListener('change',()=>loadProductionForDate().catch(err=>{$('productionMsg').textContent=err.message;message(err.message,true)}));
+$('clearBtn').addEventListener('click',()=>{$('powerForm').reset();$('entryDate').value=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');message('');loadProductionForDate().catch(err=>{$('productionMsg').textContent=err.message})});
+loadProductionForDate().catch(err=>{$('productionMsg').textContent=err.message;message(err.message,true)});
+loadRows().catch(err=>{console.error(err);$('historyBody').innerHTML='<tr><td colspan="5" class="empty">Could not load records. Check connection and Supabase permissions.</td></tr>';message(err.message,true)});
 })();
 </script></body></html>
