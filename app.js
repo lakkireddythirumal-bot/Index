@@ -771,15 +771,15 @@ function sbMergeRecentRows(previous,fresh,cutoff){
   return retained.concat(Array.isArray(fresh)?fresh:[]);
 }
 function sbLatestDate(rows){
-  // Prefer actual activity date; report_date is only the MIS/email receipt date.
-  return rows.map(r=>dateOnly(r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date)).filter(Boolean).sort().pop()||"";
+  // All dashboard sections use report_date as the shared reporting calendar.
+  return rows.map(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE||r.activity_date||r.Activity_Date)).filter(Boolean).sort().pop()||"";
 }
-function sbLatestByDate(rows,date){return rows.filter(r=>dateOnly(r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date)===date)}
+function sbLatestByDate(rows,date){return rows.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.DATE||r.activity_date||r.Activity_Date)===date)}
 function sbBuildStock(rows){
   const all=rows.map(r=>sbNormalizeRow(r,"stock"));
   const latest=sbLatestDate(all);
   const grouped=new Map();
-  all.filter(r=>dateOnly(r.activity_date||r.report_date)===latest).forEach(r=>{
+  all.filter(r=>dateOnly(r.report_date||r.Report_Date||r.date||r.activity_date)===latest).forEach(r=>{
     const k=normalize(r.material);
     if(!k)return;
     if(!grouped.has(k))grouped.set(k,{material:r.material,transactions:[]});
