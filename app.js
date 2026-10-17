@@ -1969,18 +1969,28 @@ function openMaterialDetails(material){
     const closingRows=movementRows.filter(t=>isClosingStockMovement(tType(t)));
     if(openingRows.length===1)html+=detail("Opening Stock",fmt(tRawVal(openingRows[0]))+" "+unit);
     else if(openingRows.length>1)html+=detail("Opening Stock","Duplicate records — review source");
-    const movementGroups=[
-      ["PURCHASE",t=>tType(t)==="PURCHASE"||tType(t)==="RECEIVED"],
-      ["TRANSFER FROM SOYA DIVISION",t=>tType(t)==="TRANSFER FROM SOYA DIVISION"],
-      ["GAIN",t=>tType(t)==="GAIN"],
-      ["SALE",t=>tType(t).includes("SALE")],
-      ["SHORTAGE",t=>tType(t).includes("SHORTAGE")],
-      ["CONSUMPTION",t=>isConsumptionMovement(tType(t))],
-      ["TRANSFER",t=>tType(t).includes("TRANSFER")&&!tType(t).includes("TRANSFER FROM SOYA DIVISION")]
-    ];
-    movementGroups.forEach(([label,matches])=>{
-      const matching=movementRows.filter(matches);
-      if(!matching.length)return;
+    // Group the transaction labels actually present in Supabase, not only
+    // the older hardcoded MIS labels. Each movement belongs to one group.
+    const movementBuckets=new Map();
+    movementRows.forEach(t=>{
+      const ty=tType(t);
+      if(isOpeningStockMovement(ty)||isClosingStockMovement(ty))return;
+      let label="OTHER MOVEMENTS";
+      if(isConsumptionMovement(ty))label="CONSUMPTION";
+      else if(ty.includes("PURCHASE")||ty.includes("RECEIPT")||ty.includes("RECEIVED")||ty.includes("RECEV"))label="PURCHASE / RECEIPT";
+      else if(ty.includes("TRANSFER"))label="TRANSFER";
+      else if(ty.includes("GAIN"))label="GAIN";
+      else if(ty.includes("SALE"))label="SALE";
+      else if(ty.includes("SHORTAGE"))label="SHORTAGE";
+      else if(ty.includes("ISSUE"))label="ISSUE";
+      else if(ty.includes("DAMAGE"))label="DAMAGE";
+      else if(ty.includes("RETURN"))label="RETURN";
+      else if(ty.includes("PRODUCTION"))label="PRODUCTION";
+      else if(ty.includes("PELLET MILL USE"))label="PELLET MILL USE";
+      if(!movementBuckets.has(label))movementBuckets.set(label,[]);
+      movementBuckets.get(label).push(t);
+    });
+    movementBuckets.forEach((matching,label)=>{
       html+=detail(label,fmt(matching.reduce((sum,t)=>sum+tVal(t),0))+" "+unit);
     });
     if(closingRows.length===1)html+=detail("Closing Stock",fmt(tRawVal(closingRows[0]))+" "+unit);
