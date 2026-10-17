@@ -553,7 +553,7 @@ function rawTotal(material,tab){
     const ty=tType(t);
     let matches=false;
     if(tab==="CONSUMPTION")matches=isConsumptionMovement(ty);
-    else if(tab==="PURCHASE")matches=ty==="PURCHASE" || ty==="RECEIVED";
+    else if(tab==="PURCHASE")matches=isReceiptMovement(ty);
     else if(tab==="TRANSFER")matches=ty==="TRANSFER" || ty.includes("TRANSFER FROM") || ty.includes("TRANSFER TO");
     else if(tab==="GAIN")matches=ty==="GAIN";
     else if(tab==="SHORTAGE")matches=ty.includes("SHORTAGE");
@@ -575,7 +575,9 @@ function txName(v){return clean(v).replace(/\s+/g," ")}
 
 
 function tType(t){return normalize(t.transaction||t.type||t.movement||"")}
-function isOpeningStockMovement(type){const s=normalize(type);return s==="OPENING"||s==="OPENING STOCK"}
+// Classify transaction names by stable keywords, so new MIS label variants work without hardcoding each full label.
+function isReceiptMovement(type){const s=normalize(type);return s.includes("PURCHASE")||s.includes("RECEIPT")||s.includes("RECEIVED")||s.includes("RECEV")}
+function isOpeningStockMovement(type){const s=normalize(type);return s==="OPENING"||s.includes("OPENING STOCK")}
 function isClosingStockMovement(type){const s=normalize(type);return s==="CLOSING"||s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
 function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return Math.abs(v)<1e-9?0:v;}return null;}
 function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
@@ -916,7 +918,7 @@ function materialReconciliation(material, requestedDate=""){
     if(isOpeningStockMovement(ty)){openingCount++;if(raw===null)invalid=true;else opening=raw;}
     else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else recorded+=v;}
-    else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
+    else if(isReceiptMovement(ty)||ty.includes("GAIN")||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else otherOut+=v;}
     else if(ty && raw===null)invalid=true;
     else if(ty && Math.abs(v)>0.01)unclassified.push(ty);
