@@ -485,6 +485,37 @@ function renderDataControlLists(){
 
 function clean(v){return String(v??"").trim()}
 function normalize(v){return clean(v).replace(/\s+/g," ").toUpperCase()}
+// Canonical material aliases: retain the existing approved display name and
+// combine alias transactions in calculations without deleting source records.
+const MATERIAL_ALIAS_GROUPS=[
+  {canonical:"LCPREMIX",aliases:["LCPREMIX","LCR PREMIX","LCRPREMIX"]},
+  {canonical:"PELLETBINDER",aliases:["PELLET BINDER","PELLETBINDER"]},
+  {canonical:"SILO1MAIZE",aliases:["MAIZE SILO1","SILO1MAIZE"]},
+  {canonical:"SILO2MAIZE",aliases:["MAIZE SILO2","SILO2MAIZE"]},
+  {canonical:"FC30PREMIX",aliases:["FC30PREMIX","FC30 CR PREMIX","FC30CRPREMIX"]},
+  {canonical:"LMBMKPREMIX",aliases:["LAYER MASH BMK PREMIX","LMBMKPREMIX"]},
+  {canonical:"RSM.R.MUSTARD-DOC",aliases:["RSM","RSM.R.MUSTARD-DOC","RSM R MUSTARD DOC"]},
+  {canonical:"BRAN",aliases:["RB","BRAN"]},
+  {canonical:"MAIZE.GDN",aliases:["MAIZE GODOWN","MAIZE.GDN"]},
+  {canonical:"PSPREMIX",aliases:["PRE STARTER PREMIX","PRESTARTER PREMIX","PSC","PSPREMIX"]},
+  {canonical:"LCCPREMIX",aliases:["LCC PREMIX","LCCPREMIX"]},
+  {canonical:"GCrPREMIX",aliases:["GCON CR","GCr PREMIX","GCrPREMIX"]},
+  {canonical:"BFP-FM PREMIX",aliases:["FINISHER PREMIX","BFP","BFP-FM PREMIX"]},
+  {canonical:"YOUNGLMPREMIX",aliases:["YOUNG LAYER PREMIX","YOUNGLMPREMIX"]}
+];
+const MATERIAL_ALIAS_LOOKUP=new Map();
+for(const group of MATERIAL_ALIAS_GROUPS){
+  for(const alias of group.aliases){
+    const key=clean(alias).toUpperCase().replace(/[^A-Z0-9]/g,"");
+    if(key)MATERIAL_ALIAS_LOOKUP.set(key,group.canonical);
+  }
+}
+function canonicalMaterialName(name){
+  const original=clean(name);
+  if(!original)return original;
+  const key=original.toUpperCase().replace(/[^A-Z0-9]/g,"");
+  return MATERIAL_ALIAS_LOOKUP.get(key)||original;
+}
 function num(v){const n=Number(v);return Number.isFinite(n)?n:null}
 function fmt(v){if(v===null||v===undefined||v==="")return"--";const n=Number(v);return Number.isFinite(n)?n.toLocaleString("en-IN",{maximumFractionDigits:2}):String(v)}
 function fmtMT(v){return v===null||v===undefined||v===""?"--":fmt(v)+" MT"}
@@ -734,7 +765,7 @@ function sbClean(v){
 function sbNormalizeRow(r,kind){
   const x={...(r||{})},sources={stock:"stock_data",production:"production_data",bags:"pp_bags_data",feed:"feed_unit_data",totals:"feed_unit_totals"};
   x._dcSource=sources[kind]||kind;
-  if(kind==="stock"){x.material=sbClean(x.material);x.transaction=sbClean(x.transaction)}
+  if(kind==="stock"){x.material=canonicalMaterialName(sbClean(x.material));x.transaction=sbClean(x.transaction)}
   if(kind==="production"||kind==="bags")x.product=sbClean(x.product);
   if(kind==="feed")x.product=sbClean(x.product);
   if(kind==="totals")x.type=sbClean(x.type);
@@ -2292,13 +2323,19 @@ function historyStockRowsForDate(date){
   const grouped=new Map();
   (DATA.stockHistory||[]).forEach(t=>{
     if(dateOnly(rowDate(t))!==d)return;
-    const material=clean(t.material);
+    const material=canonicalMaterialName(t.material);
     if(!material)return;
     const key=normalize(material);
     if(!grouped.has(key))grouped.set(key,{material,transactions:[]});
     grouped.get(key).transactions.push(t);
   });
-  const current=new Map((DATA.stock||[]).map(x=>[normalize(x.material),x]));
+  const current=new Map();
+  (DATA.stock||[]).forEach(x=>{
+    const key=normalize(canonicalMaterialName(x.material));
+    if(!current.has(key))current.set(key,{...x,material:canonicalMaterialName(x.material),transactions:[]});
+    const target=current.get(key);
+    target.transactions.push(...(Array.isArray(x.transactions)?x.transactions:[]));
+  });
   const result=[...grouped.values()].map(g=>{
     const base=current.get(normalize(g.material))||{};
     const closingRows=g.transactions.filter(t=>isClosingStockMovement(tType(t)));
@@ -2315,11 +2352,20 @@ function viewStockRows(){
     return PERF_CACHE.viewStock;
   }
   const latestDate=latestStockDataDate();
-  PERF_CACHE.viewStock=(DATA.stock||[]).map(x=>{
-    const tx=Array.isArray(x.transactions)?x.transactions:[];
-    // Supabase rows are ordered by id, not report date. Never use the last
-    // transaction as the latest closing; explicitly select the latest report date.
-    const closingRows=tx.filter(t=>isClosingStockMovement(tType(t)) && (!latestDate || dateOnly(rowDate(t))===latestDate));
+  const grouped=new Map();
+  (DATA.stock||[]).filter(x=>x&&x.material).forEach(x=>{
+    const material=canonicalMaterialName(x.material),key=normalize(material);
+    if(!key)return;
+    if(!grouped.has(key))grouped.set(key,{...x,material,transactions:[]});
+    const target=grouped.get(key);
+    target.transactions.push(...(Array.isArray(x.transactions)?x.transactions:[]));
+    // Keep report metadata where available while displaying one canonical name.
+    if(!target.report_date&&x.report_date)target.report_date=x.report_date;
+  });
+  PERF_CACHE.viewStock=[...grouped.values()].map(x=>{
+    const tx=x.transactions;
+    // Merge all alias histories before calculating closing stock.
+    const closingRows=tx.filter(t=>isClosingStockMovement(tType(t))&&(!latestDate||dateOnly(rowDate(t))===latestDate));
     const latestClosing=closingRows.length===1?closingRows[0]:null;
     return {...x,transactions:tx,closing:latestClosing?tRawVal(latestClosing):null};
   }).filter(x=>x.material);
