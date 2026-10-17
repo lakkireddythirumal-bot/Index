@@ -1554,10 +1554,11 @@ function dacCount(items){const a=(Array.isArray(items)?items:[]).filter(x=>x.sta
 function dacStatusLabel(status){const cls=status==="LATEST"||status==="MATCH"?"good":status==="MISMATCH"?"bad":"muted";return "<span class=\"dac-pill "+cls+"\">"+esc(status)+"</span>";}
 function dataAccuracySnapshot(){
   const selected=VIEW_DATE?dateOnly(VIEW_DATE):"";
-  const stockDate=selected||dacLatestDate(DATA.stockHistory)||dacLatestDate(DATA.stock);
-  const productionDate=selected||dacLatestDate(DATA.productionHistory)||dacLatestDate(DATA.production);
-  const bagsDate=selected||dacLatestDate(DATA.bagsHistory)||dacLatestDate(DATA.bags);
-  const feedDate=selected||dacLatestDate(DATA.feedUnitData);
+  // Raw-material transactions follow activity_date; other sections follow their own latest report_date.
+  const stockDate=selected||dacLatestDate((DATA.stockHistory||[]).map(r=>({...r,report_date:r.activity_date||r.Activity_Date||r.date||r.Date||""})))||dacLatestDate(DATA.stock);
+  const productionDate=dacLatestDate(DATA.productionHistory)||dacLatestDate(DATA.production);
+  const bagsDate=dacLatestDate(DATA.bagsHistory)||dacLatestDate(DATA.bags);
+  const feedDate=dacLatestDate(DATA.feedUnitData);
   const stock=dacStockItems(stockDate),feed=dacFeedItems(feedDate),bags=dacBagItems(bagsDate),production=dacProductionItems(productionDate);
   const groups=[
     {key:"stock",label:"Raw material stock",date:stockDate,items:stock,description:"Opening + inward − outward − closing compared with recorded consumption."},
