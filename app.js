@@ -583,7 +583,7 @@ function isOpeningStockMovement(type){const s=normalize(type);return s==="OPENIN
 function isClosingStockMovement(type){const s=normalize(type);return s==="CLOSING"||s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
 function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return Math.abs(v)<1e-9?0:v;}return null;}
 function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
-function rowDate(t){return clean(t.activity_date||t.Activity_Date||t.report_date||t.date||t.Report_Date||"")}
+function rowDate(t){return clean(t.report_date||t.Report_Date||t.date||t.DATE||t.activity_date||t.Activity_Date||"")}
 function feedField(r,key){
   const map={
     Production_Day_MT:["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"],
@@ -1568,7 +1568,7 @@ function dataAccuracySnapshot(){
   ];
   const totals=groups.reduce((a,g)=>{const c=dacCount(g.items);a.total+=c.total;a.match+=c.match;a.mismatch+=c.mismatch;a.noData+=c.noData;return a;},{total:0,match:0,mismatch:0,noData:0});
   const sources=[
-    {name:"Raw material stock",date:dacLatestDate((DATA.stockHistory||[]).map(r=>({...r,activity_date:r.activity_date||r.Activity_Date||r.date||r.Date||""})))},
+    {name:"Raw material stock",date:dacLatestDate(DATA.stockHistory)||dacLatestDate(DATA.stock)},
     {name:"Production",date:dacLatestDate(DATA.productionHistory)},
     {name:"PP bags",date:dacLatestDate(DATA.bagsHistory)},
     {name:"Feed unit",date:dacLatestDate(DATA.feedUnitData)},
