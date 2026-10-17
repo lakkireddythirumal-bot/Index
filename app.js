@@ -517,7 +517,7 @@ function feedValueInMT(v,product){return num(v)||0;}
 function materialUnit(material,fallback="MT"){return isPremixMaterial(material)?"KG":fallback}
 function fmtMaterial(v,material,fallback="MT"){return v===null||v===undefined||v===""?"--":fmt(v)+" "+materialUnit(material,fallback)}
 function materialValueInMT(v,material){const n=num(v)||0;return isPremixMaterial(material)?n/1000:n;}
-function isBommakalTransfer(t){const ty=tType(t);return ty.includes("TRANSFER FROM BMKL");}
+function isBommakalTransfer(t){const ty=tType(t);return ty.includes("TRANSFER FROM BMKL")||ty.includes("RECEIPT");}
 function latestBommakalDate(){
   const rows=[];
   getMaterials().forEach(m=>transactions(m).forEach(t=>{if(isPremixMaterial(m)&&isBommakalTransfer(t))rows.push(rowDate(t));}));
