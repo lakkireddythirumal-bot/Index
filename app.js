@@ -494,15 +494,15 @@ const MATERIAL_ALIAS_GROUPS=[
   {canonical:"PELLETBINDER",aliases:["PELLET BINDER","PELLETBINDER"]},
   {canonical:"SILO1MAIZE",aliases:["MAIZE SILO1","SILO1MAIZE"]},
   {canonical:"SILO2MAIZE",aliases:["MAIZE SILO2","SILO2MAIZE"]},
-  {canonical:"FC30PREMIX",aliases:["FC30PREMIX","FC30 CR PREMIX","FC30CRPREMIX"]},
+  {canonical:"FC30PREMIX",aliases:["FC30PREMIX","FC30 CR PREMIX","FC30CRPREMIX","FC30PREMIX/FC30 CR PREMIX"]},
   {canonical:"LMBMKPREMIX",aliases:["LAYER MASH BMK PREMIX","LMBMKPREMIX"]},
   {canonical:"RSM.R.MUSTARD-DOC",aliases:["RSM","RSM.R.MUSTARD-DOC","RSM R MUSTARD DOC"]},
   {canonical:"BRAN",aliases:["RB","BRAN"]},
   {canonical:"MAIZE.GDN",aliases:["MAIZE GODOWN","MAIZE.GDN"]},
-  {canonical:"PSPREMIX",aliases:["PRE STARTER PREMIX","PRESTARTER PREMIX","PSC","PSPREMIX"]},
+  {canonical:"PSPREMIX",aliases:["PRE STARTER PREMIX","PRESTARTER PREMIX","PSC","PSPREMIX","PRE STARTER PREMIX/PSC"]},
   {canonical:"LCCPREMIX",aliases:["LCC PREMIX","LCCPREMIX"]},
-  {canonical:"GCrPREMIX",aliases:["GCON CR","GCr PREMIX","GCrPREMIX"]},
-  {canonical:"BFP-FM PREMIX",aliases:["FINISHER PREMIX","BFP","BFP-FM PREMIX"]},
+  {canonical:"GCrPREMIX",aliases:["GCON CR","GCr PREMIX","GCrPREMIX","GCON CR/GCr PREMIX"]},
+  {canonical:"BFP-FM PREMIX",aliases:["FINISHER PREMIX","BFP","BFP-FM PREMIX","FINISHER PREMIX/BFP"]},
   {canonical:"YOUNGLMPREMIX",aliases:["YOUNG LAYER PREMIX","YOUNGLMPREMIX"]}
 ];
 const MATERIAL_ALIAS_LOOKUP=new Map();
