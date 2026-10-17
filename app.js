@@ -1488,8 +1488,9 @@ function dacLatestDate(rows){
 }
 function dacStockItems(targetDate){
   return getMaterials().map(material=>{
-    const rows=transactions(material).filter(t=>dateOnly(rowDate(t))===targetDate);
+    const rows=transactions(material).filter(t=>dateOnly(t.report_date||t.Report_Date||rowDate(t))===targetDate);
     if(!rows.length)return {name:material,date:targetDate,status:"NO DATA",message:"No stock transactions for this date."};
+    const hasConsumptionTotal=rows.some(t=>{const type=tType(t);return isConsumptionMovement(type)&&!type.startsWith("ISSUE FOR ");});
     let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
     rows.forEach(t=>{
       const type=tType(t);
@@ -1497,8 +1498,9 @@ function dacStockItems(targetDate){
       if(isOpeningStockMovement(type)){openingCount++;if(value===null)invalid=true;else opening=value;}
       else if(isClosingStockMovement(type)){closingCount++;if(value===null)invalid=true;else closing=value;}
       else if(isConsumptionMovement(type)){if(value===null)invalid=true;else recorded+=Math.abs(value);}
-      else if(type==="PURCHASE"||type==="RECEIVED"||type==="GAIN"||type.includes("TRANSFER FROM")){if(value===null)invalid=true;else inflow+=Math.abs(value);}
+      else if(isReceiptMovement(type)||type.includes("GAIN")||type.includes("TRANSFER FROM")||type==="TRANSFER"){if(value===null)invalid=true;else inflow+=Math.abs(value);}
       else if(type.includes("TRANSFER TO")||type.includes("SALE")||type.includes("SHORTAGE")||type==="DAMAGE"||type==="ISSUE"||type.includes("RETURN TO")){if(value===null)invalid=true;else outflow+=Math.abs(value);}
+      else if(type.startsWith("ISSUE FOR ")||type==="PELLET MILL USE"){if(!hasConsumptionTotal){if(value===null)invalid=true;else recorded+=Math.abs(value);}}
       else if(type)unclassified.push(type);
     });
     if(unclassified.length)return {name:material,date:targetDate,status:"NO DATA",message:"Unclassified movement type(s): "+[...new Set(unclassified)].join(", ")+". Confirm whether each is inward or outward before reconciling."};
