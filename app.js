@@ -1567,7 +1567,7 @@ function dataAccuracySnapshot(){
   ];
   const totals=groups.reduce((a,g)=>{const c=dacCount(g.items);a.total+=c.total;a.match+=c.match;a.mismatch+=c.mismatch;a.noData+=c.noData;return a;},{total:0,match:0,mismatch:0,noData:0});
   const sources=[
-    {name:"Raw material stock",date:dacLatestDate(DATA.stockHistory)},
+    {name:"Raw material stock",date:dacLatestDate((DATA.stockHistory||[]).map(r=>({...r,activity_date:r.activity_date||r.Activity_Date||r.date||r.Date||""})))},
     {name:"Production",date:dacLatestDate(DATA.productionHistory)},
     {name:"PP bags",date:dacLatestDate(DATA.bagsHistory)},
     {name:"Feed unit",date:dacLatestDate(DATA.feedUnitData)},
