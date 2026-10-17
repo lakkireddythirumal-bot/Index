@@ -258,7 +258,7 @@ function dcMaterialActivity(material){
   const rows=dcRawTransactions(material);
   return rows.filter(t=>{
     const ty=tType(t),v=tVal(t);
-    return v>0 && !["OPENING STOCK","CL. STOCK"].includes(ty);
+    return v>0 && !isOpeningStockMovement(ty)&&!isClosingStockMovement(ty);
   });
 }
 function dcLatestRawReconciliation(material){
@@ -268,7 +268,7 @@ function dcLatestRawReconciliation(material){
   let opening=null,closing=null,add=0,out=0,cons=0,otherActivity=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
     const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
-    if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
+    if(isOpeningStockMovement(ty)){openingCount++;if(raw===null)invalid=true;else opening=raw;}
     else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else{cons+=v;otherActivity+=v}}
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else{add+=v;otherActivity+=v}}
@@ -575,7 +575,8 @@ function txName(v){return clean(v).replace(/\s+/g," ")}
 
 
 function tType(t){return normalize(t.transaction||t.type||t.movement||"")}
-function isClosingStockMovement(type){const s=normalize(type);return s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
+function isOpeningStockMovement(type){const s=normalize(type);return s==="OPENING"||s==="OPENING STOCK"}
+function isClosingStockMovement(type){const s=normalize(type);return s==="CLOSING"||s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
 function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return Math.abs(v)<1e-9?0:v;}return null;}
 function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
 function rowDate(t){return clean(t.activity_date||t.Activity_Date||t.report_date||t.date||t.Report_Date||"")}
@@ -912,7 +913,7 @@ function materialReconciliation(material, requestedDate=""){
   let opening=null,closing=null,add=0,otherOut=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
     const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
-    if(ty==="OPENING STOCK"){openingCount++;if(raw===null)invalid=true;else opening=raw;}
+    if(isOpeningStockMovement(ty)){openingCount++;if(raw===null)invalid=true;else opening=raw;}
     else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else recorded+=v;}
     else if(ty==="PURCHASE"||ty==="RECEIVED"||ty==="GAIN"||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
@@ -1339,7 +1340,7 @@ function rmHistoryValue(rows,kind){
   }).reduce((sum,t)=>sum+tVal(t),0);
 }
 function rmHistoryClosing(rows){
-  const r=rows.filter(t=>tType(t)==="CL. STOCK").slice(-1)[0];
+  const r=rows.filter(t=>isClosingStockMovement(tType(t))).slice(-1)[0];
   return r? tVal(r):null;
 }
 function historyRangeDefaults(dates){
@@ -1471,7 +1472,7 @@ function dacStockItems(targetDate){
     rows.forEach(t=>{
       const type=tType(t);
       const value=dacValue(t,["for_day","value","quantity","qty"]);
-      if(type==="OPENING STOCK"){openingCount++;if(value===null)invalid=true;else opening=value;}
+      if(isOpeningStockMovement(type)){openingCount++;if(value===null)invalid=true;else opening=value;}
       else if(isClosingStockMovement(type)){closingCount++;if(value===null)invalid=true;else closing=value;}
       else if(isConsumptionMovement(type)){if(value===null)invalid=true;else recorded+=Math.abs(value);}
       else if(type==="PURCHASE"||type==="RECEIVED"||type==="GAIN"||type.includes("TRANSFER FROM")){if(value===null)invalid=true;else inflow+=Math.abs(value);}
@@ -1964,7 +1965,7 @@ function openMaterialDetails(material){
   const movementRows=dayRows;
   html+=`<div class="detail-section"><h3>Material-wise Movement • ${esc(movementDate||"No date available")}</h3>`;
   if(movementRows.length){
-    const openingRows=movementRows.filter(t=>tType(t)==="OPENING STOCK");
+    const openingRows=movementRows.filter(t=>isOpeningStockMovement(tType(t)));
     const closingRows=movementRows.filter(t=>isClosingStockMovement(tType(t)));
     if(openingRows.length===1)html+=detail("Opening Stock",fmt(tRawVal(openingRows[0]))+" "+unit);
     else if(openingRows.length>1)html+=detail("Opening Stock","Duplicate records — review source");
@@ -2176,7 +2177,7 @@ function trendFromTransactions(type){
 function trendClosing(){
   const byMaterialDate={};
   getMaterials().forEach(m=>transactions(m).forEach(t=>{
-    const d=rowDate(t);if(!d||!trendDateInRange(d)||tType(t)!=="CL. STOCK")return;
+    const d=rowDate(t);if(!d||!trendDateInRange(d)||!isClosingStockMovement(tType(t)))return;
     byMaterialDate[d+"|"+normalize(m)]={date:d,material:m,value:num(t.for_day)};
   }));
   const map={};
@@ -2462,7 +2463,7 @@ function cmpStockMovementMap(types){
 function cmpStockClosingMap(){
   const map=new Map();
   (DATA.stockHistory||[]).forEach(t=>{
-    const m=clean(t.material);if(!m||dcIsHiddenMaterial(m)||tType(t)!=="CL. STOCK")return;
+    const m=clean(t.material);if(!m||dcIsHiddenMaterial(m)||!isClosingStockMovement(tType(t)))return;
     const d=dateOnly(rowDate(t));if(!d)return;
     const v=materialValueInMT(tVal(t),m);if(v===null||v<0)return;
     map.set(d,(map.get(d)||0)+v);
