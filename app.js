@@ -67,7 +67,7 @@ async function dcLoadSupabase(){
 }
 loadDataControl();
 function dcKey(v){return normalize(v).replace(/[^A-Z0-9._-]+/g,"_")}
-function dcMaterialState(name){return DATA_CONTROL.materials[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
+function dcMaterialState(name){return DATA_CONTROL.materials[dcKey(canonicalMaterialName(name))]||DATA_CONTROL.materials[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
 function dcProductState(name){return DATA_CONTROL.products[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
 function dcSourceName(t,fallback="stock_data"){return clean(t&&t._dcSource||fallback)}
 function dcRecordKey(material,t){
@@ -130,11 +130,13 @@ function dcIsExcluded(material,t){const s=dcRecordState(material,t);return s&&s.
 function dcIsHiddenMaterial(name){return dcMaterialState(name).status==="HIDDEN"}
 function dcIsHiddenProduct(name){return dcProductState(name).status==="HIDDEN"}
 function dcRawTransactions(material){
-  const item=(DC_RAW_DATA.stock||[]).find(x=>normalize(x.material)===normalize(material));
-  return item&&Array.isArray(item.transactions)?item.transactions:[];
+  const key=normalize(canonicalMaterialName(material)),rows=[];
+  (DC_RAW_DATA.stock||[]).filter(x=>normalize(canonicalMaterialName(x.material))===key)
+    .forEach(item=>rows.push(...(Array.isArray(item.transactions)?item.transactions:[])));
+  return rows;
 }
 function dcApprovedTransactions(material){return dcRawTransactions(material).filter(t=>!dcIsExcluded(material,t))}
-function dcAllMaterialNames(){return [...new Set((DC_RAW_DATA.stock||[]).map(x=>clean(x.material)).filter(Boolean))]}
+function dcAllMaterialNames(){return [...new Set((DC_RAW_DATA.stock||[]).map(x=>canonicalMaterialName(x.material)).filter(Boolean))]}
 function dcProductSourceRows(){
  const prod=DC_RAW_DATA.productionHistory&&DC_RAW_DATA.productionHistory.length?DC_RAW_DATA.productionHistory:DC_RAW_DATA.production||[];
  const bags=DC_RAW_DATA.bagsHistory&&DC_RAW_DATA.bagsHistory.length?DC_RAW_DATA.bagsHistory:DC_RAW_DATA.bags||[];
@@ -150,7 +152,7 @@ function dcDuplicateGroups(){
  const groups=[];
  const latestByMaterial=new Map();
  (DC_RAW_DATA.stock||[]).forEach(item=>{
-  const name=clean(item.material); if(!name)return;
+  const name=canonicalMaterialName(item.material); if(!name)return;
   const dates=(item.transactions||[]).map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
   if(dates.length)latestByMaterial.set(dcKey(name),dates[dates.length-1]);
  });
