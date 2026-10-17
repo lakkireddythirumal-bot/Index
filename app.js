@@ -491,20 +491,22 @@ function fmtMT(v){return v===null||v===undefined||v===""?"--":fmt(v)+" MT"}
 function isPremixProduct(name){
   const value=clean(name).toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
   if(!value)return false;
-  // Premix names vary across MIS sheets: full names, PSC (Prestarter Premix),
-  // and BFP (Finisher Premix). Use this shared classifier for every site section.
-  return /\bPRE ?MIX\b/.test(value)
-    || /\bPRE ?STARTER\b/.test(value)
+  // Match attached and separated names, e.g. BFPPREMIX, BFP PREMIX and BFP-PREMIX.
+  const compact=value.replace(/\s+/g,"");
+  return compact.includes("PREMIX")
+    || compact.includes("PRESTARTER")
     || /\bFINISHER\b/.test(value)
     || /\bPSC\b/.test(value)
     || /\bBFP\b/.test(value);
 }
 function isPremixMaterial(name){
+  // One shared rule across the whole site: premix stock and movements are KG.
+  // Removing separators first makes BFPPREMIX, BFP PREMIX and BFP-PREMIX equivalent.
   const value=clean(name).toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
   if(!value)return false;
-  // KG classification is only for raw-material inventory. PSC and BFP are raw-material premix aliases.
-  return /\bPRE ?MIX\b/.test(value)
-    || /\bPRE ?STARTER\b/.test(value)
+  const compact=value.replace(/\s+/g,"");
+  return compact.includes("PREMIX")
+    || compact.includes("PRESTARTER")
     || /\bFINISHER\b/.test(value)
     || /\bPSC\b/.test(value)
     || /\bBFP\b/.test(value);
@@ -2622,10 +2624,8 @@ function renderStock(){
     const dot=st.status==="REORDER"?"🔴":st.status==="WATCH"?"🟡":st.status==="OK"?"🟢":"⚪";
     return `<div class="stock-row reorder-card" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-card-top"><strong class="reorder-material">${esc(m)}</strong><span class="status-dot ${st.cls}" title="${esc(st.status)}" aria-label="${esc(st.status)}"></span></div><div class="reorder-card-metrics"><span><b>Stock</b><strong>${fmt(closing)} ${esc(unit)}</strong></span><span><b>Avg/day</b><strong>${avg?fmt(avg):"--"} ${esc(unit)}</strong></span><span><b>Cover</b><strong>${st.cover!==null?fmt(st.cover)+" d":"--"}</strong></span></div></div>`;
   }).join("")||"<div class='empty'>No stock data for this date</div>";
-  // Keep Reorder grouping consistent with Raw Material Movements:
-  // only material names explicitly containing PREMIX belong in the Premixes group.
-  // Do not classify PSC/BFP substrings or other names differently in this section.
-  const isReorderPremix=m=>/PREMIX/i.test(clean(m));
+  // Use the same classifier as stock units/calculations, including attached names like BFPPREMIX.
+  const isReorderPremix=m=>isPremixMaterial(m);
   const rawMats=mats.filter(m=>!isReorderPremix(m));
   const premixMats=mats.filter(m=>isReorderPremix(m));
   if(list)list.innerHTML=renderRows(rawMats);
@@ -3950,8 +3950,9 @@ function renderRawCategory(tab){
   if(tab==="STOCK") rows=mats.map(m=>({m,v:num(getMaterial(m)?.closing)||0})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
   else rows=mats.map(m=>({m,v:rawTotal(m,tab)})).sort((a,b)=>(b.v>0?1:0)-(a.v>0?1:0)||b.v-a.v);
 
-  const rawRows=rows.filter(x=>! /PREMIX/i.test(clean(x.m)));
-  const premixRows=rows.filter(x=>/PREMIX/i.test(clean(x.m)));
+  // Keep movement grouping aligned with the site-wide KG classifier.
+  const rawRows=rows.filter(x=>!isPremixMaterial(x.m));
+  const premixRows=rows.filter(x=>isPremixMaterial(x.m));
   const limit=rawMovementExpanded?Infinity:25;
   const rawVisible=rawRows.slice(0,limit);
   const premixVisible=premixRows.slice(0,limit);
