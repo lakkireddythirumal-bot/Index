@@ -2567,19 +2567,20 @@ function renderQuick(){
   const dd=latestTotal("Dispatch_Day_MT"),dm=latestTotal("Dispatch_Month_MT");
   setText("qProdDay",fmtMT(pd));setText("qProdMonth",fmtMT(pm));setText("qDispDay",fmtMT(dd));setText("qDispMonth",fmtMT(dm));
   let received=0,cons=0,closing=0;
-  const quickDate=effectiveViewDate()||latestStockDataDate();
+  // Dashboard stock KPIs use latest stock activity date, not the MIS report date.
+  const quickDate=latestStockDataDate();
   viewStockRows().forEach(x=>{
     const material=x.material||"";
     if(x.closing!==null)closing+=materialValueInMT(x.closing,material);
     (x.transactions||[]).filter(t=>!quickDate || dateOnly(rowDate(t))===quickDate).forEach(t=>{
       const ty=tType(t),v=materialValueInMT(tVal(t),material);
-      if(ty==="PURCHASE"||ty==="RECEIVED"||ty.includes("TRANSFER FROM"))received+=v;
+      if(ty==="PURCHASE"||ty==="RECEIVED"||ty.includes("RECEIPT")||ty.includes("RECEIVED")||ty.includes("TRANSFER FROM"))received+=v;
       if(isConsumptionMovement(ty))cons+=v;
     });
   });
   setText("qReceived",fmt(received)+" MT");setText("qConsumption",fmt(cons)+" MT");setText("qClosing",fmt(closing)+" MT");
   setText("qFeedClosing",fmtMT(latestFeedClosingTotal()));setText("qFeedClosingBagsMini",fmt(latestFeedClosingBagEquivalent())+" Bags");
-  setText("reportDate",VIEW_DATE||DATA.report_date||"Latest");
+  setText("reportDate",quickDate||latestProductionDataDate()||DATA.report_date||"Latest");
   const reorderCount=getMaterials().filter(m=>stockStatus(num(getMaterial(m)?.closing),avgConsumption(m)).status==="REORDER").length;
   const issueCount=reconciliationItems().filter(x=>x.r.status==="MISMATCH").length+feedUnitReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+ppBagReconciliationItems().filter(x=>x.r.status==="MISMATCH").length+abnormalConsumptionItems().length+duplicateTransactionCount();
   const premixKg=premixBommakalTransfers().reduce((a,r)=>a+r.value,0);
