@@ -545,7 +545,7 @@ function renderPremixTransfers(){
 }
 function rawTotal(material,tab){
   if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
-  const selectedDay=effectiveViewDate();
+  const selectedDay=stockEffectiveViewDate();
   const cacheKey=[normalize(material),tab,selectedDay||"ALL"].join("|");
   if(PERF_CACHE.rawTotals.has(cacheKey))return PERF_CACHE.rawTotals.get(cacheKey);
   const total=transactions(material).reduce((sum,t)=>{
@@ -1207,13 +1207,17 @@ function latestDateFromRows(rows, keys=[]){
   return dates.sort().pop()||"";
 }
 function latestStockDataDate(){
-  const dates=[];
-  (DATA.stock||[]).forEach(r=>{
-    [r.report_date,r.Report_Date,r.date,r.DATE].forEach(v=>{const d=dateOnly(v);if(d)dates.push(d)});
-    (r.transactions||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)dates.push(d)});
-  });
-  (DATA.stockHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);if(d)dates.push(d)});
-  return dates.sort().pop()||"";
+  // Stock movements are keyed by activity_date (actual movement day), while
+  // report_date is when the MIS was received. Prefer movement dates so a late
+  // MIS email cannot hide the latest day's CLOSING / RECEIVED rows.
+  const activityDates=[];
+  (DATA.stock||[]).forEach(r=>(r.transactions||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)activityDates.push(d)}));
+  (DATA.stockHistory||[]).forEach(r=>{const d=dateOnly(rowDate(r));if(d)activityDates.push(d)});
+  if(activityDates.length)return activityDates.sort().pop();
+  const reportDates=[];
+  (DATA.stock||[]).forEach(r=>[r.report_date,r.Report_Date,r.date,r.DATE].forEach(v=>{const d=dateOnly(v);if(d)reportDates.push(d)}));
+  (DATA.stockHistory||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date||r.date);if(d)reportDates.push(d)});
+  return reportDates.sort().pop()||"";
 }
 function latestProductionDataDate(){
   const dates=[];
@@ -1946,10 +1950,10 @@ function detail(label,value){return `<div class="detail-row"><span>${esc(label)}
 function openMaterialDetails(material){
   const x=getMaterial(material),rows=transactions(material);
   const availableDates=rows.map(t=>dateOnly(rowDate(t))).filter(Boolean).sort();
-  const detailDate=effectiveViewDate()||availableDates[availableDates.length-1]||"";
+  const detailDate=stockEffectiveViewDate()||availableDates[availableDates.length-1]||"";
   const dayRows=detailDate?rows.filter(t=>dateOnly(rowDate(t))===detailDate):[];
   const closingRow=dayRows.filter(t=>isClosingStockMovement(tType(t)));
-  const closing=closingRow.length===1?tRawVal(closingRow[0]):(effectiveViewDate()?num(x?.closing):null);
+  const closing=closingRow.length===1?tRawVal(closingRow[0]):(stockEffectiveViewDate()?num(x?.closing):null);
   const avg=avgConsumption(material),s=stockStatus(closing,avg),reorder=avg*DEFAULT_SAFETY_DAYS;
   const groups=["OPENING STOCK","PURCHASE","TRANSFER FROM SOYA DIVISION","GAIN","SALE","SHORTAGE","CONSUMPTION","CL. STOCK"];
   const unit=materialUnit(material,x?.unit||"MT");
@@ -2232,6 +2236,10 @@ function goTrend(){switchDashboardView("reports")}
 let VIEW_DATE=null;
 function effectiveViewDate(){
   return dateOnly(VIEW_DATE || DATA.report_date || "");
+}
+function stockEffectiveViewDate(){
+  // Keep stock movements on their actual activity date, independent of MIS email date.
+  return dateOnly(VIEW_DATE || latestStockDataDate() || DATA.report_date || "");
 }
 
 /* =====================================================
