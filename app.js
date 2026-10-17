@@ -1488,7 +1488,7 @@ function dacLatestDate(rows){
 }
 function dacStockItems(targetDate){
   return getMaterials().map(material=>{
-    const rows=transactions(material).filter(t=>dateOnly(t.report_date||t.Report_Date||rowDate(t))===targetDate);
+    const rows=transactions(material).filter(t=>dateOnly(rowDate(t))===targetDate);
     if(!rows.length)return {name:material,date:targetDate,status:"NO DATA",message:"No stock transactions for this date."};
     const hasConsumptionTotal=rows.some(t=>{const type=tType(t);return isConsumptionMovement(type)&&!type.startsWith("ISSUE FOR ");});
     let opening=null,closing=null,inflow=0,outflow=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
