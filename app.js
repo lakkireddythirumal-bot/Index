@@ -2622,8 +2622,12 @@ function renderStock(){
     const dot=st.status==="REORDER"?"🔴":st.status==="WATCH"?"🟡":st.status==="OK"?"🟢":"⚪";
     return `<div class="stock-row reorder-card" onclick="openMaterialDetails('${jsq(m)}')"><div class="reorder-card-top"><strong class="reorder-material">${esc(m)}</strong><span class="status-dot ${st.cls}" title="${esc(st.status)}" aria-label="${esc(st.status)}"></span></div><div class="reorder-card-metrics"><span><b>Stock</b><strong>${fmt(closing)} ${esc(unit)}</strong></span><span><b>Avg/day</b><strong>${avg?fmt(avg):"--"} ${esc(unit)}</strong></span><span><b>Cover</b><strong>${st.cover!==null?fmt(st.cover)+" d":"--"}</strong></span></div></div>`;
   }).join("")||"<div class='empty'>No stock data for this date</div>";
-  const rawMats=mats.filter(m=>!isPremixMaterial(m));
-  const premixMats=mats.filter(m=>isPremixMaterial(m));
+  // Keep Reorder grouping consistent with Raw Material Movements:
+  // only material names explicitly containing PREMIX belong in the Premixes group.
+  // Do not classify PSC/BFP substrings or other names differently in this section.
+  const isReorderPremix=m=>/PREMIX/i.test(clean(m));
+  const rawMats=mats.filter(m=>!isReorderPremix(m));
+  const premixMats=mats.filter(m=>isReorderPremix(m));
   if(list)list.innerHTML=renderRows(rawMats);
   if(premixList)premixList.innerHTML=renderRows(premixMats);
 }
