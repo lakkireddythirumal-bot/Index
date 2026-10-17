@@ -914,13 +914,27 @@ function materialReconciliation(material, requestedDate=""){
   const latest=dates.length?dates[dates.length-1]:"";
   const targetDate=dateOnly(requestedDate)||latest;
   const dayRows=targetDate?rows.filter(t=>dateOnly(rowDate(t))===targetDate):rows.slice();
+  // New MIS rows can contain both a total consumption row and its product-wise
+  // ISSUE FOR breakdown. Count the total once; use ISSUE FOR only when no total exists.
+  const hasConsumptionTotal=dayRows.some(t=>{
+    const ty=tType(t);
+    return isConsumptionMovement(ty)&&!ty.startsWith("ISSUE FOR ");
+  });
   let opening=null,closing=null,add=0,otherOut=0,recorded=0,invalid=false,openingCount=0,closingCount=0;const unclassified=[];
   dayRows.forEach(t=>{
     const ty=tType(t),raw=tRawVal(t),v=Math.abs(raw===null?0:raw);
     if(isOpeningStockMovement(ty)){openingCount++;if(raw===null)invalid=true;else opening=raw;}
     else if(isClosingStockMovement(ty)){closingCount++;if(raw===null)invalid=true;else closing=raw;}
     else if(isConsumptionMovement(ty)){if(raw===null)invalid=true;else recorded+=v;}
-    else if(isReceiptMovement(ty)||ty.includes("GAIN")||ty.includes("TRANSFER FROM")){if(raw===null)invalid=true;else add+=v;}
+    else if(ty.startsWith("ISSUE FOR ")||ty==="PELLET MILL USE"){
+      // These are detailed consumption/issue rows; don't double-count them when
+      // the same day's aggregate consumption is present.
+      if(!hasConsumptionTotal){if(raw===null)invalid=true;else recorded+=v;}
+    }
+    else if(isReceiptMovement(ty)||ty.includes("GAIN")||ty.includes("TRANSFER FROM")||ty==="TRANSFER"){
+      // Generic TRANSFER is an addition in the current MIS (e.g. DORB/SOYA DOC).
+      if(raw===null)invalid=true;else add+=v;
+    }
     else if(ty.includes("TRANSFER TO")||ty.includes("SALE")||ty.includes("SHORTAGE")||ty==="DAMAGE"||ty==="ISSUE"||ty.includes("RETURN TO")){if(raw===null)invalid=true;else otherOut+=v;}
     else if(ty && raw===null)invalid=true;
     else if(ty && Math.abs(v)>0.01)unclassified.push(ty);
