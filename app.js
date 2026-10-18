@@ -67,7 +67,15 @@ async function dcLoadSupabase(){
 }
 loadDataControl();
 function dcKey(v){return normalize(v).replace(/[^A-Z0-9._-]+/g,"_")}
-function dcMaterialState(name){return DATA_CONTROL.materials[dcKey(canonicalMaterialName(name))]||DATA_CONTROL.materials[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
+function dcMaterialState(name){
+  const canonical=canonicalMaterialName(name);
+  const candidates=[DATA_CONTROL.materials[dcKey(canonical)],DATA_CONTROL.materials[dcKey(name)]];
+  const key=normalize(canonical).replace(/[^A-Z0-9]/g,"");
+  const group=MATERIAL_ALIAS_GROUPS.find(g=>normalize(g.canonical).replace(/[^A-Z0-9]/g,"")===key);
+  if(group)group.aliases.forEach(alias=>candidates.push(DATA_CONTROL.materials[dcKey(alias)]));
+  // Preserve an existing HIDDEN decision saved under any old alias after canonicalization.
+  return candidates.find(s=>s&&s.status==="HIDDEN")||candidates.find(Boolean)||{status:"ACTIVE",reason:"",updatedAt:""};
+}
 function dcProductState(name){return DATA_CONTROL.products[dcKey(name)]||{status:"ACTIVE",reason:"",updatedAt:""}}
 function dcSourceName(t,fallback="stock_data"){return clean(t&&t._dcSource||fallback)}
 function dcRecordKey(material,t){
