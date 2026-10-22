@@ -625,7 +625,7 @@ function isOpeningStockMovement(type){const s=normalize(type);return s==="OPENIN
 function isClosingStockMovement(type){const s=normalize(type);return s==="CLOSING"||s==="CL. STOCK"||s.startsWith("CL. STOCK ")||s==="CLOSING STOCK"}
 function tRawVal(t){for(const key of ["for_day","value","quantity","qty"]){const v=num(t?.[key]);if(v!==null)return Math.abs(v)<1e-9?0:v;}return null;}
 function tVal(t){const v=tRawVal(t);return Math.abs(v===null?0:v)}
-function rowDate(t){return clean(t.report_date||t.Report_Date||t.date||t.DATE||t.activity_date||t.Activity_Date||"")}
+function rowDate(t){return clean(t.activity_date||t.Activity_Date||t.activityDate||t.ActivityDate||t.report_date||t.Report_Date||t.date||t.DATE||"")}
 function feedField(r,key){
   const map={
     Production_Day_MT:["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"],
@@ -2639,8 +2639,8 @@ function renderQuick(){
   const dd=latestTotal("Dispatch_Day_MT"),dm=latestTotal("Dispatch_Month_MT");
   setText("qProdDay",fmtMT(pd));setText("qProdMonth",fmtMT(pm));setText("qDispDay",fmtMT(dd));setText("qDispMonth",fmtMT(dm));
   let received=0,cons=0,closing=0;
-  // Dashboard stock KPIs use latest stock activity date, not the MIS report date.
-  const quickDate=latestStockDataDate();
+  // Use the selected activity date for historical views; otherwise use the latest stock activity date.
+  const quickDate=stockEffectiveViewDate();
   viewStockRows().forEach(x=>{
     const material=x.material||"";
     if(x.closing!==null)closing+=materialValueInMT(x.closing,material);
