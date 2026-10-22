@@ -1609,12 +1609,26 @@ function dataAccuracySnapshot(){
     {key:"production",label:"Production output %",date:productionDate,items:production,description:"Reported output percentage compared with actual output ÷ standard output."}
   ];
   const totals=groups.reduce((a,g)=>{const c=dacCount(g.items);a.total+=c.total;a.match+=c.match;a.mismatch+=c.mismatch;a.noData+=c.noData;return a;},{total:0,match:0,mismatch:0,noData:0});
+  // Show report/arrival date and the corresponding business activity date separately.
+  const sourceDatePair=rows=>{
+    const list=Array.isArray(rows)?rows:[];
+    const pair=list.map(r=>({
+      reportDate:dateOnly(r.report_date||r.Report_Date||r.date||r.DATE||""),
+      activityDate:dateOnly(r.activity_date||r.Activity_Date||r.activityDate||r.ActivityDate||"")
+    })).filter(x=>x.reportDate).sort((a,b)=>a.reportDate.localeCompare(b.reportDate)||(a.activityDate||"").localeCompare(b.activityDate||""));
+    return pair.length?pair[pair.length-1]:{reportDate:"",activityDate:""};
+  };
+  const stockPair=sourceDatePair(DATA.stockHistory&&DATA.stockHistory.length?DATA.stockHistory:DATA.stock);
+  const productionPair=sourceDatePair(DATA.productionHistory&&DATA.productionHistory.length?DATA.productionHistory:DATA.production);
+  const bagsPair=sourceDatePair(DATA.bagsHistory&&DATA.bagsHistory.length?DATA.bagsHistory:DATA.bags);
+  const feedPair=sourceDatePair(DATA.feedUnitData);
+  const totalsPair=sourceDatePair(DATA.feedUnitTotals);
   const sources=[
-    {name:"Raw material stock",date:dacLatestDate(DATA.stockHistory)||dacLatestDate(DATA.stock)},
-    {name:"Production",date:dacLatestDate(DATA.productionHistory)},
-    {name:"PP bags",date:dacLatestDate(DATA.bagsHistory)},
-    {name:"Feed unit",date:dacLatestDate(DATA.feedUnitData)},
-    {name:"Feed-unit totals",date:dacLatestDate(DATA.feedUnitTotals)}
+    {name:"Raw material stock",date:stockPair.reportDate,activityDate:stockPair.activityDate},
+    {name:"Production",date:productionPair.reportDate,activityDate:productionPair.activityDate},
+    {name:"PP bags",date:bagsPair.reportDate,activityDate:bagsPair.activityDate},
+    {name:"Feed unit",date:feedPair.reportDate,activityDate:feedPair.activityDate},
+    {name:"Feed-unit totals",date:totalsPair.reportDate,activityDate:totalsPair.activityDate}
   ];
   const newest=sources.map(x=>x.date).filter(Boolean).sort().pop()||"";
   sources.forEach(x=>x.status=!x.date?"NO DATA":x.date===newest?"LATEST":"OLDER");
@@ -1632,7 +1646,7 @@ function renderDataAccuracyCenter(){
     const list=document.getElementById("dacCheckList");
     if(list)list.innerHTML=snap.groups.map(g=>{const c=dacCount(g.items);const state=c.mismatch?"bad":c.noData?"warn":"good";return "<button type=\"button\" class=\"dac-check-row\" onclick=\"openDataAccuracyDetails('"+g.key+"')\"><span class=\"dac-check-icon "+state+"\">"+(c.mismatch?"!":c.noData?"?":"✓")+"</span><span class=\"dac-check-copy\"><strong>"+esc(g.label)+"</strong><small>"+esc(g.description)+"</small><em>"+esc(g.date||"No report date")+" • "+c.total+" item(s)</em></span><span class=\"dac-check-counts\"><b>"+c.match+" match</b><b class=\""+(c.mismatch?"text-bad":"")+"\">"+c.mismatch+" mismatch</b><b>"+c.noData+" no data</b></span><span class=\"dac-chevron\">›</span></button>";}).join("")||"<div class='empty'>No records available to check.</div>";
     const fresh=document.getElementById("dacFreshness");
-    if(fresh)fresh.innerHTML=snap.sources.map(x=>"<div class=\"dac-fresh-row\"><span>"+esc(x.name)+"</span><strong>"+esc(x.date||"No date")+"</strong>"+dacStatusLabel(x.status==="LATEST"?"LATEST":x.status==="OLDER"?"OLDER":"NO DATA")+"</div>").join("");
+    if(fresh)fresh.innerHTML=snap.sources.map(x=>"<div class=\"dac-fresh-row\"><span>"+esc(x.name)+"</span><div class=\"dac-fresh-dates\"><span>Report: <strong>"+esc(x.date||"No date")+"</strong></span><span>Activity: <strong>"+esc(x.activityDate||"No date")+"</strong></span></div>"+dacStatusLabel(x.status==="LATEST"?"LATEST":x.status==="OLDER"?"OLDER":"NO DATA")+"</div>").join("");
   }catch(error){
     console.warn("Data accuracy center could not render",error);
     setText("dacSubtitle","Unable to run checks; existing dashboard remains available.");
@@ -1654,7 +1668,7 @@ function openDataHealthDetails(){
     <div class="dac-overall ${status}">${mismatch?mismatch+' mismatch(es) need review.':missing?missing+' check(s) could not be verified because data is missing.':'All available checks match.'}</div>
     <div class="dac-check-list">${snap.groups.map(g=>{const c=dacCount(g.items),state=c.mismatch?'bad':c.noData?'warn':'good';return `<button type="button" class="dac-check-row" onclick="openDataAccuracyDetails('${g.key}')"><span class="dac-check-icon ${state}">${c.mismatch?'!':c.noData?'?':'✓'}</span><span class="dac-check-copy"><strong>${esc(g.label)}</strong><small>${esc(g.description)}</small><em>${esc(g.date||'No report date')} • ${c.total} item(s)</em></span><span class="dac-check-counts"><b>${c.match} match</b><b class="${c.mismatch?'text-bad':''}">${c.mismatch} mismatch</b><b>${c.noData} no data</b></span><span class="dac-chevron">›</span></button>`}).join('')}</div>
     <div class="dac-freshness-head"><strong>Source freshness</strong><span>Latest report date per section</span></div>
-    <div class="dac-freshness-list">${snap.sources.map(x=>`<div class="dac-fresh-row"><span>${esc(x.name)}</span><strong>${esc(x.date||'No date')}</strong>${dacStatusLabel(x.status==='LATEST'?'LATEST':x.status==='OLDER'?'OLDER':'NO DATA')}</div>`).join('')}</div>`;
+    <div class="dac-freshness-list">${snap.sources.map(x=>`<div class="dac-fresh-row"><span>${esc(x.name)}</span><div class="dac-fresh-dates"><span>Report: <strong>${esc(x.date||'No date')}</strong></span><span>Activity: <strong>${esc(x.activityDate||'No date')}</strong></span></div>${dacStatusLabel(x.status==='LATEST'?'LATEST':x.status==='OLDER'?'OLDER':'NO DATA')}</div>`).join('')}</div>`;
   showModal('Data Health & Reconciliation',html);
 }
 function openDataAccuracyDetails(kind){
