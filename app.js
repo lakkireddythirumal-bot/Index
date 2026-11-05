@@ -1404,6 +1404,8 @@ function rmHistoryValue(rows,kind,material=""){
   return rows.filter(t=>{
     const type=tType(t);
     if(kind==="received")return isTotalReceivedMovement(material,type);
+    if(kind==="soyaTransfer")return normalize(material)==="OIL"&&isSoyaOilTransferMovement(type);
+    if(kind==="rbTransfer")return normalize(material)==="OIL"&&isRBOilTransferMovement(type);
     if(kind==="consumption")return isConsumptionMovement(type);
     if(kind==="transfer")return type.includes("TRANSFER");
     return type==="CL. STOCK";
@@ -1457,7 +1459,7 @@ function refreshRMHistoryTable(){
   rows.forEach(t=>{const d=dateOnly(rowDate(t));if(!d)return;if(!byDate.has(d))byDate.set(d,[]);byDate.get(d).push(t)});
   const dates=[...byDate.keys()].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
-  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Received</th><th>Consumption</th><th>Transfer</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const day=byDate.get(d);const received=rmHistoryValue(day,"received",material),consumption=rmHistoryValue(day,"consumption",material),transfer=rmHistoryValue(day,"transfer",material),closing=rmHistoryClosing(day);return `<tr><td>${esc(d)}</td><td>${fmt(received)} ${esc(unit)}</td><td>${fmt(consumption)} ${esc(unit)}</td><td>${fmt(transfer)} ${esc(unit)}</td><td>${closing===null?"--":fmt(closing)+" "+esc(unit)}</td></tr>`}).join("")}</tbody></table></div>`;
+  el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Total Received</th><th>Soya Oil Transfer</th><th>RB Oil Transfer</th><th>Consumption</th><th>Transfer</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const day=byDate.get(d);const received=rmHistoryValue(day,"received",m),soya=rmHistoryValue(day,"soyaTransfer",m),rb=rmHistoryValue(day,"rbTransfer",m),consumption=rmHistoryValue(day,"consumption",m),transfer=rmHistoryValue(day,"transfer",m),closing=rmHistoryClosing(day);return `<tr><td>${esc(d)}</td><td>${fmt(received)} ${esc(unit)}</td><td>${fmt(soya)} ${esc(unit)}</td><td>${fmt(rb)} ${esc(unit)}</td><td>${fmt(consumption)} ${esc(unit)}</td><td>${fmt(transfer)} ${esc(unit)}</td><td>${closing===null?"--":fmt(closing)+" "+esc(unit)}</td></tr>`}).join("")}</tbody></table></div>`;
 }
 function feedHistoryProducts(){
   const set=new Map();
@@ -3456,7 +3458,7 @@ function reportRawRows(from,to){
   const key=(d,m)=>d+'|'+normalize(m);
   (DATA.stockHistory||[]).forEach(t=>{
     const d=reportDate(rowDate(t)),m=clean(t.material);if(!m||!reportInRange(d,from,to))return;
-    const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
+    const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,SoyaOilTransfer:0,RBOilTransfer:0,Consumption:0,Transfer:0,Closing:null});
     const r=map.get(k),ty=tType(t),v=tVal(t);
     if(isTotalReceivedMovement(m,ty))r.Received+=v;
     if(isSoyaOilTransferMovement(ty))r.SoyaOilTransfer=(r.SoyaOilTransfer||0)+v;
@@ -3468,7 +3470,7 @@ function reportRawRows(from,to){
   if(!map.size){
     (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{
       const d=reportDate(rowDate(t)),m=clean(x.material||t.material);if(!m||!reportInRange(d,from,to))return;
-      const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,Consumption:0,Transfer:0,Closing:null});
+      const k=key(d,m);if(!map.has(k))map.set(k,{Date:d,Material:m,Unit:materialUnit(m),Received:0,SoyaOilTransfer:0,RBOilTransfer:0,Consumption:0,Transfer:0,Closing:null});
       const r=map.get(k),ty=tType(t),v=tVal(t);if(isTotalReceivedMovement(m,ty))r.Received+=v;if(isSoyaOilTransferMovement(ty))r.SoyaOilTransfer=(r.SoyaOilTransfer||0)+v;if(isRBOilTransferMovement(ty))r.RBOilTransfer=(r.RBOilTransfer||0)+v;if(isConsumptionMovement(ty))r.Consumption+=v;if(ty.includes('TRANSFER'))r.Transfer+=v;if(ty==='CL. STOCK')r.Closing=v;
     }));
   }
@@ -3560,7 +3562,7 @@ function reportMaterialHistoryRows(material,from,to){
   return dates.map(d=>{
     const day=rows.filter(t=>dateOnly(rowDate(t))===d);
     return {Date:d,Material:material,Unit:unit,
-      Received:rmHistoryValue(day,"received",material),Consumption:rmHistoryValue(day,"consumption",material),
+      Received:rmHistoryValue(day,"received",material),SoyaOilTransfer:rmHistoryValue(day,"soyaTransfer",material),RBOilTransfer:rmHistoryValue(day,"rbTransfer",material),Consumption:rmHistoryValue(day,"consumption",material),
       Transfer:rmHistoryValue(day,"transfer",material),Closing:rmHistoryClosing(day)};
   });
 }
