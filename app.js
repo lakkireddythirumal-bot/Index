@@ -1291,7 +1291,8 @@ function latestProductionDataDate(){
   return dates.sort().pop()||"";
 }
 function latestFeedUnitDataDate(){
-  return latestDateFromRows(DATA.feedUnitData,["report_date","Report_Date","date","DATE"])||latestDateFromRows(DATA.feedUnitTotals,["report_date","Report_Date","date","DATE"]);
+  // Feed-unit rows are keyed to the actual production/activity day; report_date is MIS arrival date.
+  return latestDateFromRows(DATA.feedUnitData,["activity_date","Activity_Date","report_date","Report_Date","date","DATE"])||latestDateFromRows(DATA.feedUnitTotals,["activity_date","Activity_Date","report_date","Report_Date","date","DATE"]);
 }
 function latestPPBagDataDate(){
   const a=latestDateFromRows(DATA.bags,["report_date","Report_Date","date","DATE"]);
@@ -1467,7 +1468,7 @@ function feedHistoryProducts(){
   return [...set.values()].sort((a,b)=>a.localeCompare(b));
 }
 function feedHistoryRows(product){return (DATA.feedUnitData||[]).filter(r=>normalize(r.Product||r.product)===normalize(product));}
-function feedHistoryDates(product){return [...new Set(feedHistoryRows(product).map(r=>dateOnly(r.Report_Date||r.report_date||r.date)).filter(Boolean))].sort();}
+function feedHistoryDates(product){return [...new Set(feedHistoryRows(product).map(r=>dateOnly(r.activity_date||r.Activity_Date||r.Report_Date||r.report_date||r.date)).filter(Boolean))].sort();}
 function feedHistoryValue(r,names){for(const n of names){const v=num(r[n]);if(v!==null)return v}return null;}
 function renderFeedHistoryCard(){
   const body=document.getElementById("feedHistoryBody");if(!body)return;
@@ -1484,7 +1485,7 @@ function refreshFeedHistoryTable(){
   const p=document.getElementById("feedHistoryProduct")?.value||"",from=document.getElementById("feedHistoryFrom")?.value||"",to=document.getElementById("feedHistoryTo")?.value||"",el=document.getElementById("feedHistoryTable");if(!el)return;
   if(from&&to&&from>to){el.innerHTML='<div class="history-empty">From Date must be before To Date.</div>';return}
   const rows=feedHistoryRows(p),byDate=new Map();
-  rows.forEach(r=>{const d=dateOnly(r.Report_Date||r.report_date||r.date);if(!inHistoryRange(d,from,to))return;if(!byDate.has(d))byDate.set(d,[]);byDate.get(d).push(r)});
+  rows.forEach(r=>{const d=dateOnly(r.activity_date||r.Activity_Date||r.Report_Date||r.report_date||r.date);if(!inHistoryRange(d,from,to))return;if(!byDate.has(d))byDate.set(d,[]);byDate.get(d).push(r)});
   const dates=[...byDate.keys()].sort();
   if(!dates.length){el.innerHTML='<div class="history-empty">No history available for selected date range.</div>';return}
   el.innerHTML=`<div class="history-range-note">${esc(from)} → ${esc(to)} • ${dates.length} days</div><div class="history-table"><table><thead><tr><th>Date</th><th>Production</th><th>Dispatch</th><th>Closing</th></tr></thead><tbody>${dates.map(d=>{const rr=byDate.get(d),r=rr[rr.length-1];const prod=feedHistoryValue(r,["Production_Day_MT","production_day_mt","Production_Day","production_day","Production","production"]),disp=feedHistoryValue(r,["Dispatch_Day_MT","dispatch_day_mt","Dispatch_Day","dispatch_day","Dispatch","dispatch"]),close=feedHistoryValue(r,["Closing_Day_MT","closing_day_mt","Closing_Day","closing_day","Closing","closing"]);return `<tr><td>${esc(d)}</td><td>${prod===null?"--":fmtFeed(prod,p)}</td><td>${disp===null?"--":fmtFeed(disp,p)}</td><td>${close===null?"--":fmtFeed(close,p)}</td></tr>`}).join("")}</tbody></table></div>`;
@@ -1563,7 +1564,7 @@ function dacStockItems(targetDate){
   });
 }
 function dacFeedItems(targetDate){
-  const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===targetDate&&!dcIsHiddenProduct(clean(r.Product||r.product)));
+  const rows=(Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>dateOnly(r.activity_date||r.Activity_Date||r.Report_Date||r.report_date||r.date||r.DATE)===targetDate&&!dcIsHiddenProduct(clean(r.Product||r.product)));
   return latestUniqueRows(rows,r=>r.Product||r.product).map(r=>{
     const product=clean(r.Product||r.product);
     const opening=dacValue(r,["Opening_Day_MT","opening_day_mt","Opening_Day","opening_day","Opening","opening"]);
@@ -2445,9 +2446,11 @@ function selectedBags(){
 function selectedFeedRows(){
   if(PERF_CACHE.feedRows)return PERF_CACHE.feedRows;
   const rows=Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[];
-  const d=effectiveViewDate();
-  const dateRows=d?rows.filter(r=>dateOnly(r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
-  PERF_CACHE.feedRows=uniqueDatedProductRows(dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.Report_Date||r.report_date||r.date||r.DATE);
+  // An explicitly selected dashboard date means activity date for Feed Unit.
+  // With no selection, use the latest activity date rather than global MIS report_date.
+  const d=VIEW_DATE?dateOnly(VIEW_DATE):latestDateFromRows(rows,["activity_date","Activity_Date","report_date","Report_Date","date","DATE"]);
+  const dateRows=d?rows.filter(r=>dateOnly(r.activity_date||r.Activity_Date||r.Report_Date||r.report_date||r.date||r.DATE)===d):rows;
+  PERF_CACHE.feedRows=uniqueDatedProductRows(dateRows.filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),r=>r.Product||r.product,r=>r.activity_date||r.Activity_Date||r.Report_Date||r.report_date||r.date||r.DATE);
   return PERF_CACHE.feedRows;
 }
 function uniqueDatedProductRows(rows,productGetter,dateGetter){
@@ -2474,7 +2477,7 @@ function latestFeedRows(){
   PERF_CACHE.latestFeed=latestUniqueRows(
     selectedFeedRows().filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),
     r=>r.Product||r.product,
-    r=>r.Report_Date||r.report_date||r.date||r.DATE
+    r=>r.activity_date||r.Activity_Date||r.Report_Date||r.report_date||r.date||r.DATE
   );
   return PERF_CACHE.latestFeed;
 }
@@ -2551,8 +2554,8 @@ function cmpDailyFromMap(map,anchor){
 }
 function cmpFeedDailyMap(key){
   const map=new Map();
-  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
-    const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
+  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
+    const d=dateOnly(r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
     const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
     const v=feedValueInMT(feedField(r,key),p);
     if(v!==null&&v>=0)map.set(d,(map.get(d)||0)+v);
@@ -2561,8 +2564,8 @@ function cmpFeedDailyMap(key){
 }
 function cmpFeedClosingMap(){
   const map=new Map();
-  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
-    const d=dateOnly(r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
+  uniqueDatedProductRows(DATA.feedUnitData||[],r=>r.Product||r.product,r=>r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date||r.DATE).forEach(r=>{
+    const d=dateOnly(r.activity_date||r.Activity_Date||r.report_date||r.Report_Date||r.date||r.DATE);if(!d)return;
     const p=clean(r.Product||r.product);if(!p||dcIsHiddenProduct(p))return;
     const v=num(r.Closing_Day_MT??r.closing_day_mt??r.Closing_Day??r.closing_day??r.Closing??r.closing);
     if(v!==null&&v>=0)map.set(d,(map.get(d)||0)+feedValueInMT(v,p));
@@ -2765,7 +2768,7 @@ function dailyControlMetrics(){
 function currentViewKey(){return VIEW_DATE?dateOnly(VIEW_DATE):dateOnly(DATA.report_date)||"latest"}
 function allAvailableDates(){return getAvailableDates()}
 function feedRowsForDate(d){
-  return uniqueDatedProductRows((DATA.feedUnitData||[]).filter(r=>dateOnly(r.Report_Date||r.report_date)===dateOnly(d)),r=>r.Product||r.product,r=>r.Report_Date||r.report_date);
+  return uniqueDatedProductRows((DATA.feedUnitData||[]).filter(r=>dateOnly(r.activity_date||r.Activity_Date||r.Report_Date||r.report_date)===dateOnly(d)),r=>r.Product||r.product,r=>r.activity_date||r.Activity_Date||r.Report_Date||r.report_date);
 }
 function dateFeedMetrics(d){
   const rows=feedRowsForDate(d);
@@ -2841,7 +2844,7 @@ function getAvailableDates(){
   (DATA.stock||[]).forEach(x=>(x.transactions||[]).forEach(t=>{const d=dateOnly(rowDate(t));if(d)s.add(d)}));
   (DATA.production||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)s.add(d)});
   (DATA.bags||[]).forEach(r=>{const d=dateOnly(r.report_date||r.Report_Date);if(d)s.add(d)});
-  (DATA.feedUnitData||[]).forEach(r=>{const d=dateOnly(r.Report_Date||r.report_date);if(d)s.add(d)});
+  (DATA.feedUnitData||[]).forEach(r=>{const d=dateOnly(r.activity_date||r.Activity_Date||r.Report_Date||r.report_date);if(d)s.add(d)});
   if(DATA.report_date)s.add(dateOnly(DATA.report_date));
   PERF_CACHE.availableDates=[...s].filter(Boolean).sort().reverse();
   return PERF_CACHE.availableDates;
