@@ -1849,26 +1849,45 @@ function shareRawReorderWhatsApp(){
 function createRawReorderPng(){
   const rows=buildRawReorderShareRows();
   const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
-  const width=1100,rowH=88,top=230,bottom=100;
+  // Wide, high-resolution layout keeps every column readable on phone screens.
+  const width=1800,rowH=132,top=300,bottom=130,pad=54;
   canvas.width=width;canvas.height=top+Math.max(rows.length,1)*rowH+bottom;
-  ctx.fillStyle="#f4f7fb";ctx.fillRect(0,0,width,canvas.height);
-  ctx.fillStyle="#14243a";ctx.fillRect(0,0,width,170);
-  ctx.fillStyle="#ffffff";ctx.font="bold 38px Arial";ctx.fillText("RAW MATERIAL STOCK REPORT",48,68);
-  ctx.font="22px Arial";ctx.fillStyle="#dce7f5";ctx.fillText("Procurement requirement • "+new Date().toLocaleDateString("en-IN"),50,115);
-  ctx.fillStyle="#24364f";ctx.font="bold 20px Arial";
-  ctx.fillText("MATERIAL",50,210);ctx.fillText("CURRENT STOCK",500,210);ctx.fillText("AVG / DAY",700,210);ctx.fillText("COVERAGE",900,210);
+  ctx.fillStyle="#f5f7fb";ctx.fillRect(0,0,width,canvas.height);
+  ctx.fillStyle="#10243d";ctx.fillRect(0,0,width,220);
+  ctx.fillStyle="#ffffff";ctx.font="bold 54px Arial";ctx.fillText("RAW MATERIAL STOCK REPORT",pad,88);
+  ctx.font="30px Arial";ctx.fillStyle="#e2eaf5";ctx.fillText("All raw materials  •  "+new Date().toLocaleDateString("en-IN"),pad,150);
+  ctx.fillStyle="#263b56";ctx.font="bold 27px Arial";
+  ctx.fillText("MATERIAL",pad,270);ctx.fillText("CURRENT STOCK",760,270);ctx.fillText("AVG / DAY",1090,270);ctx.fillText("COVERAGE",1430,270);
+  const statusMap={
+    REORDER:{label:"REORDER",bg:"#fee2e2",fg:"#991b1b"},
+    WATCH:{label:"WATCH",bg:"#fef3c7",fg:"#92400e"},
+    OK:{label:"OK",bg:"#dcfce7",fg:"#166534"},
+    "NO DATA":{label:"NO DATA",bg:"#e5e7eb",fg:"#374151"}
+  };
   rows.forEach((x,i)=>{
-    const y=top+i*rowH;
-    ctx.fillStyle=i%2?"#ffffff":"#eaf0f7";ctx.fillRect(35,y,width-70,rowH-8);
-    ctx.fillStyle="#26364d";ctx.font="bold 22px Arial";ctx.fillText(String(x.m).slice(0,34),50,y+35);
-    ctx.font="20px Arial";ctx.fillText(fmt(x.c)+" "+x.unit,500,y+35);ctx.fillText(fmt(x.avg)+" "+x.unit,700,y+35);
-    ctx.fillStyle="#b4232d";ctx.font="bold 21px Arial";ctx.fillText(x.s.cover===null?"--":fmt(x.s.cover)+" days",900,y+35);
-    ctx.fillStyle="#718096";ctx.font="15px Arial";ctx.fillText(x.s.status==="REORDER"?"🔴 REORDER":x.s.status==="WATCH"?"🟡 WATCH":x.s.status==="OK"?"🟢 OK":"⚪ NO DATA",50,y+62);
+    const y=top+i*rowH,status=statusMap[x.s.status]||statusMap["NO DATA"];
+    ctx.fillStyle=i%2?"#ffffff":"#eaf0f8";
+    ctx.fillRect(36,y,width-72,rowH-10);
+    ctx.fillStyle="#1e293b";ctx.font="bold 29px Arial";
+    let name=String(x.m);
+    while(ctx.measureText(name).width>610&&name.length>8)name=name.slice(0,-2);
+    if(name!==String(x.m))name=name.trim()+"…";
+    ctx.fillText(name,pad,y+48);
+    ctx.fillStyle="#26364d";ctx.font="27px Arial";
+    ctx.fillText(fmt(x.c)+" "+x.unit,760,y+48);
+    ctx.fillText((x.avg?fmt(x.avg):"--")+" "+x.unit,1090,y+48);
+    ctx.fillStyle=x.s.cover===null?"#64748b":x.s.cover<3?"#b4232d":"#1e293b";
+    ctx.font="bold 29px Arial";
+    ctx.fillText(x.s.cover===null?"--":fmt(x.s.cover)+" days",1430,y+48);
+    const pillW=status.label==="NO DATA"?155:status.label==="REORDER"?180:145;
+    ctx.fillStyle=status.bg;
+    if(ctx.roundRect){ctx.beginPath();ctx.roundRect(pad,y+68,pillW,43,18);ctx.fill();}
+    else ctx.fillRect(pad,y+68,pillW,43);
+    ctx.fillStyle=status.fg;ctx.font="bold 22px Arial";ctx.fillText(status.label,pad+15,y+98);
   });
-  if(!rows.length){ctx.fillStyle="#53657d";ctx.font="24px Arial";ctx.fillText("No raw materials below reorder level.",50,top+55);}
-  const fy=top+Math.max(rows.length,1)*rowH+30;
-  ctx.fillStyle="#26364d";ctx.font="bold 19px Arial";ctx.fillText("Total raw materials: "+rows.length,50,fy);
-  ctx.font="15px Arial";ctx.fillStyle="#718096";ctx.fillText("Generated from Index • Raw material stock summary",50,fy+30);
+  const fy=top+Math.max(rows.length,1)*rowH+38;
+  ctx.fillStyle="#172b45";ctx.font="bold 27px Arial";ctx.fillText("TOTAL RAW MATERIALS: "+rows.length,pad,fy);
+  ctx.fillStyle="#64748b";ctx.font="21px Arial";ctx.fillText("Generated from Index • Raw material stock summary",pad,fy+42);
   return new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
 }
 async function shareRawReorderPng(){
