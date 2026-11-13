@@ -1824,17 +1824,21 @@ function sendRawMaterialRequirementWhatsApp(){
 }
 
 function buildRawReorderShareRows(){
-  return attentionReorderRawMaterials().slice().sort((a,b)=>(a.s.cover??999999)-(b.s.cover??999999));
+  return getMaterials().filter(m=>!isPremixMaterial(m)).map(m=>{
+    const x=getMaterial(m),c=num(x?.closing),avg=avgConsumption(m),s=stockStatus(c,avg);
+    return {m,c,avg,s,unit:materialUnit(m,x?.unit||"MT")};
+  }).sort((a,b)=>(b.c>0)-(a.c>0)||(b.c||0)-(a.c||0));
 }
 function buildRawReorderWhatsAppText(){
   const rows=buildRawReorderShareRows();
   const date=new Date().toLocaleDateString("en-IN");
-  const lines=["📦 *RAW MATERIAL REORDER REPORT*","📅 Date: "+date,"","🔴 *Materials below reorder level*"];
-  if(!rows.length)lines.push("No raw materials currently below reorder level.");
+  const lines=["📦 *RAW MATERIAL STOCK REPORT*","📅 Date: "+date,"","📋 *All Raw Materials*"];
+  if(!rows.length)lines.push("No raw materials available in the report.");
   rows.forEach((x,i)=>{
-    lines.push((i+1)+". *"+x.m+"*","   Stock: "+fmt(x.c)+" "+x.unit+" | Avg: "+fmt(x.avg)+" "+x.unit+"/day","   Coverage: "+(x.s.cover===null?"--":fmt(x.s.cover)+" days"));
+    const status=x.s.status==="REORDER"?"🔴 REORDER":x.s.status==="WATCH"?"🟡 WATCH":x.s.status==="OK"?"🟢 OK":"⚪ NO DATA";
+    lines.push((i+1)+". *"+x.m+"*","   Stock: "+fmt(x.c)+" "+x.unit+" | Avg: "+(x.avg?fmt(x.avg):"--")+" "+x.unit+"/day","   Coverage: "+(x.s.cover===null?"--":fmt(x.s.cover)+" days")+" | "+status);
   });
-  lines.push("","Total items: "+rows.length,"Please arrange procurement.");
+  lines.push("","Total raw materials: "+rows.length);
   return lines.join("\n");
 }
 function shareRawReorderWhatsApp(){
@@ -1849,7 +1853,7 @@ function createRawReorderPng(){
   canvas.width=width;canvas.height=top+Math.max(rows.length,1)*rowH+bottom;
   ctx.fillStyle="#f4f7fb";ctx.fillRect(0,0,width,canvas.height);
   ctx.fillStyle="#14243a";ctx.fillRect(0,0,width,170);
-  ctx.fillStyle="#ffffff";ctx.font="bold 38px Arial";ctx.fillText("RAW MATERIAL REORDER",48,68);
+  ctx.fillStyle="#ffffff";ctx.font="bold 38px Arial";ctx.fillText("RAW MATERIAL STOCK REPORT",48,68);
   ctx.font="22px Arial";ctx.fillStyle="#dce7f5";ctx.fillText("Procurement requirement • "+new Date().toLocaleDateString("en-IN"),50,115);
   ctx.fillStyle="#24364f";ctx.font="bold 20px Arial";
   ctx.fillText("MATERIAL",50,210);ctx.fillText("CURRENT STOCK",500,210);ctx.fillText("AVG / DAY",700,210);ctx.fillText("COVERAGE",900,210);
@@ -1859,12 +1863,12 @@ function createRawReorderPng(){
     ctx.fillStyle="#26364d";ctx.font="bold 22px Arial";ctx.fillText(String(x.m).slice(0,34),50,y+35);
     ctx.font="20px Arial";ctx.fillText(fmt(x.c)+" "+x.unit,500,y+35);ctx.fillText(fmt(x.avg)+" "+x.unit,700,y+35);
     ctx.fillStyle="#b4232d";ctx.font="bold 21px Arial";ctx.fillText(x.s.cover===null?"--":fmt(x.s.cover)+" days",900,y+35);
-    ctx.fillStyle="#718096";ctx.font="15px Arial";ctx.fillText("REORDER REQUIRED",50,y+62);
+    ctx.fillStyle="#718096";ctx.font="15px Arial";ctx.fillText(x.s.status==="REORDER"?"🔴 REORDER":x.s.status==="WATCH"?"🟡 WATCH":x.s.status==="OK"?"🟢 OK":"⚪ NO DATA",50,y+62);
   });
   if(!rows.length){ctx.fillStyle="#53657d";ctx.font="24px Arial";ctx.fillText("No raw materials below reorder level.",50,top+55);}
   const fy=top+Math.max(rows.length,1)*rowH+30;
-  ctx.fillStyle="#26364d";ctx.font="bold 19px Arial";ctx.fillText("Total reorder items: "+rows.length,50,fy);
-  ctx.font="15px Arial";ctx.fillStyle="#718096";ctx.fillText("Generated from Index • Verify quantities before purchase",50,fy+30);
+  ctx.fillStyle="#26364d";ctx.font="bold 19px Arial";ctx.fillText("Total raw materials: "+rows.length,50,fy);
+  ctx.font="15px Arial";ctx.fillStyle="#718096";ctx.fillText("Generated from Index • Raw material stock summary",50,fy+30);
   return new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
 }
 async function shareRawReorderPng(){
