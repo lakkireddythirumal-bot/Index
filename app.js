@@ -1823,6 +1823,65 @@ function sendRawMaterialRequirementWhatsApp(){
   window.open(url,'_blank');
 }
 
+function buildRawReorderShareRows(){
+  return attentionReorderRawMaterials().slice().sort((a,b)=>(a.s.cover??999999)-(b.s.cover??999999));
+}
+function buildRawReorderWhatsAppText(){
+  const rows=buildRawReorderShareRows();
+  const date=new Date().toLocaleDateString("en-IN");
+  const lines=["📦 *RAW MATERIAL REORDER REPORT*","📅 Date: "+date,"","🔴 *Materials below reorder level*"];
+  if(!rows.length)lines.push("No raw materials currently below reorder level.");
+  rows.forEach((x,i)=>{
+    lines.push((i+1)+". *"+x.m+"*","   Stock: "+fmt(x.c)+" "+x.unit+" | Avg: "+fmt(x.avg)+" "+x.unit+"/day","   Coverage: "+(x.s.cover===null?"--":fmt(x.s.cover)+" days"));
+  });
+  lines.push("","Total items: "+rows.length,"Please arrange procurement.");
+  return lines.join("\n");
+}
+function shareRawReorderWhatsApp(){
+  const rows=buildRawReorderShareRows();
+  if(!rows.length){alert("No raw materials are currently below reorder level.");return;}
+  window.open("https://wa.me/?text="+encodeURIComponent(buildRawReorderWhatsAppText()),"_blank");
+}
+function createRawReorderPng(){
+  const rows=buildRawReorderShareRows();
+  const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
+  const width=1100,rowH=88,top=230,bottom=100;
+  canvas.width=width;canvas.height=top+Math.max(rows.length,1)*rowH+bottom;
+  ctx.fillStyle="#f4f7fb";ctx.fillRect(0,0,width,canvas.height);
+  ctx.fillStyle="#14243a";ctx.fillRect(0,0,width,170);
+  ctx.fillStyle="#ffffff";ctx.font="bold 38px Arial";ctx.fillText("RAW MATERIAL REORDER",48,68);
+  ctx.font="22px Arial";ctx.fillStyle="#dce7f5";ctx.fillText("Procurement requirement • "+new Date().toLocaleDateString("en-IN"),50,115);
+  ctx.fillStyle="#24364f";ctx.font="bold 20px Arial";
+  ctx.fillText("MATERIAL",50,210);ctx.fillText("CURRENT STOCK",500,210);ctx.fillText("AVG / DAY",700,210);ctx.fillText("COVERAGE",900,210);
+  rows.forEach((x,i)=>{
+    const y=top+i*rowH;
+    ctx.fillStyle=i%2?"#ffffff":"#eaf0f7";ctx.fillRect(35,y,width-70,rowH-8);
+    ctx.fillStyle="#26364d";ctx.font="bold 22px Arial";ctx.fillText(String(x.m).slice(0,34),50,y+35);
+    ctx.font="20px Arial";ctx.fillText(fmt(x.c)+" "+x.unit,500,y+35);ctx.fillText(fmt(x.avg)+" "+x.unit,700,y+35);
+    ctx.fillStyle="#b4232d";ctx.font="bold 21px Arial";ctx.fillText(x.s.cover===null?"--":fmt(x.s.cover)+" days",900,y+35);
+    ctx.fillStyle="#718096";ctx.font="15px Arial";ctx.fillText("REORDER REQUIRED",50,y+62);
+  });
+  if(!rows.length){ctx.fillStyle="#53657d";ctx.font="24px Arial";ctx.fillText("No raw materials below reorder level.",50,top+55);}
+  const fy=top+Math.max(rows.length,1)*rowH+30;
+  ctx.fillStyle="#26364d";ctx.font="bold 19px Arial";ctx.fillText("Total reorder items: "+rows.length,50,fy);
+  ctx.font="15px Arial";ctx.fillStyle="#718096";ctx.fillText("Generated from Index • Verify quantities before purchase",50,fy+30);
+  return new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+}
+async function shareRawReorderPng(){
+  const rows=buildRawReorderShareRows();
+  if(!rows.length){alert("No raw materials are currently below reorder level.");return;}
+  const blob=await createRawReorderPng();
+  if(!blob){alert("Could not generate the PNG report.");return;}
+  const file=new File([blob],"raw-material-reorder.png",{type:"image/png"});
+  if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:"Raw Material Reorder Report"});return;}catch(e){if(e.name==="AbortError")return;}
+  }
+  const url=URL.createObjectURL(blob),link=document.createElement("a");
+  link.href=url;link.download="raw-material-reorder.png";link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  alert("PNG downloaded. Open it and share to WhatsApp.");
+}
+
 function attentionSummaryItems(){
   const reorderRows=attentionReorderMaterials();
   const reorderRawRows=attentionReorderRawMaterials();
