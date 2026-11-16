@@ -3292,13 +3292,17 @@ function renderDataQualityPanel(){
   host.innerHTML=`<div class="card control-card" id="dataQualityPanel"><div class="card-title"><h2>🛡 Data Health &amp; Issues</h2><span>Quality • Accuracy • Issues</span></div><div class="control-grid"><button class="control-item" onclick="openDQDuplicates()"><small>🔁 Duplicate Transactions</small><strong>${dup.length}</strong></button><button class="control-item" onclick="openDQUnknown()"><small>❓ Unknown Transactions</small><strong>${unk.length}</strong></button><button class="control-item" onclick="openDQContinuity()"><small>🔗 Opening → Closing</small><strong>${cont.length}</strong></button><button class="control-item" onclick="openDQAbnormal()"><small>⚠ Abnormal Activity</small><strong>${ab.length}</strong></button><button class="control-item" onclick="openDQHistory()"><small>📈 Historical Trend</small><strong>${getMaterials().length}</strong></button><button class="control-item" onclick="openDQCoverage()"><small>🎯 Coverage</small><strong>${cov.filter(x=>x.percent===100).length}/${cov.length}</strong></button></div><div class="health-strip" onclick="openDataHealth()"><span>⚠ Data Issues</span><b>${badDataIssueCount()}</b> <span>View details →</span></div><div class="small-note">Consumption spelling variations are automatically treated as Consumption; only genuinely unrecognized transaction names are shown as Unknown.</div></div>`;
 }
 function ensureDataQualityHost(){
-  const premixCard=document.getElementById("premixTransferCard");
-  if(!premixCard)return;
+  const homeView=document.querySelector('.dashboard-view[data-dashboard-view="home"]');
+  const comparison=document.getElementById("homeProductionComparison");
+  if(!homeView||!comparison)return;
   let host=document.getElementById("dataQualityPanelHost");
   if(!host){
     host=document.createElement("div");
     host.id="dataQualityPanelHost";
-    premixCard.parentNode.insertBefore(host,premixCard.nextSibling);
+  }
+  // Keep Data Health & Issues directly below Production Comparison on Home only.
+  if(host.parentNode!==homeView||host.previousElementSibling!==comparison){
+    comparison.insertAdjacentElement("afterend",host);
   }
   renderDataQualityPanel();
 }
