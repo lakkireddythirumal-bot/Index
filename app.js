@@ -4117,7 +4117,7 @@ function setupDashboardViews(){
   const reorder=desktop?.children?.[0]||null;
   const production=desktop?.children?.[1]||null;
   const sections={
-    home:[document.getElementById("attentionRequiredCard"),quick,document.getElementById("monthlyMixSection")],
+    home:[document.getElementById("homeProductionComparison"),document.getElementById("attentionRequiredCard"),quick,document.getElementById("monthlyMixSection")],
     stock:[document.getElementById("premixTransferCard"),reorder,getCard("rawCategoryList")],
     production:[production,getCard("feedUnitList")],
     bags:[getCard("bagGrid")],
