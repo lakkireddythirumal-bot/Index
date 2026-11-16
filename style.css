@@ -1763,3 +1763,19 @@ body.dc-page-open{overflow:hidden}
  .manager-quick-grid .quick{padding:7px 5px!important}
  .manager-quick-grid .quick strong{font-size:11px!important}
 }
+
+
+/* Home page: compact month-to-date production comparison */
+.home-production-comparison{margin-top:12px;overflow:hidden}
+.home-prod-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.home-prod-compare-value{min-width:0;padding:12px;border:1px solid var(--ui-border,#e5eaf1);border-radius:13px;background:var(--ui-surface-soft,#f8fafc)}
+.home-prod-compare-value span,.home-prod-compare-result span{display:block;color:var(--ui-muted,#748094);font-size:10px;font-weight:700;line-height:1.35}
+.home-prod-compare-value strong{display:block;margin:7px 0 4px;color:var(--ui-text,#203047);font-size:clamp(19px,5vw,24px);font-weight:800;letter-spacing:-.6px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.home-prod-compare-value small{display:block;color:var(--ui-muted,#8792a2);font-size:9px;line-height:1.4;overflow-wrap:anywhere}
+.home-prod-compare-result{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:9px;padding:11px 12px;border:1px solid var(--ui-border,#e5eaf1);border-radius:12px}
+.home-prod-compare-result>div{min-width:0}
+.home-prod-compare-result strong{display:block;margin-top:5px;color:var(--ui-text,#203047);font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.home-prod-compare-result strong.is-positive{color:#168454}
+.home-prod-compare-result strong.is-negative{color:#b64242}
+.home-prod-compare-note{margin:9px 1px 0;color:var(--ui-muted,#8792a2);font-size:9px;line-height:1.45}
+@media(max-width:360px){.home-prod-compare-value{padding:10px}.home-prod-compare-value strong{font-size:18px}}
