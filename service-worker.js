@@ -1,4 +1,4 @@
-const CACHE_NAME = "feed-manager-dashboard-v15";
+const CACHE_NAME = "feed-manager-dashboard-v16";
 const CACHE_PREFIX = "feed-manager-dashboard-";
 const APP_SHELL = [
   "./",
@@ -14,6 +14,36 @@ const APP_SHELL = [
 self.addEventListener("install", event => {
   // Keep the current app active until the user accepts the available update.
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
+});
+
+
+self.addEventListener("push", event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (_) {}
+  const title = data.title || "Feed Plant Dashboard";
+  const options = {
+    body: data.body || "New dashboard update",
+    icon: "./assets/feed-plant-icon.svg",
+    badge: "./assets/feed-plant-icon.svg",
+    tag: data.tag || "feed-plant-notification",
+    renotify: false,
+    data: { url: data.url || "./", ...(data.data || {}) }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "./", self.registration.scope).href;
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of clientsList) {
+      if (client.url.startsWith(self.registration.scope) && "focus" in client) {
+        await client.navigate(target);
+        return client.focus();
+      }
+    }
+    return self.clients.openWindow(target);
+  })());
 });
 
 self.addEventListener("message", event => {
