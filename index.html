@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#f5f6f8">
+<meta name="apple-mobile-web-app-title" content="Feed Plant">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" type="image/svg+xml" href="./assets/feed-plant-icon.svg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="./manifest.json">
@@ -33,7 +36,8 @@
     <span id="connectionStatus">Loading...</span>
     <span id="lastUpdated"></span>
     <button class="refresh" onclick="manualRefresh()">↻ Refresh</button>
-    <button id="installBtn" class="install" onclick="installPWA()">Install</button>
+    <button id="installBtn" class="install" onclick="installPWA()" style="display:none">Install App</button>
+    <button id="updatePwaBtn" class="install" type="button" onclick="applyPWAUpdate()" style="display:none">Update App</button>
   </div>
 
   <div class="date-strip" aria-label="Date navigation">

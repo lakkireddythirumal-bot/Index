@@ -4157,11 +4157,84 @@ setupDashboardViews();
 restoreCache().catch(error=>console.warn("Dashboard cache restore skipped",error)).finally(()=>refreshData());
 loadSpareParts();
 
-/* PWA */
+/* PWA foundation: install UX and user-controlled service-worker updates. */
 let deferredPrompt=null;
-window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;document.getElementById("installBtn").style.display="block"});
-async function installPWA(){if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById("installBtn").style.display="none"}
-if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(console.warn))}
+let pendingPWAUpdate=null;
+let refreshAfterPWAUpdate=false;
+
+function isStandalonePWA(){
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone===true;
+}
+function isIOSInstallBrowser(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !isStandalonePWA();
+}
+function showPWAInstallButton(){
+  const button=document.getElementById("installBtn");
+  if(!button || isStandalonePWA()) return;
+  button.style.display="inline-flex";
+  if(isIOSInstallBrowser()) button.textContent="How to Install";
+}
+window.addEventListener("beforeinstallprompt",event=>{
+  event.preventDefault();
+  deferredPrompt=event;
+  const button=document.getElementById("installBtn");
+  if(button){button.textContent="Install App";button.style.display="inline-flex";}
+});
+window.addEventListener("appinstalled",()=>{
+  deferredPrompt=null;
+  const button=document.getElementById("installBtn");
+  if(button) button.style.display="none";
+});
+async function installPWA(){
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    try{await deferredPrompt.userChoice;}catch(error){console.warn("PWA install prompt closed",error);}
+    deferredPrompt=null;
+    const button=document.getElementById("installBtn");
+    if(button) button.style.display="none";
+    return;
+  }
+  if(isIOSInstallBrowser()){
+    alert("To install Feed Plant Dashboard on iPhone: tap the Share button in Safari, choose 'Add to Home Screen', then tap Add.");
+  }
+}
+function offerPWAUpdate(registration){
+  if(!registration || !registration.waiting || !navigator.serviceWorker.controller) return;
+  pendingPWAUpdate=registration.waiting;
+  const button=document.getElementById("updatePwaBtn");
+  if(button) button.style.display="inline-flex";
+}
+function applyPWAUpdate(){
+  if(!pendingPWAUpdate) return;
+  refreshAfterPWAUpdate=true;
+  pendingPWAUpdate.postMessage({type:"SKIP_WAITING"});
+}
+if("serviceWorker" in navigator){
+  window.addEventListener("load",async()=>{
+    try{
+      const registration=await navigator.serviceWorker.register("./service-worker.js",{updateViaCache:"none"});
+      offerPWAUpdate(registration);
+      registration.addEventListener("updatefound",()=>{
+        const installing=registration.installing;
+        if(!installing) return;
+        installing.addEventListener("statechange",()=>{
+          if(installing.state==="installed") offerPWAUpdate(registration);
+        });
+      });
+      registration.update().catch(error=>console.warn("PWA update check skipped",error));
+    }catch(error){console.warn("Service worker registration failed",error);}
+  });
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    if(!refreshAfterPWAUpdate) return;
+    refreshAfterPWAUpdate=false;
+    window.location.reload();
+  });
+}
+if(document.readyState==="loading"){
+  document.addEventListener("DOMContentLoaded",showPWAInstallButton,{once:true});
+}else{
+  showPWAInstallButton();
+}
 
 
 
