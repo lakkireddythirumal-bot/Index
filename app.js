@@ -3307,16 +3307,16 @@ function renderDataQualityPanel(){
 }
 function ensureDataQualityHost(){
   const homeView=document.querySelector('.dashboard-view[data-dashboard-view="home"]');
-  const comparison=document.getElementById("homeProductionComparison");
-  if(!homeView||!comparison)return;
+  const monthlyMix=document.getElementById("monthlyMixSection");
+  if(!homeView||!monthlyMix)return;
   let host=document.getElementById("dataQualityPanelHost");
   if(!host){
     host=document.createElement("div");
     host.id="dataQualityPanelHost";
   }
-  // Keep Data Health & Issues directly below Production Comparison on Home only.
-  if(host.parentNode!==homeView||host.previousElementSibling!==comparison){
-    comparison.insertAdjacentElement("afterend",host);
+  // Keep Data Health & Issues last on Home, directly below Monthly Mix & Contribution.
+  if(host.parentNode!==homeView||host.previousElementSibling!==monthlyMix){
+    monthlyMix.insertAdjacentElement("afterend",host);
   }
   renderDataQualityPanel();
 }
@@ -4117,7 +4117,7 @@ function setupDashboardViews(){
   const reorder=desktop?.children?.[0]||null;
   const production=desktop?.children?.[1]||null;
   const sections={
-    home:[document.getElementById("homeProductionComparison"),document.getElementById("attentionRequiredCard"),quick,document.getElementById("monthlyMixSection")],
+    home:[document.getElementById("attentionRequiredCard"),quick,document.getElementById("homeProductionComparison"),document.getElementById("monthlyMixSection")],
     stock:[document.getElementById("premixTransferCard"),reorder,getCard("rawCategoryList")],
     production:[production,getCard("feedUnitList")],
     bags:[getCard("bagGrid")],
