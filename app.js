@@ -587,6 +587,19 @@ function renderPremixTransfers(){
   const totalMT=rows.reduce((a,r)=>a+r.value/1000,0);
   el.innerHTML=rows.length?rows.map(r=>`<div class="feed-row premix-row" onclick="openMaterialDetails('${jsq(r.material)}')"><div class="row-name">${esc(r.material)}</div><div class="row-right"><strong>${fmt(r.value)} KG</strong><small>Transfer from Bommakal</small></div></div>`).join("")+`<div class="premix-total"><span>Total</span><strong>${fmt(totalMT)} MT</strong></div>`:"<div class='empty'>No premix transferred from Bommakal</div>";
 }
+function renderReceivedRawMaterials(){
+  const el=document.getElementById("receivedRawMaterialsList");
+  if(!el)return;
+  const rows=getMaterials()
+    .filter(m=>!isPremixMaterial(m))
+    .map(material=>({material,value:rawTotal(material,"PURCHASE")}))
+    .filter(x=>x.value>0)
+    .sort((a,b)=>b.value-a.value);
+  el.innerHTML=rows.length?rows.map(r=>{
+    const x=getMaterial(r.material),unit=materialUnit(r.material,x?.unit||"MT");
+    return `<div class="feed-row premix-row" onclick="openMaterialDetails('${jsq(r.material)}')"><div class="row-name">${esc(r.material)}</div><div class="row-right"><strong>${fmtMaterial(r.value,r.material,unit)}</strong><small>Received raw material</small></div></div>`;
+  }).join(""):"<div class='empty'>No raw materials received</div>";
+}
 function rawTotal(material,tab){
   if(tab==="STOCK")return num(getMaterial(material)?.closing)||0;
   const selectedDay=stockEffectiveViewDate();
@@ -1738,6 +1751,7 @@ function renderDashboard(){
   renderMonthlyMix();
   renderControlCenter();
   renderPremixTransfers();
+  renderReceivedRawMaterials();
   renderFeedUnit();
   renderStock();
   renderProduction();
