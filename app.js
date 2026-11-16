@@ -974,6 +974,7 @@ async function refreshData(forceFull=false){
     else if(e&&e.code==="API_NETWORK")msg="API connection issue • showing saved data";
     else if(e&&e.code==="API_RESPONSE")msg="API response error • showing saved data";
     setConnection(false,has?"Offline • showing saved data":msg);
+    sendDashboardSystemAlert(e,msg).catch(err=>console.warn("Push system alert skipped",err));
     if(!has){
       const list=document.getElementById("stockList");
       if(list)list.innerHTML="<div class='error-box'>❌ Unable to load dashboard data.</div>";
@@ -4202,6 +4203,81 @@ window.addEventListener("online",async()=>{
   await flushPendingDataControlSync();
   refreshData();
 });
+
+
+/* =====================================================
+   PUSH NOTIFICATIONS — Daily MIS + Dashboard system alerts
+   Device enrollment token is entered by the manager and
+   stored locally; VAPID private key never reaches browser.
+===================================================== */
+const PUSH_FUNCTION_URL=SUPABASE_URL+"/functions/v1/push-notify";
+const PUSH_DEVICE_TOKEN_KEY="feed_plant_push_device_token_v1";
+function pushBase64UrlToBytes(value){
+  const pad="=".repeat((4-value.length%4)%4);
+  const raw=atob((value+pad).replace(/-/g,"+").replace(/_/g,"/"));
+  return Uint8Array.from(raw,c=>c.charCodeAt(0));
+}
+async function pushRequest(path,body,token){
+  const response=await fetch(PUSH_FUNCTION_URL+path,{
+    method:body?"POST":"GET",
+    headers:body?{"Content-Type":"application/json","Authorization":"Bearer "+token}:{},
+    body:body?JSON.stringify(body):undefined,
+    cache:"no-store"
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||("Push service HTTP "+response.status));
+  return data;
+}
+async function enablePushNotifications(){
+  if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)){
+    alert("ఈ browserలో Push Notifications support లేదు. iPhoneలో Safari ద్వారా Dashboardను Home Screenకు Add చేసి ఆ appలో ప్రయత్నించండి.");
+    return;
+  }
+  if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!isStandalonePWA()){
+    alert("iPhoneలో ముందుగా Safari → Share → Add to Home Screen చేయండి. తర్వాత Home Screenలోని Feed Plant app తెరిచి Push enable చేయండి.");
+    return;
+  }
+  if(!window.isSecureContext){alert("Push Notifications కోసం HTTPS అవసరం.");return;}
+  let token=localStorage.getItem(PUSH_DEVICE_TOKEN_KEY)||"";
+  if(!token){
+    token=prompt("Push Device Enrollment Token నమోదు చేయండి:");
+    if(!token)return;
+    token=token.trim();
+    if(!token)return;
+  }
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission!=="granted"){alert("Notifications permission ఇవ్వలేదు.");return;}
+    const config=await pushRequest("?action=public-key",null,null);
+    const registration=await navigator.serviceWorker.ready;
+    let subscription=await registration.pushManager.getSubscription();
+    if(!subscription){
+      subscription=await registration.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:pushBase64UrlToBytes(config.publicKey)
+      });
+    }
+    await pushRequest("",{action:"subscribe",subscription:subscription.toJSON(),device_label:/iphone|ipad|ipod/i.test(navigator.userAgent)?"iPhone Feed Plant":"Feed Plant Dashboard"},token);
+    localStorage.setItem(PUSH_DEVICE_TOKEN_KEY,token);
+    alert("Push Notifications enabled. Test notification పంపేందుకు backend setup పూర్తి కావాలి.");
+    const button=document.getElementById("pushEnableBtn");
+    if(button)button.textContent="🔔 Push Enabled";
+  }catch(error){
+    console.error("Push enrollment failed",error);
+    alert("Push setup failed: "+(error.message||"Unknown error"));
+  }
+}
+async function sendDashboardSystemAlert(error,message){
+  const token=localStorage.getItem(PUSH_DEVICE_TOKEN_KEY);
+  if(!token||!navigator.onLine)return;
+  const code=String(error?.code||error?.name||"SYNC_ERROR").replace(/[^a-z0-9_-]/gi,"").slice(0,40);
+  const day=new Date().toISOString().slice(0,10);
+  await pushRequest("",{
+    action:"system_alert",
+    alert_key:day+"-"+code,
+    message:String(message||"Dashboard sync or data error").slice(0,160)
+  },token);
+}
 
 /* PWA foundation: install UX and user-controlled service-worker updates. */
 let deferredPrompt=null;
