@@ -2401,6 +2401,8 @@ function trendClosing(){
 function switchDashboardView(view){
   const allowed=new Set(["home","stock","production","bags","spares","reports"]);
   if(!allowed.has(view))view="home";
+  const homeComparison=document.getElementById("homeProductionComparison");
+  if(homeComparison)homeComparison.style.display=view==="home"?"":"none";
   document.querySelectorAll(".dashboard-view").forEach(el=>{
     const active=el.dataset.dashboardView===view;
     el.classList.toggle("active",active);
