@@ -1,9 +1,29 @@
 {
+  "id": "./",
   "name": "Feed Plant Manager Dashboard",
-  "short_name": "Manager Dashboard",
-  "start_url": "./",
+  "short_name": "Feed Plant",
+  "description": "Feed Plant Control Center for production, stock and plant operations.",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#f5f6f8",
   "theme_color": "#f5f6f8",
-  "description": "Feed Plant Manager Dashboard"
+  "categories": ["business", "productivity", "utilities"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "./assets/feed-plant-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/feed-plant-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
 }
