@@ -9,7 +9,7 @@
 <link rel="manifest" href="./manifest.json">
 <title>Manager Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261016-home-polish2" fetchpriority="high">
+  <link rel="stylesheet" href="style.css?v=20261116-home-mtd-comparison" fetchpriority="high">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3"></script>
 </head>
 <body>
@@ -74,6 +74,20 @@
       <div class="quick" onclick="openStockForecast()"><p>RM Items to Reorder</p><strong id="mergedReorder">--</strong></div>
     </div>
   </div>
+
+  <!-- HOME PRODUCTION COMPARISON -->
+  <section class="card home-production-comparison" id="homeProductionComparison" aria-live="polite">
+    <div class="card-title"><h2>📊 Production Comparison</h2><span id="homeProdComparePeriod">Month to date</span></div>
+    <div class="home-prod-compare-grid">
+      <div class="home-prod-compare-value"><span>This Month</span><strong id="homeProdCurrent">-- MT</strong><small id="homeProdCurrentDates">Waiting for data</small></div>
+      <div class="home-prod-compare-value previous"><span>Last Month • Same Period</span><strong id="homeProdPrevious">-- MT</strong><small id="homeProdPreviousDates">Waiting for data</small></div>
+    </div>
+    <div class="home-prod-compare-result">
+      <div><span>Difference</span><strong id="homeProdDifference">-- MT</strong></div>
+      <div><span>Growth</span><strong id="homeProdGrowth">--</strong></div>
+    </div>
+    <p class="home-prod-compare-note" id="homeProdCompareNote">Comparison uses dated Feed Unit production records.</p>
+  </section>
 
   <!-- BOMMAKAL PREMIX TRANSFERS -->
   <div class="card premix-card" id="premixTransferCard">
@@ -440,6 +454,6 @@
     });
   })();
   </script>
-  <script defer src="app.js?v=20261113-original-layout-bigger-numbers"></script>
+  <script defer src="app.js?v=20261116-home-mtd-comparison"></script>
 </body>
 </html>
