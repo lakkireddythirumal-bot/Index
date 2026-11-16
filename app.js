@@ -1675,56 +1675,59 @@ function renderHomeProductionComparison(){
   const root=document.getElementById("homeProductionComparison");
   if(!root)return;
   const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
-  const fmtMT=value=>Number(value).toLocaleString("en-IN",{maximumFractionDigits:1});
+  const fmtMT=value=>Number(value).toLocaleString("en-IN",{maximumFractionDigits:2});
   const rows=uniqueDatedProductRows(
     (Array.isArray(DATA.feedUnitData)?DATA.feedUnitData:[]).filter(r=>!dcIsHiddenProduct(clean(r.Product||r.product))),
     r=>r.Product||r.product,
     r=>r.Report_Date||r.report_date||r.date||r.DATE
   );
-  const daily=new Map();
+  const snapshots=new Map();
   rows.forEach(r=>{
-    const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE),raw=feedField(r,"Production_Day_MT");
+    const d=dateOnly(r.Report_Date||r.report_date||r.date||r.DATE);
+    const raw=feedField(r,"Production_Month_MT");
     if(!d||raw===null)return;
-    const value=feedValueInMT(raw,r.Product||r.product);
+    const product=r.Product||r.product;
+    const value=feedValueInMT(raw,product);
     if(!Number.isFinite(value)||value<0)return;
-    daily.set(d,(daily.get(d)||0)+value);
+    snapshots.set(d,(snapshots.get(d)||0)+value);
   });
-  const dates=[...daily.keys()].sort();
+  const dates=[...snapshots.keys()].sort();
   if(!dates.length){
     set("homeProdCurrent","-- MT");set("homeProdPrevious","-- MT");set("homeProdDifference","-- MT");set("homeProdGrowth","--");
-    set("homeProdCurrentDates","No dated production data");set("homeProdPreviousDates","No comparison data");
-    set("homeProdComparePeriod","Month to date");set("homeProdCompareNote","Feed Unit production history is not available.");return;
+    set("homeProdCurrentDates","No dated monthly production data");set("homeProdPreviousDates","No comparison data");
+    set("homeProdComparePeriod","Month production snapshot");set("homeProdCompareNote","Feed Unit Production_Month_MT history is not available.");
+    return;
   }
   const latest=dates[dates.length-1],anchor=new Date(latest+"T12:00:00");
   const year=anchor.getFullYear(),month=anchor.getMonth(),day=anchor.getDate();
-  const currentStart=year+"-"+String(month+1).padStart(2,"0")+"-01";
-  const previousMonthStartDate=new Date(year,month-1,1);
-  const previousStart=previousMonthStartDate.getFullYear()+"-"+String(previousMonthStartDate.getMonth()+1).padStart(2,"0")+"-01";
-  const compareDay=Math.min(day,new Date(year,month,0).getDate());
-  const previousEnd=previousMonthStartDate.getFullYear()+"-"+String(previousMonthStartDate.getMonth()+1).padStart(2,"0")+"-"+String(compareDay).padStart(2,"0");
-  const currentDates=dates.filter(d=>d>=currentStart&&d<=latest),previousDates=dates.filter(d=>d>=previousStart&&d<=previousEnd);
-  const total=period=>period.reduce((sum,d)=>sum+(daily.get(d)||0),0);
-  const currentTotal=total(currentDates),previousTotal=total(previousDates);
+  const previousMonthDate=new Date(year,month-1,Math.min(day,new Date(year,month,0).getDate()));
+  const previousDate=previousMonthDate.getFullYear()+"-"+String(previousMonthDate.getMonth()+1).padStart(2,"0")+"-"+String(previousMonthDate.getDate()).padStart(2,"0");
+  const currentTotal=snapshots.get(latest);
+  const previousTotal=snapshots.get(previousDate);
   const currentLabel=anchor.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
-  const previousLabel=previousMonthStartDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
+  const previousLabel=previousMonthDate.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
   set("homeProdCurrent",fmtMT(currentTotal)+" MT");
-  set("homeProdPrevious",previousDates.length?fmtMT(previousTotal)+" MT":"-- MT");
-  set("homeProdCurrentDates",currentStart+" to "+latest+" • "+currentDates.length+" dated days");
-  set("homeProdPreviousDates",previousDates.length?previousStart+" to "+previousEnd+" • "+previousDates.length+" dated days":"No previous-period records");
+  set("homeProdPrevious",previousTotal===undefined?"-- MT":fmtMT(previousTotal)+" MT");
+  set("homeProdCurrentDates","Month production as of "+latest);
+  set("homeProdPreviousDates",previousTotal===undefined?"No record for matching date":"Month production as of "+previousDate);
   set("homeProdComparePeriod",currentLabel+" vs "+previousLabel);
-  const difference=currentTotal-previousTotal,diffEl=document.getElementById("homeProdDifference");
-  if(diffEl){diffEl.textContent=(difference>0?"+":"")+fmtMT(difference)+" MT";diffEl.classList.toggle("is-positive",difference>0);diffEl.classList.toggle("is-negative",difference<0);}
+  const difference=previousTotal===undefined?null:currentTotal-previousTotal;
+  const diffEl=document.getElementById("homeProdDifference");
+  if(diffEl){
+    diffEl.textContent=difference===null?"N/A":(difference>0?"+":"")+fmtMT(difference)+" MT";
+    diffEl.classList.toggle("is-positive",difference!==null&&difference>0);
+    diffEl.classList.toggle("is-negative",difference!==null&&difference<0);
+  }
   const growthEl=document.getElementById("homeProdGrowth");
   if(growthEl){
     growthEl.classList.remove("is-positive","is-negative");
-    if(!previousDates.length||previousTotal===0){growthEl.textContent="N/A";}
+    if(difference===null||previousTotal===0){growthEl.textContent="N/A";}
     else{const growth=difference/previousTotal*100;growthEl.textContent=(growth>0?"+":"")+fmtMT(growth)+"%";growthEl.classList.toggle("is-positive",growth>0);growthEl.classList.toggle("is-negative",growth<0);}
   }
-  set("homeProdCompareNote",previousDates.length
-    ?"Feed Unit MT • "+currentDates.length+" current production dates vs "+previousDates.length+" previous production dates. Missing dates are not treated as zero."
-    :"Previous same-period Feed Unit records are unavailable; growth is not calculated.");
+  set("homeProdCompareNote",previousTotal===undefined
+    ?"Feed Unit monthly production snapshot • No record found for the matching date in the previous month."
+    :"Feed Unit Production_Month_MT • Both values are the month-to-date totals recorded on the matching calendar dates. No daily values are added together.");
 }
-
 function renderDashboard(){
   initReportCenter();
   renderSmartHeader();
