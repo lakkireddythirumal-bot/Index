@@ -1,0 +1,20 @@
+name: Push notification syntax checks
+on:
+  pull_request:
+    paths:
+      - "app.js"
+      - "service-worker.js"
+      - "supabase/functions/push-notify/**"
+      - ".github/workflows/push-notifications-check.yml"
+  push:
+    branches: ["feature/push-notifications-ios-pwa"]
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --check app.js
+      - run: node --check service-worker.js
