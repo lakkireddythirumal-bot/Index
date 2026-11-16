@@ -40,16 +40,50 @@ let DC_RAW_DATA={stock:[],stockHistory:[],production:[],productionHistory:[],bag
 let DC_REMOTE_LOADED=false,DC_REMOTE_SAVE=Promise.resolve();
 function dcNormalizeSettings(raw){return {materials:raw&&raw.materials||{},products:raw&&raw.products||{},records:raw&&raw.records||{}}}
 function loadDataControl(){try{DATA_CONTROL=dcNormalizeSettings(JSON.parse(localStorage.getItem(DATA_CONTROL_KEY)||"{}"))}catch(e){DATA_CONTROL={materials:{},products:{},records:{}}}}
+const DATA_CONTROL_PENDING_SYNC_KEY="plant_data_control_pending_sync_v1";
+let DC_SYNC_IN_PROGRESS=false;
+function readPendingDataControlSync(){
+  try{return JSON.parse(localStorage.getItem(DATA_CONTROL_PENDING_SYNC_KEY)||"null")}catch(e){return null}
+}
+async function flushPendingDataControlSync(){
+  if(DC_SYNC_IN_PROGRESS||!navigator.onLine)return false;
+  const pending=readPendingDataControlSync();
+  if(!pending||!pending.settings)return true;
+  DC_SYNC_IN_PROGRESS=true;
+  try{
+    const res=await fetch(SUPABASE_URL+"/rest/v1/dashboard_data_control?on_conflict=id",{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:"site",settings:pending.settings,updated_at:pending.settings.updatedAt||pending.queuedAt||new Date().toISOString()})});
+    if(!res.ok)throw Error("Supabase Data Control save failed: "+res.status);
+    const latest=readPendingDataControlSync();
+    if(latest&&latest.queuedAt===pending.queuedAt){
+      localStorage.removeItem(DATA_CONTROL_PENDING_SYNC_KEY);
+      DC_REMOTE_LOADED=true;
+      setConnection(true,"Live • offline changes synced");
+    }
+    return true;
+  }catch(error){
+    console.warn("Data Control sync pending; local copy retained",error);
+    setConnection(false,navigator.onLine?"Sync pending • local changes safe":"Offline • changes saved on this device");
+    return false;
+  }finally{DC_SYNC_IN_PROGRESS=false}
+}
 function saveDataControl(){
   const snapshot={...DATA_CONTROL,updatedAt:new Date().toISOString()};
   try{localStorage.setItem(DATA_CONTROL_KEY,JSON.stringify(snapshot))}catch(e){}
-  DC_REMOTE_SAVE=DC_REMOTE_SAVE.catch(()=>{}).then(async()=>{
-    const res=await fetch(SUPABASE_URL+"/rest/v1/dashboard_data_control?on_conflict=id",{method:"POST",headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:"site",settings:snapshot,updated_at:snapshot.updatedAt})});
-    if(!res.ok)throw Error("Supabase Data Control save failed: "+res.status);
-  }).catch(e=>{console.warn("Data Control cloud save failed; local copy retained",e);try{dcToast("Cloud save failed — check connection","error")}catch(_){}});
+  try{localStorage.setItem(DATA_CONTROL_PENDING_SYNC_KEY,JSON.stringify({settings:snapshot,queuedAt:snapshot.updatedAt}))}catch(e){}
+  if(navigator.onLine){
+    DC_REMOTE_SAVE=DC_REMOTE_SAVE.catch(()=>{}).then(()=>flushPendingDataControlSync());
+  }else{
+    setConnection(false,"Offline • changes saved on this device");
+  }
 }
 async function dcLoadSupabase(){
   if(DC_REMOTE_LOADED)return;
+  const pending=readPendingDataControlSync();
+  if(pending&&pending.settings){
+    DATA_CONTROL=dcNormalizeSettings(pending.settings);
+    if(navigator.onLine)flushPendingDataControlSync();
+    return;
+  }
   try{
     const res=await fetch(SUPABASE_URL+"/rest/v1/dashboard_data_control?id=eq.site&select=settings&limit=1",{headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY},cache:"no-store"});
     if(!res.ok)throw Error("Supabase Data Control load failed: "+res.status);
@@ -4154,8 +4188,20 @@ function setupDashboardViews(){
    START
 ===================================================== */
 setupDashboardViews();
-restoreCache().catch(error=>console.warn("Dashboard cache restore skipped",error)).finally(()=>refreshData());
+restoreCache().catch(error=>console.warn("Dashboard cache restore skipped",error)).finally(()=>{
+  if(navigator.onLine)refreshData();
+  else setConnection(false,"Offline • showing saved data");
+});
 loadSpareParts();
+
+window.addEventListener("offline",()=>{
+  setConnection(false,"Offline • showing saved data");
+});
+window.addEventListener("online",async()=>{
+  setConnection(true,"Connection restored • syncing");
+  await flushPendingDataControlSync();
+  refreshData();
+});
 
 /* PWA foundation: install UX and user-controlled service-worker updates. */
 let deferredPrompt=null;
