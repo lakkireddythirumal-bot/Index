@@ -4099,9 +4099,9 @@ function setupDashboardViews(){
   const reorder=desktop?.children?.[0]||null;
   const production=desktop?.children?.[1]||null;
   const sections={
-    home:[document.getElementById("attentionRequiredCard"),quick],
+    home:[document.getElementById("attentionRequiredCard"),quick,document.getElementById("monthlyMixSection")],
     stock:[document.getElementById("premixTransferCard"),reorder,getCard("rawCategoryList")],
-    production:[production,getCard("feedUnitList"),document.getElementById("monthlyMixSection")],
+    production:[production,getCard("feedUnitList")],
     bags:[getCard("bagGrid")],
     spares:[document.getElementById("sparePartsSection")],
     reports:[document.getElementById("reportCenterSection"),document.getElementById("trendsSection")]
